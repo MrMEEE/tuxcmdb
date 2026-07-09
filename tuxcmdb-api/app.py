@@ -7,6 +7,7 @@ from datetime import datetime
 import ipaddress
 from pathlib import Path
 import re
+import sys
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -30,6 +31,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from tuxcmdb.db import create_db_engine
 from werkzeug.security import check_password_hash
 import uvicorn
@@ -68,6 +73,7 @@ attributes = Table(
     Column("name", String(120), nullable=False, unique=True),
     Column("description", Text, nullable=True),
     Column("data_type", String(32), ForeignKey("datatypes.name"), nullable=False),
+    Column("allow_multiple", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -117,12 +123,14 @@ class AttributeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     data_type: str = Field(default="string", min_length=1, max_length=32)
     description: str | None = None
+    allow_multiple: bool = False
 
 
 class AttributeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     data_type: str | None = Field(default=None, min_length=1, max_length=32)
     description: str | None = None
+    allow_multiple: bool | None = None
 
 
 class AttributeOut(BaseModel):
@@ -131,6 +139,7 @@ class AttributeOut(BaseModel):
     id: int
     name: str
     data_type: str
+    allow_multiple: bool
     description: str | None
     created_at: datetime
     changed_at: datetime
@@ -215,6 +224,46 @@ def parse_asset_assign_payload(payload: dict[str, Any]) -> tuple[int | None, str
     return None, normalized_name, value
 
 
+def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
+    asset_ref = asset_ref.strip()
+
+    row = None
+    if asset_ref.isdigit():
+        row = conn.execute(
+            select(assets.c.id, assets.c.active).where(assets.c.id == int(asset_ref))
+        ).one_or_none()
+        if row is not None:
+            return row
+
+    normalized_hostname = normalize_hostname(asset_ref)
+    row = conn.execute(
+        select(assets.c.id, assets.c.active).where(assets.c.hostname == normalized_hostname)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return row
+
+
+def resolve_attribute_ref(conn: Connection, attribute_ref: str) -> Any:
+    attribute_ref = attribute_ref.strip()
+
+    row = None
+    if attribute_ref.isdigit():
+        row = conn.execute(
+            select(attributes.c.id, attributes.c.name, attributes.c.allow_multiple).where(attributes.c.id == int(attribute_ref))
+        ).one_or_none()
+        if row is not None:
+            return row
+
+    normalized_name = attribute_ref.lower()
+    row = conn.execute(
+        select(attributes.c.id, attributes.c.name, attributes.c.allow_multiple).where(attributes.c.name == normalized_name)
+    ).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Attribute not found")
+    return row
+
+
 class AssignedAttributeOut(BaseModel):
     attribute_id: int
     name: str
@@ -276,7 +325,7 @@ def validate_by_builtin(value: str, builtin_name: str) -> bool:
     if builtin_name == "boolean":
         return value.strip().lower() in {"true", "false", "1", "0", "yes", "no", "on", "off"}
     if builtin_name == "integer":
-        return re.fullmatch(r"^[+-]?\\d+$", value.strip()) is not None
+        return re.fullmatch(r"^[+-]?\d+$", value.strip()) is not None
     raise HTTPException(status_code=500, detail=f"Unsupported builtin validator '{builtin_name}'")
 
 
@@ -311,6 +360,7 @@ def to_attribute_out(row: Any) -> AttributeOut:
         id=row.id,
         name=row.name,
         data_type=row.data_type,
+        allow_multiple=row.allow_multiple,
         description=row.description,
         created_at=row.created_at,
         changed_at=row.changed_at,
@@ -333,7 +383,6 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
     if not asset_ids:
         return {}
 
-    latest = latest_assignment_subquery()
     rows = conn.execute(
         select(
             assignments.c.asset_id,
@@ -341,15 +390,31 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
             assignments.c.value,
             assignments.c.assigned_at,
             attributes.c.name,
+            attributes.c.allow_multiple,
+            assignments.c.id,
         )
-        .join(latest, assignments.c.id == latest.c.latest_id)
         .join(attributes, attributes.c.id == assignments.c.attribute_id)
         .where(assignments.c.asset_id.in_(asset_ids), assignments.c.assigned.is_(True))
-        .order_by(assignments.c.asset_id, attributes.c.name)
+        .order_by(assignments.c.asset_id, attributes.c.name, assignments.c.assigned_at, assignments.c.id)
     ).all()
 
     out: dict[int, list[AssignedAttributeOut]] = {asset_id: [] for asset_id in asset_ids}
+    singleton_rows: dict[tuple[int, int], Any] = {}
     for row in rows:
+        if row.allow_multiple:
+            out[row.asset_id].append(
+                AssignedAttributeOut(
+                    attribute_id=row.attribute_id,
+                    name=row.name,
+                    value=row.value,
+                    assigned_at=row.assigned_at,
+                )
+            )
+            continue
+
+        singleton_rows[(row.asset_id, row.attribute_id)] = row
+
+    for row in singleton_rows.values():
         out[row.asset_id].append(
             AssignedAttributeOut(
                 attribute_id=row.attribute_id,
@@ -358,7 +423,25 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
                 assigned_at=row.assigned_at,
             )
         )
+
+    for asset_id, attributes_list in out.items():
+        attributes_list.sort(key=lambda item: (item.name, item.assigned_at, item.attribute_id))
     return out
+
+
+def apply_assignment_policy(conn: Connection, asset_id: int, attribute_row: Any) -> None:
+    if attribute_row.allow_multiple:
+        return
+
+    conn.execute(
+        assignments.update()
+        .where(
+            assignments.c.asset_id == asset_id,
+            assignments.c.attribute_id == attribute_row.id,
+            assignments.c.assigned.is_(True),
+        )
+        .values(assigned=False, changed_at=func.now())
+    )
 
 
 def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
@@ -503,6 +586,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 attributes.insert().values(
                     name=name,
                     data_type=data_type,
+                    allow_multiple=payload.allow_multiple,
                     description=payload.description,
                 )
             )
@@ -512,6 +596,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     attributes.c.id,
                     attributes.c.name,
                     attributes.c.data_type,
+                    attributes.c.allow_multiple,
                     attributes.c.description,
                     attributes.c.created_at,
                     attributes.c.changed_at,
@@ -531,6 +616,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             attributes.c.id,
             attributes.c.name,
             attributes.c.data_type,
+            attributes.c.allow_multiple,
             attributes.c.description,
             attributes.c.created_at,
             attributes.c.changed_at,
@@ -558,6 +644,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             updates["data_type"] = payload.data_type.strip().lower()
         if payload.description is not None:
             updates["description"] = payload.description
+        if payload.allow_multiple is not None:
+            updates["allow_multiple"] = payload.allow_multiple
 
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -585,6 +673,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         attributes.c.id,
                         attributes.c.name,
                         attributes.c.data_type,
+                        attributes.c.allow_multiple,
                         attributes.c.description,
                         attributes.c.created_at,
                         attributes.c.changed_at,
@@ -752,35 +841,33 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             ).one()
             return build_asset_out([row], conn)[0]
 
-    @app.post("/v1/assets/{asset_id}/attributes", response_model=MessageResponse)
-    def add_asset_attribute(asset_id: int, payload: dict[str, Any], _: str = Depends(authenticate)) -> MessageResponse:
+    @app.post("/v1/assets/{asset_ref}/attributes", response_model=MessageResponse)
+    def add_asset_attribute(asset_ref: str, payload: dict[str, Any], _: str = Depends(authenticate)) -> MessageResponse:
         attribute_id, attribute_name, value = parse_asset_assign_payload(payload)
 
         with engine.begin() as conn:
-            asset_row = conn.execute(
-                select(assets.c.id, assets.c.active).where(assets.c.id == asset_id)
-            ).one_or_none()
-            if asset_row is None:
-                raise HTTPException(status_code=404, detail="Asset not found")
+            asset_row = resolve_asset_ref(conn, asset_ref)
             if not asset_row.active:
                 raise HTTPException(status_code=409, detail="Asset is decommissioned")
 
             if attribute_id is not None:
                 attribute_row = conn.execute(
-                    select(attributes.c.id, attributes.c.data_type).where(attributes.c.id == attribute_id)
+                    select(attributes.c.id, attributes.c.data_type, attributes.c.allow_multiple).where(attributes.c.id == attribute_id)
                 ).one_or_none()
             else:
                 attribute_row = conn.execute(
-                    select(attributes.c.id, attributes.c.data_type).where(attributes.c.name == attribute_name)
+                    select(attributes.c.id, attributes.c.data_type, attributes.c.allow_multiple).where(attributes.c.name == attribute_name)
                 ).one_or_none()
             if attribute_row is None:
                 raise HTTPException(status_code=404, detail="Attribute not found")
 
             validate_attribute_value(conn, attribute_row.data_type, value)
 
+            apply_assignment_policy(conn, asset_row.id, attribute_row)
+
             conn.execute(
                 assignments.insert().values(
-                    asset_id=asset_id,
+                    asset_id=asset_row.id,
                     attribute_id=attribute_row.id,
                     value=value,
                     assigned=True,
@@ -789,28 +876,37 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
         return MessageResponse(status="ok", message="Attribute assigned to asset")
 
-    @app.delete("/v1/assets/{asset_id}/attributes/{attribute_id}", response_model=MessageResponse)
-    def remove_asset_attribute(asset_id: int, attribute_id: int, _: str = Depends(authenticate)) -> MessageResponse:
+    @app.delete("/v1/assets/{asset_ref}/attributes/{attribute_ref}", response_model=MessageResponse)
+    def remove_asset_attribute(
+        asset_ref: str,
+        attribute_ref: str,
+        value: str | None = None,
+        _: str = Depends(authenticate),
+    ) -> MessageResponse:
         with engine.begin() as conn:
-            asset_row = conn.execute(
-                select(assets.c.id, assets.c.active).where(assets.c.id == asset_id)
-            ).one_or_none()
-            if asset_row is None:
-                raise HTTPException(status_code=404, detail="Asset not found")
+            asset_row = resolve_asset_ref(conn, asset_ref)
             if not asset_row.active:
                 raise HTTPException(status_code=409, detail="Asset is decommissioned")
 
-            attribute_exists = conn.execute(
-                select(attributes.c.id).where(attributes.c.id == attribute_id)
-            ).scalar_one_or_none()
-            if attribute_exists is None:
-                raise HTTPException(status_code=404, detail="Attribute not found")
+            attribute_row = resolve_attribute_ref(conn, attribute_ref)
+
+            remove_stmt = assignments.update().where(
+                assignments.c.asset_id == asset_row.id,
+                assignments.c.attribute_id == attribute_row.id,
+                assignments.c.assigned.is_(True),
+            )
+            if value is not None:
+                remove_stmt = remove_stmt.where(assignments.c.value == value)
+
+            removed_rows = conn.execute(remove_stmt.values(assigned=False, changed_at=func.now())).rowcount or 0
+            if removed_rows == 0:
+                raise HTTPException(status_code=404, detail="Assignment not found")
 
             conn.execute(
                 assignments.insert().values(
-                    asset_id=asset_id,
-                    attribute_id=attribute_id,
-                    value=None,
+                    asset_id=asset_row.id,
+                    attribute_id=attribute_row.id,
+                    value=value,
                     assigned=False,
                 )
             )

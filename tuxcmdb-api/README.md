@@ -67,8 +67,8 @@ Assets:
 - `GET /v1/assets?q=...&active=true|false`
 - `GET /v1/assets/{asset_id}`
 - `PATCH /v1/assets/{asset_id}`
-- `POST /v1/assets/{asset_id}/attributes`
-- `DELETE /v1/assets/{asset_id}/attributes/{attribute_id}`
+- `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or hostname)
+- `DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}?value=...` (`asset_ref` and `attribute_ref` can be asset/attribute id or name)
 - `POST /v1/assets/{asset_id}/decommission`
 - `GET /v1/assets/by-attribute?attribute_name=...&value=...`
 
@@ -77,4 +77,6 @@ Assets:
 `POST /v1/assets/{asset_id}/attributes` validates `value` against the attribute's `data_type` from the `datatypes` table.
 You can identify the target attribute by either `attribute_name` (recommended) or `attribute_id` in the request body.
 It also supports shorthand payload where the key is the attribute name, for example `{"management_ip": "10.44.1.21"}`.
+If an attribute has `allow_multiple=true`, multiple active assignment rows are kept for the same asset and attribute. The default is `false`, which keeps only the latest active row.
+`DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}` can remove by attribute name or id, and `?value=...` can target a specific repeated value for `allow_multiple=true` attributes.
 Default datatypes are seeded by installer/startup: `string`, `integer`, `numeric`, `ipv4`, `ipv6`, `subnet`, and `boolean`.

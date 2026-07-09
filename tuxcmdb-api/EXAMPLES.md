@@ -83,9 +83,12 @@ curl -u "$AUTH" -X POST "$API/v1/attributes" \
   -d '{
     "name": "management_ip",
     "data_type": "ipv4",
+    "allow_multiple": true,
     "description": "Primary management IPv4"
   }'
 ```
+
+`allow_multiple=true` is useful for attributes like IP addresses, where an asset may need more than one active value.
 
 List attributes:
 
@@ -127,6 +130,12 @@ ASSET_ID=$(curl -s -u "$AUTH" "$API/v1/assets?q=srv-web-01" | jq '.[0].id')
 echo "ASSET_ID=$ASSET_ID"
 ```
 
+You can also use hostname directly in the URL for attribute assignment routes:
+
+```bash
+ASSET_NAME="srv-web-01"
+```
+
 ## 3) Assign attributes to the asset
 
 There are three supported request styles when assigning attributes.
@@ -137,6 +146,14 @@ Assign `location=dc1-rack22`:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d '{"attribute_name": "location", "value": "dc1-rack22"}'
+```
+
+Same assignment using hostname in URL:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_NAME/attributes" \
   -H "Content-Type: application/json" \
   -d '{"attribute_name": "location", "value": "dc1-rack22"}'
 ```
@@ -175,6 +192,16 @@ curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -d '{"attribute_name": "management_ip", "value": "10.44.1.21"}'
 ```
 
+Assign a second active IPv4 when `allow_multiple=true`:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d '{"management_ip": "10.44.1.22"}'
+```
+
+Because `management_ip` is configured with `allow_multiple=true`, both IPs remain active.
+
 Try an invalid IPv4 (`999.44.1.21`) to see validation:
 
 ```bash
@@ -196,7 +223,19 @@ curl -u "$AUTH" "$API/v1/assets/$ASSET_ID"
 Remove the `owner` assignment from the asset:
 
 ```bash
-curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_ID/attributes/$OWNER_ATTR_ID"
+curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_ID/attributes/owner"
+```
+
+Same removal using hostname in URL:
+
+```bash
+curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_NAME/attributes/owner"
+```
+
+Remove one specific repeated IP value from `management_ip`:
+
+```bash
+curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_ID/attributes/management_ip?value=10.44.1.22"
 ```
 
 Verify current assignments:
