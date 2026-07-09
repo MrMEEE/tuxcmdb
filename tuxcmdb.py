@@ -72,11 +72,13 @@ if script_path_entry in sys.path:
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import URL
 import yaml
 
 sys.path.insert(0, script_path_entry)
+
+from tuxcmdb.db import create_db_engine
 
 
 DEFAULT_CONFIG_FILE = BASE_DIR / "conf" / "database.yaml"
@@ -194,13 +196,13 @@ def run_migrations(database_url: str) -> None:
 
 
 def ensure_connection(database_url: str) -> None:
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
 
 
 def seed_default_attributes(database_url: str) -> None:
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
     with engine.begin() as conn:
         for name, data_type, description in DEFAULT_ATTRIBUTES:
             existing_row = conn.execute(
@@ -228,7 +230,7 @@ def seed_default_attributes(database_url: str) -> None:
 
 
 def ensure_database_exists_mysql(admin_url: str, database_name: str) -> None:
-    engine = create_engine(admin_url, future=True, isolation_level="AUTOCOMMIT")
+    engine = create_db_engine(admin_url, isolation_level="AUTOCOMMIT")
     safe_name = database_name.replace("`", "``")
     create_sql = f"CREATE DATABASE IF NOT EXISTS `{safe_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
     with engine.connect() as conn:
@@ -236,7 +238,7 @@ def ensure_database_exists_mysql(admin_url: str, database_name: str) -> None:
 
 
 def ensure_database_exists_postgresql(admin_url: str, database_name: str) -> None:
-    engine = create_engine(admin_url, future=True, isolation_level="AUTOCOMMIT")
+    engine = create_db_engine(admin_url, isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         exists = conn.execute(
             text("SELECT 1 FROM pg_database WHERE datname = :database_name"),

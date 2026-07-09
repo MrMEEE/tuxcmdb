@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+import ipaddress
 from pathlib import Path
+import re
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -14,13 +16,13 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    ForeignKey,
     Integer,
     MetaData,
     String,
     Table,
     Text,
     and_,
-    create_engine,
     func,
     or_,
     select,
@@ -28,6 +30,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
+from tuxcmdb.db import create_db_engine
 from werkzeug.security import check_password_hash
 import uvicorn
 import yaml
@@ -64,7 +67,19 @@ attributes = Table(
     Column("id", Integer, primary_key=True),
     Column("name", String(120), nullable=False, unique=True),
     Column("description", Text, nullable=True),
-    Column("data_type", String(32), nullable=False),
+    Column("data_type", String(32), ForeignKey("datatypes.name"), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+datatypes = Table(
+    "datatypes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(32), nullable=False, unique=True),
+    Column("description", Text, nullable=True),
+    Column("regex_pattern", Text, nullable=True),
+    Column("builtin_validator", String(32), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -121,6 +136,16 @@ class AttributeOut(BaseModel):
     changed_at: datetime
 
 
+class DatatypeOut(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    regex_pattern: str | None
+    builtin_validator: str | None
+    created_at: datetime
+    changed_at: datetime
+
+
 class AssetCreate(BaseModel):
     hostname: str = Field(min_length=1, max_length=255)
 
@@ -163,6 +188,50 @@ def load_api_config(path: Path) -> dict:
 
 def normalize_hostname(value: str) -> str:
     return value.strip().lower()
+
+
+def ensure_datatype_exists(conn: Connection, datatype_name: str) -> None:
+    exists = conn.execute(
+        select(datatypes.c.id).where(datatypes.c.name == datatype_name)
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(status_code=400, detail=f"Unknown data_type '{datatype_name}'")
+
+
+def validate_by_builtin(value: str, builtin_name: str) -> bool:
+    if builtin_name == "ipv4":
+        try:
+            ipaddress.IPv4Address(value)
+            return True
+        except ValueError:
+            return False
+    raise HTTPException(status_code=500, detail=f"Unsupported builtin validator '{builtin_name}'")
+
+
+def validate_attribute_value(conn: Connection, data_type: str, value: str | None) -> None:
+    if value is None:
+        return
+
+    row = conn.execute(
+        select(
+            datatypes.c.name,
+            datatypes.c.regex_pattern,
+            datatypes.c.builtin_validator,
+        ).where(datatypes.c.name == data_type)
+    ).one_or_none()
+
+    if row is None:
+        raise HTTPException(status_code=400, detail=f"Unknown data_type '{data_type}'")
+
+    if row.builtin_validator and not validate_by_builtin(value, row.builtin_validator):
+        raise HTTPException(status_code=400, detail=f"Value '{value}' is not valid for data_type '{data_type}'")
+
+    if row.regex_pattern:
+        try:
+            if re.fullmatch(row.regex_pattern, value) is None:
+                raise HTTPException(status_code=400, detail=f"Value '{value}' is not valid for data_type '{data_type}'")
+        except re.error as exc:
+            raise HTTPException(status_code=500, detail=f"Invalid regex for data_type '{data_type}'") from exc
 
 
 def to_attribute_out(row: Any) -> AttributeOut:
@@ -242,7 +311,40 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     if not isinstance(database_url, str) or not database_url:
         raise ValueError("Invalid API config: missing api.database_url")
 
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
+
+    metadata.create_all(engine, tables=[datatypes])
+    default_datatypes = [
+        {
+            "name": "string",
+            "description": "Any string (no validation)",
+            "regex_pattern": None,
+            "builtin_validator": None,
+        },
+        {
+            "name": "integer",
+            "description": "Signed integer",
+            "regex_pattern": r"^-?\\d+$",
+            "builtin_validator": None,
+        },
+        {
+            "name": "numeric",
+            "description": "Signed integer or decimal number",
+            "regex_pattern": r"^-?\\d+(?:\\.\\d+)?$",
+            "builtin_validator": None,
+        },
+        {
+            "name": "ipv4",
+            "description": "IPv4 address validated with Python ipaddress",
+            "regex_pattern": None,
+            "builtin_validator": "ipv4",
+        },
+    ]
+    with engine.begin() as conn:
+        for row in default_datatypes:
+            exists = conn.execute(select(datatypes.c.id).where(datatypes.c.name == row["name"])).scalar_one_or_none()
+            if exists is None:
+                conn.execute(datatypes.insert().values(**row))
 
     app = FastAPI(title="tuxcmdb-api", docs_url=None, redoc_url=None)
 
@@ -278,10 +380,29 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     def ok(username: str = Depends(authenticate)) -> OkResponse:
         return OkResponse(status="ok", user=username)
 
+    @app.get("/v1/datatypes", response_model=list[DatatypeOut])
+    def list_datatypes(_: str = Depends(authenticate)) -> list[DatatypeOut]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    datatypes.c.id,
+                    datatypes.c.name,
+                    datatypes.c.description,
+                    datatypes.c.regex_pattern,
+                    datatypes.c.builtin_validator,
+                    datatypes.c.created_at,
+                    datatypes.c.changed_at,
+                ).order_by(datatypes.c.name)
+            ).all()
+        return [DatatypeOut(**row._mapping) for row in rows]
+
     @app.post("/v1/attributes", response_model=AttributeOut, status_code=status.HTTP_201_CREATED)
     def create_attribute(payload: AttributeCreate, _: str = Depends(authenticate)) -> AttributeOut:
         name = payload.name.strip().lower()
+        data_type = payload.data_type.strip().lower()
         with engine.begin() as conn:
+            ensure_datatype_exists(conn, data_type)
+
             existing = conn.execute(
                 select(attributes.c.id).where(attributes.c.name == name)
             ).scalar_one_or_none()
@@ -291,7 +412,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             insert_result = conn.execute(
                 attributes.insert().values(
                     name=name,
-                    data_type=payload.data_type.strip().lower(),
+                    data_type=data_type,
                     description=payload.description,
                 )
             )
@@ -354,6 +475,9 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         updates["changed_at"] = func.now()
 
         with engine.begin() as conn:
+            if "data_type" in updates:
+                ensure_datatype_exists(conn, updates["data_type"])
+
             try:
                 update_result = conn.execute(
                     attributes.update()
@@ -549,11 +673,13 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             if not asset_row.active:
                 raise HTTPException(status_code=409, detail="Asset is decommissioned")
 
-            attribute_exists = conn.execute(
-                select(attributes.c.id).where(attributes.c.id == payload.attribute_id)
-            ).scalar_one_or_none()
-            if attribute_exists is None:
+            attribute_row = conn.execute(
+                select(attributes.c.id, attributes.c.data_type).where(attributes.c.id == payload.attribute_id)
+            ).one_or_none()
+            if attribute_row is None:
                 raise HTTPException(status_code=404, detail="Attribute not found")
+
+            validate_attribute_value(conn, attribute_row.data_type, payload.value)
 
             conn.execute(
                 assignments.insert().values(

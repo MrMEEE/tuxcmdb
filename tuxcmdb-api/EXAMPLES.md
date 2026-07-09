@@ -53,6 +53,18 @@ curl -u "$AUTH" -X POST "$API/v1/attributes" \
   }'
 ```
 
+Create a `management_ip` attribute with `ipv4` datatype:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/attributes" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "management_ip",
+    "data_type": "ipv4",
+    "description": "Primary management IPv4"
+  }'
+```
+
 List attributes:
 
 ```bash
@@ -64,7 +76,8 @@ Tip: extract attribute IDs from output and save them for later:
 ```bash
 LOCATION_ATTR_ID=$(curl -s -u "$AUTH" "$API/v1/attributes" | jq '.[] | select(.name=="location") | .id')
 OWNER_ATTR_ID=$(curl -s -u "$AUTH" "$API/v1/attributes" | jq '.[] | select(.name=="owner") | .id')
-echo "LOCATION_ATTR_ID=$LOCATION_ATTR_ID OWNER_ATTR_ID=$OWNER_ATTR_ID"
+MGMT_IP_ATTR_ID=$(curl -s -u "$AUTH" "$API/v1/attributes" | jq '.[] | select(.name=="management_ip") | .id')
+echo "LOCATION_ATTR_ID=$LOCATION_ATTR_ID OWNER_ATTR_ID=$OWNER_ATTR_ID MGMT_IP_ATTR_ID=$MGMT_IP_ATTR_ID"
 ```
 
 ## 2) Create an asset
@@ -109,6 +122,24 @@ curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -H "Content-Type: application/json" \
   -d "{\"attribute_id\": $OWNER_ATTR_ID, \"value\": \"platform-team\"}"
 ```
+
+Assign a valid IPv4 (`management_ip=10.44.1.21`):
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d "{\"attribute_id\": $MGMT_IP_ATTR_ID, \"value\": \"10.44.1.21\"}"
+```
+
+Try an invalid IPv4 (`999.44.1.21`) to see validation:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d "{\"attribute_id\": $MGMT_IP_ATTR_ID, \"value\": \"999.44.1.21\"}"
+```
+
+Expected result: `400 Value '999.44.1.21' is not valid for data_type 'ipv4'`.
 
 Show the asset with currently assigned attributes:
 

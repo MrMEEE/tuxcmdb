@@ -46,7 +46,7 @@ class Attribute(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    data_type: Mapped[str] = mapped_column(String(32), nullable=False, default="string")
+    data_type: Mapped[str] = mapped_column(String(32), ForeignKey("datatypes.name"), nullable=False, default="string")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -55,6 +55,25 @@ class Attribute(Base):
     )
 
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="attribute")
+    datatype: Mapped["Datatype"] = relationship(back_populates="attributes")
+
+
+class Datatype(Base):
+    __tablename__ = "datatypes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regex_pattern: Mapped[str | None] = mapped_column(Text, nullable=True)
+    builtin_validator: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    attributes: Mapped[list[Attribute]] = relationship(back_populates="datatype")
 
 
 class Assignment(Base):

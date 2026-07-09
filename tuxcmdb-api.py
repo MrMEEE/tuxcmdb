@@ -58,7 +58,21 @@ ensure_venv_and_dependencies(
     ("sqlalchemy", "yaml", "werkzeug", "fastapi", "uvicorn"),
 )
 
-from sqlalchemy import Boolean, DateTime, MetaData, String, Table, Column, Integer, create_engine, func, inspect, select, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    func,
+    inspect,
+    select,
+    text,
+)
+from tuxcmdb.db import create_db_engine
 from werkzeug.security import generate_password_hash
 import yaml
 
@@ -74,6 +88,18 @@ apiusers = Table(
     Column("username", String(120), nullable=False, unique=True),
     Column("password_hash", String(255), nullable=False),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+datatypes = Table(
+    "datatypes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(32), nullable=False, unique=True),
+    Column("description", Text, nullable=True),
+    Column("regex_pattern", Text, nullable=True),
+    Column("builtin_validator", String(32), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -107,12 +133,52 @@ def save_api_config(config_path: Path, database_url: str, host: str, port: int) 
 
 
 def ensure_apiusers_table(database_url: str) -> None:
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
     metadata.create_all(engine, tables=[apiusers])
 
 
+def ensure_datatypes_table(database_url: str) -> None:
+    engine = create_db_engine(database_url)
+    metadata.create_all(engine, tables=[datatypes])
+
+    defaults = [
+        {
+            "name": "string",
+            "description": "Any string (no validation)",
+            "regex_pattern": None,
+            "builtin_validator": None,
+        },
+        {
+            "name": "integer",
+            "description": "Signed integer",
+            "regex_pattern": r"^-?\\d+$",
+            "builtin_validator": None,
+        },
+        {
+            "name": "numeric",
+            "description": "Signed integer or decimal number",
+            "regex_pattern": r"^-?\\d+(?:\\.\\d+)?$",
+            "builtin_validator": None,
+        },
+        {
+            "name": "ipv4",
+            "description": "IPv4 address validated with Python ipaddress",
+            "regex_pattern": None,
+            "builtin_validator": "ipv4",
+        },
+    ]
+
+    with engine.begin() as conn:
+        for row in defaults:
+            existing = conn.execute(
+                select(datatypes.c.id).where(datatypes.c.name == row["name"])
+            ).scalar_one_or_none()
+            if existing is None:
+                conn.execute(datatypes.insert().values(**row))
+
+
 def ensure_assets_active_column(database_url: str) -> None:
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
     inspector = inspect(engine)
     if "assets" not in inspector.get_table_names():
         return
@@ -131,7 +197,7 @@ def ensure_assets_active_column(database_url: str) -> None:
 
 
 def upsert_api_user(database_url: str, username: str, password: str) -> None:
-    engine = create_engine(database_url, future=True)
+    engine = create_db_engine(database_url)
     password_hash = generate_password_hash(password)
 
     with engine.begin() as conn:
@@ -212,7 +278,8 @@ def main() -> int:
 
     ensure_apiusers_table(database_url)
     ensure_assets_active_column(database_url)
-    print("Ensured apiusers table exists")
+    ensure_datatypes_table(database_url)
+    print("Ensured apiusers and datatypes tables exist")
 
     if args.create_user:
         password = args.password or getpass.getpass(f"Password for API user '{args.create_user}': ")

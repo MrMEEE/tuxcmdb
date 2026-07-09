@@ -55,6 +55,7 @@ All endpoints except `/health` require HTTP Basic auth.
 
 Attributes:
 
+- `GET /v1/datatypes`
 - `POST /v1/attributes`
 - `GET /v1/attributes?q=...&limit=...&offset=...`
 - `PATCH /v1/attributes/{attribute_id}`
@@ -72,3 +73,6 @@ Assets:
 - `GET /v1/assets/by-attribute?attribute_name=...&value=...`
 
 `GET /v1/assets` and `GET /v1/assets/{asset_id}` include each asset's current assigned attributes (latest assignment state where `assigned=true`).
+
+`POST /v1/assets/{asset_id}/attributes` validates `value` against the attribute's `data_type` from the `datatypes` table.
+Default datatypes are seeded by installer/startup: `string`, `integer`, `numeric`, and `ipv4`.
