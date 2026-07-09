@@ -1,0 +1,82 @@
+from datetime import datetime
+
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+    true,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
+
+from tuxcmdb.db import Base
+
+
+class Asset(Base):
+    __tablename__ = "assets"
+    __table_args__ = (
+        CheckConstraint("hostname = lower(hostname)", name="ck_assets_hostname_lowercase"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    hostname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    assignments: Mapped[list["Assignment"]] = relationship(back_populates="asset")
+
+    @validates("hostname")
+    def normalize_hostname(self, key: str, value: str) -> str:
+        del key
+        return value.strip().lower()
+
+
+class Attribute(Base):
+    __tablename__ = "attributes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data_type: Mapped[str] = mapped_column(String(32), nullable=False, default="string")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    assignments: Mapped[list["Assignment"]] = relationship(back_populates="attribute")
+
+
+class Assignment(Base):
+    __tablename__ = "assignments"
+    __table_args__ = (
+        Index("ix_assignments_assigned", "assigned"),
+        Index("ix_assignments_asset_attribute_assigned_at", "asset_id", "attribute_id", "assigned_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
+    attribute_id: Mapped[int] = mapped_column(
+        ForeignKey("attributes.id", ondelete="CASCADE"), nullable=False
+    )
+    value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assigned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
+    assigned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    asset: Mapped[Asset] = relationship(back_populates="assignments")
+    attribute: Mapped[Attribute] = relationship(back_populates="assignments")
