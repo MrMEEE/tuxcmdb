@@ -75,4 +75,4 @@ Assets:
 `GET /v1/assets` and `GET /v1/assets/{asset_id}` include each asset's current assigned attributes (latest assignment state where `assigned=true`).
 
 `POST /v1/assets/{asset_id}/attributes` validates `value` against the attribute's `data_type` from the `datatypes` table.
-Default datatypes are seeded by installer/startup: `string`, `integer`, `numeric`, and `ipv4`.
+Default datatypes are seeded by installer/startup: `string`, `integer`, `numeric`, `ipv4`, `ipv6`, `subnet`, and `boolean`.

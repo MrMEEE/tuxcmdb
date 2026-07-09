@@ -27,6 +27,28 @@ Auth check:
 curl -u "$AUTH" "$API/ok"
 ```
 
+## Builtin validators
+
+Current builtin validators:
+
+- `ipv4`: validates IPv4 addresses using Python `ipaddress`
+- `ipv6`: validates IPv6 addresses using Python `ipaddress`
+- `subnet`: validates CIDR subnets like `10.0.0.0/24` or `2001:db8::/64`
+- `boolean`: validates `true/false`, `1/0`, `yes/no`, `on/off`
+- `integer`: validates signed integer values
+
+List all registered datatypes:
+
+```bash
+curl -u "$AUTH" "$API/v1/datatypes"
+```
+
+List only datatypes that use builtin validators:
+
+```bash
+curl -s -u "$AUTH" "$API/v1/datatypes" | jq '.[] | select(.builtin_validator != null)'
+```
+
 ## 1) Create attributes
 
 Create a `location` attribute:

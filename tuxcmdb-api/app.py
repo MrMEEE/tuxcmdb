@@ -205,6 +205,22 @@ def validate_by_builtin(value: str, builtin_name: str) -> bool:
             return True
         except ValueError:
             return False
+    if builtin_name == "ipv6":
+        try:
+            ipaddress.IPv6Address(value)
+            return True
+        except ValueError:
+            return False
+    if builtin_name == "subnet":
+        try:
+            ipaddress.ip_network(value, strict=True)
+            return True
+        except ValueError:
+            return False
+    if builtin_name == "boolean":
+        return value.strip().lower() in {"true", "false", "1", "0", "yes", "no", "on", "off"}
+    if builtin_name == "integer":
+        return re.fullmatch(r"^[+-]?\\d+$", value.strip()) is not None
     raise HTTPException(status_code=500, detail=f"Unsupported builtin validator '{builtin_name}'")
 
 
@@ -323,9 +339,9 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         },
         {
             "name": "integer",
-            "description": "Signed integer",
-            "regex_pattern": r"^-?\\d+$",
-            "builtin_validator": None,
+            "description": "Signed integer validated by builtin parser",
+            "regex_pattern": None,
+            "builtin_validator": "integer",
         },
         {
             "name": "numeric",
@@ -338,6 +354,24 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             "description": "IPv4 address validated with Python ipaddress",
             "regex_pattern": None,
             "builtin_validator": "ipv4",
+        },
+        {
+            "name": "ipv6",
+            "description": "IPv6 address validated with Python ipaddress",
+            "regex_pattern": None,
+            "builtin_validator": "ipv6",
+        },
+        {
+            "name": "subnet",
+            "description": "IPv4/IPv6 subnet in CIDR notation, for example 10.0.0.0/24",
+            "regex_pattern": None,
+            "builtin_validator": "subnet",
+        },
+        {
+            "name": "boolean",
+            "description": "Boolean value: true/false, 1/0, yes/no, on/off",
+            "regex_pattern": None,
+            "builtin_validator": "boolean",
         },
     ]
     with engine.begin() as conn:

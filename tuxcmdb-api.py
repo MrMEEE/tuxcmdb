@@ -150,9 +150,9 @@ def ensure_datatypes_table(database_url: str) -> None:
         },
         {
             "name": "integer",
-            "description": "Signed integer",
-            "regex_pattern": r"^-?\\d+$",
-            "builtin_validator": None,
+            "description": "Signed integer validated by builtin parser",
+            "regex_pattern": None,
+            "builtin_validator": "integer",
         },
         {
             "name": "numeric",
@@ -165,6 +165,24 @@ def ensure_datatypes_table(database_url: str) -> None:
             "description": "IPv4 address validated with Python ipaddress",
             "regex_pattern": None,
             "builtin_validator": "ipv4",
+        },
+        {
+            "name": "ipv6",
+            "description": "IPv6 address validated with Python ipaddress",
+            "regex_pattern": None,
+            "builtin_validator": "ipv6",
+        },
+        {
+            "name": "subnet",
+            "description": "IPv4/IPv6 subnet in CIDR notation, for example 10.0.0.0/24",
+            "regex_pattern": None,
+            "builtin_validator": "subnet",
+        },
+        {
+            "name": "boolean",
+            "description": "Boolean value: true/false, 1/0, yes/no, on/off",
+            "regex_pattern": None,
+            "builtin_validator": "boolean",
         },
     ]
 
