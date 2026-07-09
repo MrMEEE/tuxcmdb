@@ -11,7 +11,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import (
     Boolean,
     Column,
@@ -155,8 +155,64 @@ class AssetUpdate(BaseModel):
 
 
 class AssetAssignRequest(BaseModel):
-    attribute_id: int
+    attribute_id: int | None = None
+    attribute_name: str | None = Field(default=None, min_length=1, max_length=120)
     value: str | None = None
+
+    @model_validator(mode="after")
+    def validate_selector(self) -> "AssetAssignRequest":
+        has_id = self.attribute_id is not None
+        has_name = self.attribute_name is not None
+        if has_id == has_name:
+            raise ValueError("Provide exactly one of attribute_id or attribute_name")
+
+        if self.attribute_name is not None:
+            normalized = self.attribute_name.strip().lower()
+            if not normalized:
+                raise ValueError("attribute_name must not be empty")
+            self.attribute_name = normalized
+
+        return self
+
+
+def parse_asset_assign_payload(payload: dict[str, Any]) -> tuple[int | None, str | None, str | None]:
+    reserved = {"attribute_id", "attribute_name", "value"}
+    keys = set(payload.keys())
+
+    if keys & reserved:
+        extra_keys = keys - reserved
+        if extra_keys:
+            raise HTTPException(
+                status_code=400,
+                detail="When using attribute_id/attribute_name format, only attribute_id, attribute_name, and value are allowed",
+            )
+
+        try:
+            request = AssetAssignRequest(**payload)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return request.attribute_id, request.attribute_name, request.value
+
+    if len(payload) != 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either {attribute_name, value} style payload or a single-key shorthand payload",
+        )
+
+    attribute_name, raw_value = next(iter(payload.items()))
+    normalized_name = attribute_name.strip().lower()
+    if not normalized_name:
+        raise HTTPException(status_code=400, detail="Attribute name must not be empty")
+
+    if raw_value is None:
+        value: str | None = None
+    elif isinstance(raw_value, str):
+        value = raw_value
+    else:
+        value = str(raw_value)
+
+    return None, normalized_name, value
 
 
 class AssignedAttributeOut(BaseModel):
@@ -697,7 +753,9 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/{asset_id}/attributes", response_model=MessageResponse)
-    def add_asset_attribute(asset_id: int, payload: AssetAssignRequest, _: str = Depends(authenticate)) -> MessageResponse:
+    def add_asset_attribute(asset_id: int, payload: dict[str, Any], _: str = Depends(authenticate)) -> MessageResponse:
+        attribute_id, attribute_name, value = parse_asset_assign_payload(payload)
+
         with engine.begin() as conn:
             asset_row = conn.execute(
                 select(assets.c.id, assets.c.active).where(assets.c.id == asset_id)
@@ -707,19 +765,24 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             if not asset_row.active:
                 raise HTTPException(status_code=409, detail="Asset is decommissioned")
 
-            attribute_row = conn.execute(
-                select(attributes.c.id, attributes.c.data_type).where(attributes.c.id == payload.attribute_id)
-            ).one_or_none()
+            if attribute_id is not None:
+                attribute_row = conn.execute(
+                    select(attributes.c.id, attributes.c.data_type).where(attributes.c.id == attribute_id)
+                ).one_or_none()
+            else:
+                attribute_row = conn.execute(
+                    select(attributes.c.id, attributes.c.data_type).where(attributes.c.name == attribute_name)
+                ).one_or_none()
             if attribute_row is None:
                 raise HTTPException(status_code=404, detail="Attribute not found")
 
-            validate_attribute_value(conn, attribute_row.data_type, payload.value)
+            validate_attribute_value(conn, attribute_row.data_type, value)
 
             conn.execute(
                 assignments.insert().values(
                     asset_id=asset_id,
-                    attribute_id=payload.attribute_id,
-                    value=payload.value,
+                    attribute_id=attribute_row.id,
+                    value=value,
                     assigned=True,
                 )
             )

@@ -93,7 +93,7 @@ List attributes:
 curl -u "$AUTH" "$API/v1/attributes"
 ```
 
-Tip: extract attribute IDs from output and save them for later:
+Optional: extract attribute IDs if you still want ID-based operations:
 
 ```bash
 LOCATION_ATTR_ID=$(curl -s -u "$AUTH" "$API/v1/attributes" | jq '.[] | select(.name=="location") | .id')
@@ -129,12 +129,16 @@ echo "ASSET_ID=$ASSET_ID"
 
 ## 3) Assign attributes to the asset
 
+There are three supported request styles when assigning attributes.
+
+### A) By `attribute_name` (recommended)
+
 Assign `location=dc1-rack22`:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -H "Content-Type: application/json" \
-  -d "{\"attribute_id\": $LOCATION_ATTR_ID, \"value\": \"dc1-rack22\"}"
+  -d '{"attribute_name": "location", "value": "dc1-rack22"}'
 ```
 
 Assign `owner=platform-team`:
@@ -142,7 +146,25 @@ Assign `owner=platform-team`:
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -H "Content-Type: application/json" \
-  -d "{\"attribute_id\": $OWNER_ATTR_ID, \"value\": \"platform-team\"}"
+  -d '{"attribute_name": "owner", "value": "platform-team"}'
+```
+
+### B) By `attribute_id` (backward-compatible)
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d "{\"attribute_id\": $LOCATION_ATTR_ID, \"value\": \"dc1-rack22\"}"
+```
+
+### C) Shorthand payload (key = attribute name)
+
+Same result as `attribute_name`, but shorter:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
+  -H "Content-Type: application/json" \
+  -d '{"management_ip": "10.44.1.21"}'
 ```
 
 Assign a valid IPv4 (`management_ip=10.44.1.21`):
@@ -150,7 +172,7 @@ Assign a valid IPv4 (`management_ip=10.44.1.21`):
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -H "Content-Type: application/json" \
-  -d "{\"attribute_id\": $MGMT_IP_ATTR_ID, \"value\": \"10.44.1.21\"}"
+  -d '{"attribute_name": "management_ip", "value": "10.44.1.21"}'
 ```
 
 Try an invalid IPv4 (`999.44.1.21`) to see validation:
@@ -158,7 +180,7 @@ Try an invalid IPv4 (`999.44.1.21`) to see validation:
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -H "Content-Type: application/json" \
-  -d "{\"attribute_id\": $MGMT_IP_ATTR_ID, \"value\": \"999.44.1.21\"}"
+  -d '{"attribute_name": "management_ip", "value": "999.44.1.21"}'
 ```
 
 Expected result: `400 Value '999.44.1.21' is not valid for data_type 'ipv4'`.
