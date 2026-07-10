@@ -19,10 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("attributes", recreate="always") as batch_op:
-        batch_op.add_column(sa.Column("allow_multiple", sa.Boolean(), server_default=sa.text("false"), nullable=False))
+    op.add_column("attributes", sa.Column("allow_multiple", sa.Boolean(), server_default=sa.text("false"), nullable=False))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("attributes", recreate="always") as batch_op:
+    with op.batch_alter_table("attributes") as batch_op:
         batch_op.drop_column("allow_multiple")
