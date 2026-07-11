@@ -1,0 +1,207 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TuxCMDB WebUI{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'webui/vendor/vvveb/admin.css' %}">
+  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}">
+</head>
+<body class="home" data-bs-theme="dark">
+  <div id="container">
+    <div class="sidebar">
+      <div class="logo sidebar-brand-wrap">
+        <a href="{% url 'assets' %}" class="tuxcmdb-sidebar-logo" title="TuxCMDB">
+          <span class="tuxcmdb-logo-text"><span class="tux-green">Tux</span>CMDB</span>
+        </a>
+        <a id="search-btn" title="Search">
+          <i class="icon-search"></i>
+        </a>
+      </div>
+      <nav class="navbar navbar-expand-md">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebarNav" aria-controls="sidebarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse show" id="sidebarNav">
+          <ul class="nav navbar-nav flex-column">
+            <li class="nav-item">
+              <a href="{% url 'assets' %}" class="nav-link d-none d-md-block" title="Assets">
+                <i class="la la-server"></i>
+                <span class="title">Assets</span>
+              </a>
+              <a href="{% url 'assets' %}" class="nav-link mobile d-block d-md-none" title="Assets">
+                <i class="la la-server"></i>
+                <span class="title">Assets</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'attributes' %}" class="nav-link d-none d-md-block" title="Attributes">
+                <i class="la la-tags"></i>
+                <span class="title">Attributes</span>
+              </a>
+              <a href="{% url 'attributes' %}" class="nav-link mobile d-block d-md-none" title="Attributes">
+                <i class="la la-tags"></i>
+                <span class="title">Attributes</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'datatypes' %}" class="nav-link d-none d-md-block" title="Datatypes">
+                <i class="la la-database"></i>
+                <span class="title">Datatypes</span>
+              </a>
+              <a href="{% url 'datatypes' %}" class="nav-link mobile d-block d-md-none" title="Datatypes">
+                <i class="la la-database"></i>
+                <span class="title">Datatypes</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'apiusers' %}" class="nav-link d-none d-md-block" title="Apiusers">
+                <i class="la la-users"></i>
+                <span class="title">Apiusers</span>
+              </a>
+              <a href="{% url 'apiusers' %}" class="nav-link mobile d-block d-md-none" title="Apiusers">
+                <i class="la la-users"></i>
+                <span class="title">Apiusers</span>
+              </a>
+            </li>
+          </ul>
+        </div>
+      </nav>
+    </div>
+
+    <div class="main">
+      <div class="top-header">
+        <div class="btn-group" data-v-component-sites>
+          <button class="btn px-2 ms-1 menu-toggle" title="Toggle sidebar width" type="button">
+            <i class="la la-bars"></i>
+          </button>
+          <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="icon-eye-outline"></i>
+            <span>View live website</span>
+          </button>
+          <div class="dropdown-menu">
+            <a class="dropdown-item d-flex" href="{% url 'assets' %}">
+              <span class="flex-grow-1">Assets</span>
+              <i class="la la-external-link-alt"></i>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'attributes' %}">
+              <span class="flex-grow-1">Attributes</span>
+              <i class="la la-external-link-alt"></i>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
+              <span class="flex-grow-1">Apiusers</span>
+              <i class="la la-external-link-alt"></i>
+            </a>
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item" href="{% url 'datatypes' %}">
+              <span class="flex-grow-1">Datatypes</span>
+              <i class="la la-edit ms-2"></i>
+            </a>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn px-1 dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="icon-reload-circle-outline"></i>
+            <span>Quick nav</span>
+          </button>
+          <div class="dropdown-menu">
+            <a class="dropdown-item d-flex" href="{% url 'assets' %}">
+              <div class="flex-grow-1"><i class="icon-document-text-outline me-2 text-body-tertiary"></i><span>Assets</span></div>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'attributes' %}">
+              <div class="flex-grow-1"><i class="icon-code-slash-outline me-2 text-body-tertiary"></i><span>Attributes</span></div>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
+              <div class="flex-grow-1"><i class="icon-server-outline me-2 text-body-tertiary"></i><span>Apiusers</span></div>
+            </a>
+          </div>
+        </div>
+        <div class="btn-group">
+          <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="la la-flag me-1"></i>
+            <span>English</span>
+          </button>
+          <div class="dropdown-menu">
+            <button class="dropdown-item" type="button">English</button>
+            <button class="dropdown-item" type="button">Romanian</button>
+          </div>
+        </div>
+        <div class="vr align-middle mx-1"></div>
+        <button id="color-theme-switch" title="Switch sidebar color theme" class="btn px-1 ms-1" type="button">
+          <i class="la la-sun"></i>
+        </button>
+        <a id="top-docs-btn" class="btn px-1" href="https://github.com/givanz/vvveb-admin-template" target="_blank" rel="noreferrer">
+          <i class="la la-lg la-question-circle"></i>
+          <span>Docs</span>
+        </a>
+        <div class="user-menu">
+          <div class="btn-group top-notifications">
+            <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="la la-bell"></i>
+              <span class="badge bg-primary-subtle text-body">1</span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end">
+              <h6 class="dropdown-header">Activity</h6>
+              <div class="dropdown-item">Live updates enabled</div>
+            </div>
+          </div>
+
+          <div class="tuxcmdb-user-dropdown">
+            <button type="button" class="btn tuxcmdb-user-btn" id="userMenuToggle">
+              <i class="la la-user-circle me-1" style="font-size:1.1rem;vertical-align:middle;"></i>
+              <span>{{ request.user.username }}</span>
+              <i class="la la-angle-down ms-1" style="font-size:0.7rem;"></i>
+            </button>
+            <div class="tuxcmdb-user-menu" id="userMenu">
+              <div class="tuxcmdb-user-menu-role">Role: {% if request.user.readonly %}readonly{% else %}write{% endif %}</div>
+              <div class="dropdown-divider"></div>
+              <a class="tuxcmdb-user-menu-item" href="{% url 'logout' %}"><i class="la la-sign-out-alt me-1"></i>Logout</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="p-4">
+        <div class="mb-4">
+          <h1 class="page-title mb-1">{% block page_title %}TuxCMDB{% endblock %}</h1>
+          <p class="page-subtitle mb-0">Inventory, attributes, assignments, and access control.</p>
+        </div>
+        <div id="live-root">
+        {% if messages %}
+          <div class="messages-stack">
+            {% for message in messages %}
+              <div class="alert alert-{{ message.tags|default:'info' }} admin-alert">{{ message }}</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% block content %}{% endblock %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="{% static 'webui/vendor/vvveb/jquery.min.js' %}"></script>
+  <script src="{% static 'webui/vendor/vvveb/popper.min.js' %}"></script>
+  <script src="{% static 'webui/vendor/vvveb/bootstrap.min.js' %}"></script>
+  <script src="{% static 'webui/vendor/vvveb/theme.js' %}?v=20260711-1"></script>
+  <script src="{% static 'webui/js/modal-forms.js' %}?v=20260711-1"></script>
+  <script src="{% static 'webui/js/live-updates.js' %}?v=20260711-1"></script>
+  <script>
+    (function () {
+      var toggle = document.getElementById('userMenuToggle');
+      var menu   = document.getElementById('userMenu');
+      if (!toggle || !menu) return;
+      toggle.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = menu.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      document.addEventListener('click', function () {
+        menu.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+      });
+    })();
+  </script>
+</body>
+</html>

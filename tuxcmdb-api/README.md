@@ -18,6 +18,12 @@ pip install -r requirements.txt
 python ../tuxcmdb-api.py --create-user admin
 ```
 
+Create a readonly API user:
+
+```bash
+python ../tuxcmdb-api.py --create-user readonly-user --readonly
+```
+
 To install and immediately start the API:
 
 ```bash
@@ -52,6 +58,7 @@ curl -u admin:your-password http://127.0.0.1:8080/ok
 ## Endpoints
 
 All endpoints except `/health` require HTTP Basic auth.
+Users with `readonly=true` can access read endpoints but cannot perform POST, PATCH, or DELETE operations.
 
 Attributes:
 
@@ -67,7 +74,7 @@ Assets:
 - `GET /v1/assets?q=...&active=true|false`
 - `GET /v1/assets/{asset_id}`
 - `PATCH /v1/assets/{asset_id}`
-- `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or hostname)
+- `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or assetname)
 - `DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}?value=...` (`asset_ref` and `attribute_ref` can be asset/attribute id or name)
 - `POST /v1/assets/{asset_id}/decommission`
 - `GET /v1/assets/by-attribute?attribute_name=...&value=...`

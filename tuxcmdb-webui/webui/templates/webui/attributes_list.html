@@ -1,0 +1,88 @@
+{% extends 'webui/base.html' %}
+{% block title %}Attributes · TuxCMDB{% endblock %}
+{% block page_title %}Attributes{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Attribute Catalog</h5>
+    <button class="btn btn-accent btn-sm" data-open-modal="createAttributeModal" {% if request.user.readonly %}disabled{% endif %}>
+      <i class="la la-plus me-1"></i>New Attribute
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Datatype</th>
+          <th>Allow multiple</th>
+          <th>Description</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for attribute in attributes %}
+        <tr>
+          <td>{{ attribute.name }}</td>
+          <td>{{ attribute.data_type }}</td>
+          <td>{% if attribute.allow_multiple %}Yes{% else %}No{% endif %}</td>
+          <td>{{ attribute.description|default:'-' }}</td>
+          <td class="table-actions">
+            <a class="btn btn-xs btn-default" href="{% url 'attribute-edit' attribute.id %}">Edit</a>
+            <form method="post" action="{% url 'attribute-delete' attribute.id %}" class="inline-form">
+              {% csrf_token %}
+              <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No attributes found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- Create Attribute Modal -->
+<div id="createAttributeModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>New Attribute</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="createAttributeModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'attributes' %}" data-modal-id="createAttributeModal">
+      {% csrf_token %}
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          {{ create_form.name }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Data type</label>
+          {{ create_form.data_type }}
+          {% if datatypes %}
+          <div class="mt-1" style="font-size:0.8rem;color:var(--bs-secondary-color)">
+            Available: {% for dt in datatypes %}<span class="pill">{{ dt.name }}</span>{% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        <div class="mb-3 form-check">
+          {{ create_form.allow_multiple }}
+          <label class="form-check-label ms-1">Allow multiple active assignments</label>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          {{ create_form.description }}
+        </div>
+        <p class="modal-form-error" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="createAttributeModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

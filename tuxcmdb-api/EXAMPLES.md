@@ -107,13 +107,13 @@ echo "LOCATION_ATTR_ID=$LOCATION_ATTR_ID OWNER_ATTR_ID=$OWNER_ATTR_ID MGMT_IP_AT
 
 ## 2) Create an asset
 
-Create an asset with hostname `srv-web-01`:
+Create an asset with assetname `srv-web-01`:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets" \
   -H "Content-Type: application/json" \
   -d '{
-    "hostname": "srv-web-01"
+    "assetname": "srv-web-01"
   }'
 ```
 
@@ -130,7 +130,7 @@ ASSET_ID=$(curl -s -u "$AUTH" "$API/v1/assets?q=srv-web-01" | jq '.[0].id')
 echo "ASSET_ID=$ASSET_ID"
 ```
 
-You can also use hostname directly in the URL for attribute assignment routes:
+You can also use assetname directly in the URL for attribute assignment routes:
 
 ```bash
 ASSET_NAME="srv-web-01"
@@ -150,7 +150,7 @@ curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -d '{"attribute_name": "location", "value": "dc1-rack22"}'
 ```
 
-Same assignment using hostname in URL:
+Same assignment using assetname in URL:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_NAME/attributes" \
@@ -226,7 +226,7 @@ Remove the `owner` assignment from the asset:
 curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_ID/attributes/owner"
 ```
 
-Same removal using hostname in URL:
+Same removal using assetname in URL:
 
 ```bash
 curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_NAME/attributes/owner"
@@ -264,5 +264,5 @@ curl -u "$AUTH" "$API/v1/assets/by-attribute?attribute_id=$LOCATION_ATTR_ID&valu
 - `404 Asset not found`: wrong `ASSET_ID`
 - `404 Attribute not found`: wrong `attribute_id`
 - `409 Attribute already exists`: duplicate attribute name
-- `409 Asset hostname already exists`: duplicate hostname
+- `409 Asset assetname already exists`: duplicate assetname
 - `409 Asset is decommissioned`: cannot assign/remove attributes on decommissioned asset

@@ -20,11 +20,11 @@ from tuxcmdb.db import Base
 class Asset(Base):
     __tablename__ = "assets"
     __table_args__ = (
-        CheckConstraint("hostname = lower(hostname)", name="ck_assets_hostname_lowercase"),
+        CheckConstraint("assetname = lower(assetname)", name="ck_assets_assetname_lowercase"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    hostname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    assetname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -35,8 +35,8 @@ class Asset(Base):
 
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="asset")
 
-    @validates("hostname")
-    def normalize_hostname(self, key: str, value: str) -> str:
+    @validates("assetname")
+    def normalize_assetname(self, key: str, value: str) -> str:
         del key
         return value.strip().lower()
 

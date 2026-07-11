@@ -52,6 +52,7 @@ apiusers = Table(
     Column("username", String(120), nullable=False, unique=True),
     Column("password_hash", String(255), nullable=False),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("readonly", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -60,7 +61,7 @@ assets = Table(
     "assets",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("hostname", String(255), nullable=False, unique=True),
+    Column("assetname", String(255), nullable=False, unique=True),
     Column("active", Boolean, nullable=False, server_default=text("true")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
@@ -112,11 +113,17 @@ class HealthResponse(BaseModel):
 class OkResponse(BaseModel):
     status: str
     user: str
+    readonly: bool
 
 
 class MessageResponse(BaseModel):
     status: str
     message: str
+
+
+class AuthenticatedUser(BaseModel):
+    username: str
+    readonly: bool
 
 
 class AttributeCreate(BaseModel):
@@ -155,12 +162,19 @@ class DatatypeOut(BaseModel):
     changed_at: datetime
 
 
+class DatatypeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
+    description: str | None = None
+    regex_pattern: str | None = None
+    builtin_validator: str | None = Field(default=None, max_length=32)
+
+
 class AssetCreate(BaseModel):
-    hostname: str = Field(min_length=1, max_length=255)
+    assetname: str = Field(min_length=1, max_length=255)
 
 
 class AssetUpdate(BaseModel):
-    hostname: str | None = Field(default=None, min_length=1, max_length=255)
+    assetname: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class AssetAssignRequest(BaseModel):
@@ -235,9 +249,9 @@ def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
         if row is not None:
             return row
 
-    normalized_hostname = normalize_hostname(asset_ref)
+    normalized_assetname = normalize_assetname(asset_ref)
     row = conn.execute(
-        select(assets.c.id, assets.c.active).where(assets.c.hostname == normalized_hostname)
+        select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname)
     ).one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Asset not found")
@@ -273,7 +287,7 @@ class AssignedAttributeOut(BaseModel):
 
 class AssetOut(BaseModel):
     id: int
-    hostname: str
+    assetname: str
     active: bool
     created_at: datetime
     changed_at: datetime
@@ -291,7 +305,7 @@ def load_api_config(path: Path) -> dict:
     return api_cfg
 
 
-def normalize_hostname(value: str) -> str:
+def normalize_assetname(value: str) -> str:
     return value.strip().lower()
 
 
@@ -450,7 +464,7 @@ def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
     return [
         AssetOut(
             id=row.id,
-            hostname=row.hostname,
+            assetname=row.assetname,
             active=row.active,
             created_at=row.created_at,
             changed_at=row.changed_at,
@@ -521,13 +535,14 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
     app = FastAPI(title="tuxcmdb-api", docs_url=None, redoc_url=None)
 
-    def authenticate(credentials: HTTPBasicCredentials = Depends(security)) -> str:
+    def authenticate(credentials: HTTPBasicCredentials = Depends(security)) -> AuthenticatedUser:
         with engine.connect() as conn:
             row = conn.execute(
                 select(
                     apiusers.c.username,
                     apiusers.c.password_hash,
                     apiusers.c.is_active,
+                    apiusers.c.readonly,
                 ).where(apiusers.c.username == credentials.username)
             ).one_or_none()
 
@@ -543,18 +558,23 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 headers={"WWW-Authenticate": 'Basic realm="tuxcmdb-api"'},
             )
 
-        return row.username
+        return AuthenticatedUser(username=row.username, readonly=row.readonly)
+
+    def require_write_access(user: AuthenticatedUser = Depends(authenticate)) -> AuthenticatedUser:
+        if user.readonly:
+            raise HTTPException(status_code=403, detail="User has readonly access")
+        return user
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(status="ok")
 
     @app.get("/ok", response_model=OkResponse)
-    def ok(username: str = Depends(authenticate)) -> OkResponse:
-        return OkResponse(status="ok", user=username)
+    def ok(user: AuthenticatedUser = Depends(authenticate)) -> OkResponse:
+        return OkResponse(status="ok", user=user.username, readonly=user.readonly)
 
     @app.get("/v1/datatypes", response_model=list[DatatypeOut])
-    def list_datatypes(_: str = Depends(authenticate)) -> list[DatatypeOut]:
+    def list_datatypes(_: AuthenticatedUser = Depends(authenticate)) -> list[DatatypeOut]:
         with engine.connect() as conn:
             rows = conn.execute(
                 select(
@@ -569,8 +589,34 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             ).all()
         return [DatatypeOut(**row._mapping) for row in rows]
 
+    @app.post("/v1/datatypes", response_model=DatatypeOut, status_code=status.HTTP_201_CREATED)
+    def create_datatype(payload: DatatypeCreate, _: AuthenticatedUser = Depends(require_write_access)) -> DatatypeOut:
+        name = payload.name.strip().lower()
+        with engine.begin() as conn:
+            existing = conn.execute(
+                select(datatypes.c.id).where(datatypes.c.name == name)
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail=f"Datatype '{name}' already exists")
+            insert_result = conn.execute(
+                datatypes.insert().values(
+                    name=name,
+                    description=payload.description or None,
+                    regex_pattern=payload.regex_pattern or None,
+                    builtin_validator=payload.builtin_validator or None,
+                )
+            )
+            row = conn.execute(
+                select(
+                    datatypes.c.id, datatypes.c.name, datatypes.c.description,
+                    datatypes.c.regex_pattern, datatypes.c.builtin_validator,
+                    datatypes.c.created_at, datatypes.c.changed_at,
+                ).where(datatypes.c.id == insert_result.inserted_primary_key[0])
+            ).one()
+        return DatatypeOut(**row._mapping)
+
     @app.post("/v1/attributes", response_model=AttributeOut, status_code=status.HTTP_201_CREATED)
-    def create_attribute(payload: AttributeCreate, _: str = Depends(authenticate)) -> AttributeOut:
+    def create_attribute(payload: AttributeCreate, _: AuthenticatedUser = Depends(require_write_access)) -> AttributeOut:
         name = payload.name.strip().lower()
         data_type = payload.data_type.strip().lower()
         with engine.begin() as conn:
@@ -610,7 +656,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         q: str | None = None,
         limit: int = 100,
         offset: int = 0,
-        _: str = Depends(authenticate),
+        _: AuthenticatedUser = Depends(authenticate),
     ) -> list[AttributeOut]:
         stmt = select(
             attributes.c.id,
@@ -636,7 +682,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         return [to_attribute_out(row) for row in rows]
 
     @app.patch("/v1/attributes/{attribute_id}", response_model=AttributeOut)
-    def update_attribute(attribute_id: int, payload: AttributeUpdate, _: str = Depends(authenticate)) -> AttributeOut:
+    def update_attribute(attribute_id: int, payload: AttributeUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> AttributeOut:
         updates: dict[str, Any] = {}
         if payload.name is not None:
             updates["name"] = payload.name.strip().lower()
@@ -682,7 +728,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         return to_attribute_out(row)
 
     @app.delete("/v1/attributes/{attribute_id}", response_model=MessageResponse)
-    def delete_attribute(attribute_id: int, _: str = Depends(authenticate)) -> MessageResponse:
+    def delete_attribute(attribute_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
         with engine.begin() as conn:
             exists = conn.execute(
                 select(attributes.c.id).where(attributes.c.id == attribute_id)
@@ -701,21 +747,21 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         return MessageResponse(status="ok", message="Attribute deleted")
 
     @app.post("/v1/assets", response_model=AssetOut, status_code=status.HTTP_201_CREATED)
-    def create_asset(payload: AssetCreate, _: str = Depends(authenticate)) -> AssetOut:
-        hostname = normalize_hostname(payload.hostname)
+    def create_asset(payload: AssetCreate, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
+        assetname = normalize_assetname(payload.assetname)
         with engine.begin() as conn:
             try:
                 insert_result = conn.execute(
-                    assets.insert().values(hostname=hostname, active=True)
+                    assets.insert().values(assetname=assetname, active=True)
                 )
             except IntegrityError as exc:
-                raise HTTPException(status_code=409, detail="Asset hostname already exists") from exc
+                raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
 
             asset_id = insert_result.inserted_primary_key[0]
             row = conn.execute(
                 select(
                     assets.c.id,
-                    assets.c.hostname,
+                    assets.c.assetname,
                     assets.c.active,
                     assets.c.created_at,
                     assets.c.changed_at,
@@ -731,11 +777,11 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         active: bool | None = True,
         limit: int = 100,
         offset: int = 0,
-        _: str = Depends(authenticate),
+        _: AuthenticatedUser = Depends(authenticate),
     ) -> list[AssetOut]:
         stmt = select(
             assets.c.id,
-            assets.c.hostname,
+            assets.c.assetname,
             assets.c.active,
             assets.c.created_at,
             assets.c.changed_at,
@@ -744,9 +790,9 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             stmt = stmt.where(assets.c.active.is_(active))
         if q:
             pattern = f"%{q.strip().lower()}%"
-            stmt = stmt.where(func.lower(assets.c.hostname).like(pattern))
+            stmt = stmt.where(func.lower(assets.c.assetname).like(pattern))
 
-        stmt = stmt.order_by(assets.c.hostname).limit(limit).offset(offset)
+        stmt = stmt.order_by(assets.c.assetname).limit(limit).offset(offset)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
             return build_asset_out(rows, conn)
@@ -757,7 +803,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         attribute_id: int | None = None,
         value: str | None = None,
         active: bool | None = True,
-        _: str = Depends(authenticate),
+        _: AuthenticatedUser = Depends(authenticate),
     ) -> list[AssetOut]:
         if attribute_name is None and attribute_id is None:
             raise HTTPException(status_code=400, detail="Provide attribute_name or attribute_id")
@@ -766,7 +812,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         stmt = (
             select(
                 assets.c.id,
-                assets.c.hostname,
+                assets.c.assetname,
                 assets.c.active,
                 assets.c.created_at,
                 assets.c.changed_at,
@@ -786,18 +832,18 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         if value is not None:
             stmt = stmt.where(func.lower(func.coalesce(assignments.c.value, "")).like(f"%{value.strip().lower()}%"))
 
-        stmt = stmt.distinct().order_by(assets.c.hostname)
+        stmt = stmt.distinct().order_by(assets.c.assetname)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
             return build_asset_out(rows, conn)
 
     @app.get("/v1/assets/{asset_id}", response_model=AssetOut)
-    def get_asset(asset_id: int, _: str = Depends(authenticate)) -> AssetOut:
+    def get_asset(asset_id: int, _: AuthenticatedUser = Depends(authenticate)) -> AssetOut:
         with engine.connect() as conn:
             row = conn.execute(
                 select(
                     assets.c.id,
-                    assets.c.hostname,
+                    assets.c.assetname,
                     assets.c.active,
                     assets.c.created_at,
                     assets.c.changed_at,
@@ -808,10 +854,10 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             return build_asset_out([row], conn)[0]
 
     @app.patch("/v1/assets/{asset_id}", response_model=AssetOut)
-    def update_asset(asset_id: int, payload: AssetUpdate, _: str = Depends(authenticate)) -> AssetOut:
+    def update_asset(asset_id: int, payload: AssetUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
         updates: dict[str, Any] = {}
-        if payload.hostname is not None:
-            updates["hostname"] = normalize_hostname(payload.hostname)
+        if payload.assetname is not None:
+            updates["assetname"] = normalize_assetname(payload.assetname)
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -825,7 +871,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     .values(**updates)
                 )
             except IntegrityError as exc:
-                raise HTTPException(status_code=409, detail="Asset hostname already exists") from exc
+                raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
 
             if update_result.rowcount == 0:
                 raise HTTPException(status_code=404, detail="Asset not found")
@@ -833,7 +879,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             row = conn.execute(
                 select(
                     assets.c.id,
-                    assets.c.hostname,
+                    assets.c.assetname,
                     assets.c.active,
                     assets.c.created_at,
                     assets.c.changed_at,
@@ -842,7 +888,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/{asset_ref}/attributes", response_model=MessageResponse)
-    def add_asset_attribute(asset_ref: str, payload: dict[str, Any], _: str = Depends(authenticate)) -> MessageResponse:
+    def add_asset_attribute(asset_ref: str, payload: dict[str, Any], _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
         attribute_id, attribute_name, value = parse_asset_assign_payload(payload)
 
         with engine.begin() as conn:
@@ -881,7 +927,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         asset_ref: str,
         attribute_ref: str,
         value: str | None = None,
-        _: str = Depends(authenticate),
+        _: AuthenticatedUser = Depends(require_write_access),
     ) -> MessageResponse:
         with engine.begin() as conn:
             asset_row = resolve_asset_ref(conn, asset_ref)
@@ -914,7 +960,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         return MessageResponse(status="ok", message="Attribute removed from asset")
 
     @app.post("/v1/assets/{asset_id}/decommission", response_model=AssetOut)
-    def decommission_asset(asset_id: int, _: str = Depends(authenticate)) -> AssetOut:
+    def decommission_asset(asset_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
         with engine.begin() as conn:
             update_result = conn.execute(
                 assets.update()
@@ -926,7 +972,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             row = conn.execute(
                 select(
                     assets.c.id,
-                    assets.c.hostname,
+                    assets.c.assetname,
                     assets.c.active,
                     assets.c.created_at,
                     assets.c.changed_at,

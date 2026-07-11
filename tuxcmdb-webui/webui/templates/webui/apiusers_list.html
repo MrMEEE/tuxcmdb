@@ -1,0 +1,45 @@
+{% extends 'webui/base.html' %}
+{% block title %}Apiusers · TuxCMDB{% endblock %}
+{% block page_title %}Apiusers{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">API Users</h5>
+    <a class="btn btn-accent" href="{% url 'apiuser-create' %}">New API User</a>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Active</th>
+          <th>Readonly</th>
+          <th>Changed</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in apiusers %}
+        <tr>
+          <td>{{ item.username }}</td>
+          <td>{% if item.is_active %}Yes{% else %}No{% endif %}</td>
+          <td>{% if item.readonly %}Yes{% else %}No{% endif %}</td>
+          <td>{{ item.changed_at }}</td>
+          <td class="table-actions">
+            <a class="btn btn-xs btn-default" href="{% url 'apiuser-edit' item.id %}">Edit</a>
+            <form method="post" action="{% url 'apiuser-delete' item.id %}" class="inline-form">
+              {% csrf_token %}
+              <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No API users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

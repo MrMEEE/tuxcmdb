@@ -1,0 +1,90 @@
+{% extends 'webui/base.html' %}
+{% block title %}{{ asset.assetname }} · TuxCMDB{% endblock %}
+{% block page_title %}Asset · {{ asset.assetname }}{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2"><h5 class="mb-0">Asset Settings</h5></div>
+      <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update-asset">
+        <div class="form-group">
+          <label>Assetname</label>
+          {{ update_form.assetname }}
+        </div>
+        <button class="btn btn-accent btn-block" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+      </form>
+      <hr>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="decommission">
+        <button class="btn btn-danger btn-block" type="submit" {% if request.user.readonly or not asset.active %}disabled{% endif %}>Decommission</button>
+      </form>
+      </div>
+    </div>
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">Add Assignment</h5></div>
+      <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="assign">
+        <div class="form-group">
+          <label>Attribute name</label>
+          {{ assignment_form.attribute_name }}
+        </div>
+        <div class="form-group">
+          <label>Value</label>
+          {{ assignment_form.value }}
+        </div>
+        <button class="btn btn-accent btn-block" type="submit" {% if request.user.readonly %}disabled{% endif %}>Assign</button>
+      </form>
+      <p class="form-help">Available attributes: {% for item in attributes %}<span class="pill">{{ item.name }}</span>{% endfor %}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 class="mb-0">Current Assignments</h5>
+        <span class="badge bg-primary-subtle text-body">{{ asset.attributes|length }} active</span>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Attribute</th>
+              <th>Value</th>
+              <th>Assigned at</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for assignment in asset.attributes %}
+            <tr>
+              <td>{{ assignment.name }}</td>
+              <td>{{ assignment.value|default:'-' }}</td>
+              <td>{{ assignment.assigned_at }}</td>
+              <td>
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="remove">
+                  <input type="hidden" name="attribute_name" value="{{ assignment.name }}">
+                  <input type="hidden" name="value" value="{{ assignment.value|default:'' }}">
+                  <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">No active assignments.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -10,6 +10,7 @@ This first iteration contains:
 - Alembic migration setup and an initial migration.
 - Support for SQLite, PostgreSQL, and MySQL (also used for MariaDB).
 - A manage script (`tuxcmdb.py`) for setup and migrations.
+- A launcher script (`tuxcmdb-webui.py`) for starting, stopping, and restarting the Django web UI.
 
 ## Naming Choice
 
@@ -19,7 +20,7 @@ Reason: these are reusable definitions of possible fields that an asset can have
 
 ## Data Model
 
-- `assets`: unique infrastructure assets (`hostname` is unique and enforced lowercase).
+- `assets`: unique infrastructure assets (`assetname` is unique and enforced lowercase).
 - `attributes`: catalog of possible attributes.
 - `assignments`: append-only history of value assignments for one attribute on one asset.
 
@@ -67,6 +68,26 @@ python tuxcmdb.py migrate
 ```
 
 `migrate` reads the database URL from `conf/database.yaml` by default.
+
+5. Manage the Django web UI from the repository root:
+
+Start the Django web UI in the background:
+
+```bash
+python tuxcmdb-webui.py start
+```
+
+Stop it again:
+
+```bash
+python tuxcmdb-webui.py stop
+```
+
+Restart it on the configured host and port:
+
+```bash
+python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
+```
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
 

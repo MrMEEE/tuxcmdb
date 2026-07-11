@@ -1,0 +1,75 @@
+{% extends 'webui/base.html' %}
+{% block title %}Datatypes · TuxCMDB{% endblock %}
+{% block page_title %}Datatypes{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Registered Datatypes</h5>
+    <button class="btn btn-accent btn-sm" data-open-modal="createDatatypeModal" {% if request.user.readonly %}disabled{% endif %}>
+      <i class="la la-plus me-1"></i>New Datatype
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Builtin validator</th>
+          <th>Regex</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for datatype in datatypes %}
+        <tr>
+          <td>{{ datatype.name }}</td>
+          <td>{{ datatype.builtin_validator|default:'-' }}</td>
+          <td><code>{{ datatype.regex_pattern|default:'-' }}</code></td>
+          <td>{{ datatype.description|default:'-' }}</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="4">No datatypes found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- Create Datatype Modal -->
+<div id="createDatatypeModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>New Datatype</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="createDatatypeModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'datatypes' %}" data-modal-id="createDatatypeModal">
+      {% csrf_token %}
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          {{ create_form.name }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Builtin validator <small class="text-muted">(e.g. ipv4, ipv6)</small></label>
+          {{ create_form.builtin_validator }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Regex pattern</label>
+          {{ create_form.regex_pattern }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          {{ create_form.description }}
+        </div>
+        <p class="modal-form-error" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="createDatatypeModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

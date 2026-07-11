@@ -88,6 +88,7 @@ apiusers = Table(
     Column("username", String(120), nullable=False, unique=True),
     Column("password_hash", String(255), nullable=False),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("readonly", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -135,6 +136,25 @@ def save_api_config(config_path: Path, database_url: str, host: str, port: int) 
 def ensure_apiusers_table(database_url: str) -> None:
     engine = create_db_engine(database_url)
     metadata.create_all(engine, tables=[apiusers])
+
+
+def ensure_apiusers_readonly_column(database_url: str) -> None:
+    engine = create_db_engine(database_url)
+    inspector = inspect(engine)
+    if "apiusers" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("apiusers")}
+    if "readonly" in columns:
+        return
+
+    dialect_name = engine.dialect.name
+    with engine.begin() as conn:
+        if dialect_name == "sqlite":
+            conn.execute(text("ALTER TABLE apiusers ADD COLUMN readonly BOOLEAN NOT NULL DEFAULT 0"))
+        else:
+            conn.execute(text("ALTER TABLE apiusers ADD COLUMN readonly BOOLEAN NOT NULL DEFAULT false"))
+        conn.execute(text("UPDATE apiusers SET readonly = false WHERE readonly IS NULL"))
 
 
 def ensure_datatypes_table(database_url: str) -> None:
@@ -214,7 +234,7 @@ def ensure_assets_active_column(database_url: str) -> None:
         conn.execute(text("UPDATE assets SET active = true WHERE active IS NULL"))
 
 
-def upsert_api_user(database_url: str, username: str, password: str) -> None:
+def upsert_api_user(database_url: str, username: str, password: str, readonly: bool = False) -> None:
     engine = create_db_engine(database_url)
     password_hash = generate_password_hash(password)
 
@@ -229,6 +249,7 @@ def upsert_api_user(database_url: str, username: str, password: str) -> None:
                     username=username,
                     password_hash=password_hash,
                     is_active=True,
+                    readonly=readonly,
                 )
             )
             return
@@ -236,7 +257,7 @@ def upsert_api_user(database_url: str, username: str, password: str) -> None:
         conn.execute(
             apiusers.update()
             .where(apiusers.c.username == username)
-            .values(password_hash=password_hash, is_active=True, changed_at=func.now())
+            .values(password_hash=password_hash, is_active=True, readonly=readonly, changed_at=func.now())
         )
 
 
@@ -273,6 +294,11 @@ def parse_args() -> argparse.Namespace:
         help="Password for --create-user. If omitted, prompt securely.",
     )
     parser.add_argument(
+        "--readonly",
+        action="store_true",
+        help="Create or update the API user with readonly access",
+    )
+    parser.add_argument(
         "--run",
         action="store_true",
         help="Start tuxcmdb-api after installation/configuration",
@@ -295,13 +321,14 @@ def main() -> int:
         return 2
 
     ensure_apiusers_table(database_url)
+    ensure_apiusers_readonly_column(database_url)
     ensure_assets_active_column(database_url)
     ensure_datatypes_table(database_url)
     print("Ensured apiusers and datatypes tables exist")
 
     if args.create_user:
         password = args.password or getpass.getpass(f"Password for API user '{args.create_user}': ")
-        upsert_api_user(database_url, args.create_user, password)
+        upsert_api_user(database_url, args.create_user, password, readonly=args.readonly)
         print(f"Created/updated API user '{args.create_user}'")
 
     save_api_config(Path(args.api_config).expanduser(), database_url, args.host, args.port)
