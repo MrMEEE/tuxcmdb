@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import ipaddress
+import json
 from pathlib import Path
 import re
 import sys
@@ -50,6 +51,8 @@ apiusers = Table(
     metadata,
     Column("id", Integer, primary_key=True),
     Column("username", String(120), nullable=False, unique=True),
+    Column("name", String(120), nullable=True),
+    Column("description", Text, nullable=True),
     Column("password_hash", String(255), nullable=False),
     Column("is_active", Boolean, nullable=False, server_default=text("true")),
     Column("readonly", Boolean, nullable=False, server_default=text("false")),
@@ -101,6 +104,18 @@ assignments = Table(
     Column("assigned", Boolean, nullable=False, server_default=text("true")),
     Column("assigned_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+audit_log = Table(
+    "audit_log",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("actor_username", String(120), nullable=False),
+    Column("entity_type", String(64), nullable=False),
+    Column("entity_ref", String(255), nullable=False),
+    Column("action", String(64), nullable=False),
+    Column("details", Text, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 security = HTTPBasic()
@@ -283,6 +298,27 @@ class AssignedAttributeOut(BaseModel):
     name: str
     value: str | None
     assigned_at: datetime
+    history_count: int = 1
+
+
+class AssignmentHistoryOut(BaseModel):
+    id: int
+    attribute_id: int
+    attribute_name: str
+    value: str | None
+    assigned: bool
+    assigned_at: datetime
+    changed_at: datetime
+
+
+class AuditLogOut(BaseModel):
+    id: int
+    actor_username: str
+    entity_type: str
+    entity_ref: str
+    action: str
+    details: str | None
+    created_at: datetime
 
 
 class AssetOut(BaseModel):
@@ -397,6 +433,19 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
     if not asset_ids:
         return {}
 
+    history_counts = {
+        (row.asset_id, row.attribute_id): row.history_count
+        for row in conn.execute(
+            select(
+                assignments.c.asset_id,
+                assignments.c.attribute_id,
+                func.count(assignments.c.id).label("history_count"),
+            )
+            .where(assignments.c.asset_id.in_(asset_ids))
+            .group_by(assignments.c.asset_id, assignments.c.attribute_id)
+        ).all()
+    }
+
     rows = conn.execute(
         select(
             assignments.c.asset_id,
@@ -422,6 +471,7 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
                     name=row.name,
                     value=row.value,
                     assigned_at=row.assigned_at,
+                    history_count=history_counts.get((row.asset_id, row.attribute_id), 1),
                 )
             )
             continue
@@ -435,6 +485,7 @@ def fetch_current_attributes_for_assets(conn: Connection, asset_ids: list[int]) 
                 name=row.name,
                 value=row.value,
                 assigned_at=row.assigned_at,
+                history_count=history_counts.get((row.asset_id, row.attribute_id), 1),
             )
         )
 
@@ -455,6 +506,25 @@ def apply_assignment_policy(conn: Connection, asset_id: int, attribute_row: Any)
             assignments.c.assigned.is_(True),
         )
         .values(assigned=False, changed_at=func.now())
+    )
+
+
+def log_audit_entry(
+    conn: Connection,
+    actor_username: str,
+    entity_type: str,
+    entity_ref: str,
+    action: str,
+    details: dict[str, Any] | None = None,
+) -> None:
+    conn.execute(
+        audit_log.insert().values(
+            actor_username=actor_username,
+            entity_type=entity_type,
+            entity_ref=entity_ref,
+            action=action,
+            details=json.dumps(details, sort_keys=True, default=str) if details is not None else None,
+        )
     )
 
 
@@ -482,7 +552,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
     engine = create_db_engine(database_url)
 
-    metadata.create_all(engine, tables=[datatypes])
+    metadata.create_all(engine, tables=[datatypes, audit_log])
     default_datatypes = [
         {
             "name": "string",
@@ -613,6 +683,18 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     datatypes.c.created_at, datatypes.c.changed_at,
                 ).where(datatypes.c.id == insert_result.inserted_primary_key[0])
             ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "datatype",
+                name,
+                "create",
+                {
+                    "description": payload.description or None,
+                    "regex_pattern": payload.regex_pattern or None,
+                    "builtin_validator": payload.builtin_validator or None,
+                },
+            )
         return DatatypeOut(**row._mapping)
 
     @app.post("/v1/attributes", response_model=AttributeOut, status_code=status.HTTP_201_CREATED)
@@ -648,6 +730,18 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     attributes.c.changed_at,
                 ).where(attributes.c.id == attribute_id)
             ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "attribute",
+                name,
+                "create",
+                {
+                    "data_type": data_type,
+                    "allow_multiple": payload.allow_multiple,
+                    "description": payload.description,
+                },
+            )
 
         return to_attribute_out(row)
 
@@ -725,6 +819,14 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         attributes.c.changed_at,
                     ).where(attributes.c.id == attribute_id)
             ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "attribute",
+                row.name,
+                "update",
+                updates,
+            )
         return to_attribute_out(row)
 
     @app.delete("/v1/attributes/{attribute_id}", response_model=MessageResponse)
@@ -742,7 +844,11 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             if in_use is not None:
                 raise HTTPException(status_code=409, detail="Attribute is in use and cannot be deleted")
 
+            attribute_name = conn.execute(
+                select(attributes.c.name).where(attributes.c.id == attribute_id)
+            ).scalar_one()
             conn.execute(attributes.delete().where(attributes.c.id == attribute_id))
+            log_audit_entry(conn, _.username, "attribute", attribute_name, "delete")
 
         return MessageResponse(status="ok", message="Attribute deleted")
 
@@ -767,6 +873,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
             ).one()
+            log_audit_entry(conn, _.username, "asset", assetname, "create", {"active": True})
 
             out = build_asset_out([row], conn)[0]
         return out
@@ -774,7 +881,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.get("/v1/assets", response_model=list[AssetOut])
     def list_assets(
         q: str | None = None,
-        active: bool | None = True,
+        active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
         _: AuthenticatedUser = Depends(authenticate),
@@ -885,6 +992,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
             ).one()
+            log_audit_entry(conn, _.username, "asset", row.assetname, "update", updates)
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/{asset_ref}/attributes", response_model=MessageResponse)
@@ -918,6 +1026,17 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     value=value,
                     assigned=True,
                 )
+            )
+            attribute_name_for_log = conn.execute(
+                select(attributes.c.name).where(attributes.c.id == attribute_row.id)
+            ).scalar_one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "assignment",
+                f"{asset_row.id}:{attribute_name_for_log}",
+                "assign",
+                {"asset": asset_ref, "attribute": attribute_name_for_log, "value": value},
             )
 
         return MessageResponse(status="ok", message="Attribute assigned to asset")
@@ -956,8 +1075,62 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assigned=False,
                 )
             )
+            log_audit_entry(
+                conn,
+                _.username,
+                "assignment",
+                f"{asset_row.id}:{attribute_row.name}",
+                "remove",
+                {"asset": asset_ref, "attribute": attribute_row.name, "value": value},
+            )
 
         return MessageResponse(status="ok", message="Attribute removed from asset")
+
+    @app.get("/v1/assets/{asset_ref}/attributes/{attribute_ref}/history", response_model=list[AssignmentHistoryOut])
+    def asset_attribute_history(
+        asset_ref: str,
+        attribute_ref: str,
+        _: AuthenticatedUser = Depends(authenticate),
+    ) -> list[AssignmentHistoryOut]:
+        with engine.connect() as conn:
+            asset_row = resolve_asset_ref(conn, asset_ref)
+            attribute_row = resolve_attribute_ref(conn, attribute_ref)
+
+            rows = conn.execute(
+                select(
+                    assignments.c.id,
+                    assignments.c.attribute_id,
+                    attributes.c.name.label("attribute_name"),
+                    assignments.c.value,
+                    assignments.c.assigned,
+                    assignments.c.assigned_at,
+                    assignments.c.changed_at,
+                )
+                .join(attributes, attributes.c.id == assignments.c.attribute_id)
+                .where(
+                    assignments.c.asset_id == asset_row.id,
+                    assignments.c.attribute_id == attribute_row.id,
+                )
+                .order_by(assignments.c.assigned_at.desc(), assignments.c.id.desc())
+            ).all()
+
+        return [AssignmentHistoryOut(**row._mapping) for row in rows]
+
+    @app.get("/v1/audit", response_model=list[AuditLogOut])
+    def list_audit(_: AuthenticatedUser = Depends(authenticate)) -> list[AuditLogOut]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    audit_log.c.id,
+                    audit_log.c.actor_username,
+                    audit_log.c.entity_type,
+                    audit_log.c.entity_ref,
+                    audit_log.c.action,
+                    audit_log.c.details,
+                    audit_log.c.created_at,
+                ).order_by(audit_log.c.created_at.desc(), audit_log.c.id.desc())
+            ).all()
+        return [AuditLogOut(**row._mapping) for row in rows]
 
     @app.post("/v1/assets/{asset_id}/decommission", response_model=AssetOut)
     def decommission_asset(asset_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
@@ -978,6 +1151,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
             ).one()
+            log_audit_entry(conn, _.username, "asset", row.assetname, "decommission", {"active": False})
             return build_asset_out([row], conn)[0]
 
     return app

@@ -24,10 +24,22 @@ Create a readonly API user:
 python ../tuxcmdb-api.py --create-user readonly-user --readonly
 ```
 
-To install and immediately start the API:
+To configure and immediately start the API in the background:
 
 ```bash
-python ../tuxcmdb-api.py --create-user admin --run
+python ../tuxcmdb-api.py start --create-user admin
+```
+
+Stop the API background process:
+
+```bash
+python ../tuxcmdb-api.py stop
+```
+
+Restart the API (re-applies config with optional `--host/--port` overrides):
+
+```bash
+python ../tuxcmdb-api.py restart --host 127.0.0.1 --port 8080
 ```
 
 The `tuxcmdb-api.py` installer will also auto-create `../.venv` and install missing dependencies from `requirements.txt` when needed.

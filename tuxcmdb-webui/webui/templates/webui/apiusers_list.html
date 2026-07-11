@@ -8,14 +8,29 @@
     <a class="btn btn-accent" href="{% url 'apiuser-create' %}">New API User</a>
   </div>
   <div class="card-body">
+    <form id="apiusers-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter API users, e.g. active=true, readonly=false, username=admin">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'apiusers' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>active=true</code>, <code>readonly=false</code>, <code>name=Automation</code></small>
+      </div>
+    </form>
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>Username</th>
-          <th>Active</th>
-          <th>Readonly</th>
-          <th>Changed</th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.username.field }}" data-sort-dir="{{ sort_links.username.next_dir }}">Username {{ sort_links.username.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.is_active.field }}" data-sort-dir="{{ sort_links.is_active.next_dir }}">Active {{ sort_links.is_active.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.readonly.field }}" data-sort-dir="{{ sort_links.readonly.next_dir }}">Readonly {{ sort_links.readonly.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="apiusers-filters" data-sort-field="{{ sort_links.changed_at.field }}" data-sort-dir="{{ sort_links.changed_at.next_dir }}">Changed {{ sort_links.changed_at.indicator }}</button></th>
           <th></th>
         </tr>
       </thead>
@@ -23,6 +38,8 @@
         {% for item in apiusers %}
         <tr>
           <td>{{ item.username }}</td>
+          <td>{{ item.name|default:'-' }}</td>
+          <td>{{ item.description|default:'-' }}</td>
           <td>{% if item.is_active %}Yes{% else %}No{% endif %}</td>
           <td>{% if item.readonly %}Yes{% else %}No{% endif %}</td>
           <td>{{ item.changed_at }}</td>
@@ -35,7 +52,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No API users found.</td></tr>
+        <tr><td colspan="7">No API users found.</td></tr>
         {% endfor %}
       </tbody>
     </table>

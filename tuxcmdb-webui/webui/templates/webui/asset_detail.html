@@ -68,6 +68,16 @@
               <td>{{ assignment.value|default:'-' }}</td>
               <td>{{ assignment.assigned_at }}</td>
               <td>
+                {% if assignment.history_count > 1 %}
+                <button
+                  class="btn btn-xs btn-default js-history-btn"
+                  type="button"
+                  data-asset-ref="{{ asset.id }}"
+                  data-attribute-ref="{{ assignment.name }}"
+                >
+                  History
+                </button>
+                {% endif %}
                 <form method="post" class="inline-form">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="remove">
@@ -81,6 +91,26 @@
             <tr><td colspan="4">No active assignments.</td></tr>
             {% endfor %}
           </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+    <div id="historyCard" class="card shadow-sm mt-3" hidden>
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 id="historyTitle" class="mb-0">History</h5>
+        <button id="historyClose" class="btn btn-xs btn-default" type="button">Close</button>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Value</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
         </table>
         </div>
       </div>

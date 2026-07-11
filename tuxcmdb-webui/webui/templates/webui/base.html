@@ -66,6 +66,16 @@
                 <span class="title">Apiusers</span>
               </a>
             </li>
+            <li class="nav-item">
+              <a href="{% url 'audit' %}" class="nav-link d-none d-md-block" title="Audit">
+                <i class="la la-clipboard-list"></i>
+                <span class="title">Audit</span>
+              </a>
+              <a href="{% url 'audit' %}" class="nav-link mobile d-block d-md-none" title="Audit">
+                <i class="la la-clipboard-list"></i>
+                <span class="title">Audit</span>
+              </a>
+            </li>
           </ul>
         </div>
       </nav>
@@ -94,6 +104,10 @@
               <span class="flex-grow-1">Apiusers</span>
               <i class="la la-external-link-alt"></i>
             </a>
+            <a class="dropdown-item d-flex" href="{% url 'audit' %}">
+              <span class="flex-grow-1">Audit</span>
+              <i class="la la-external-link-alt"></i>
+            </a>
             <div class="dropdown-divider"></div>
             <a class="dropdown-item" href="{% url 'datatypes' %}">
               <span class="flex-grow-1">Datatypes</span>
@@ -115,6 +129,9 @@
             </a>
             <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
               <div class="flex-grow-1"><i class="icon-server-outline me-2 text-body-tertiary"></i><span>Apiusers</span></div>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'audit' %}">
+              <div class="flex-grow-1"><i class="icon-list-outline me-2 text-body-tertiary"></i><span>Audit</span></div>
             </a>
           </div>
         </div>
@@ -186,7 +203,7 @@
   <script src="{% static 'webui/vendor/vvveb/bootstrap.min.js' %}"></script>
   <script src="{% static 'webui/vendor/vvveb/theme.js' %}?v=20260711-1"></script>
   <script src="{% static 'webui/js/modal-forms.js' %}?v=20260711-1"></script>
-  <script src="{% static 'webui/js/live-updates.js' %}?v=20260711-1"></script>
+  <script src="{% static 'webui/js/live-updates.js' %}?v=20260712-3"></script>
   <script>
     (function () {
       var toggle = document.getElementById('userMenuToggle');

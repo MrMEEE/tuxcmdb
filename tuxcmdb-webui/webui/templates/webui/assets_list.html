@@ -7,13 +7,13 @@
     <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Total assets</span><i class="la la-server"></i></div><h3 class="mt-2 mb-0">{{ assets|length }}</h3></div></div>
   </div>
   <div class="col-md-3">
-    <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Active</span><i class="la la-check-circle"></i></div><h3 class="mt-2 mb-0">{{ assets|length }}</h3></div></div>
+    <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Active</span><i class="la la-check-circle"></i></div><h3 class="mt-2 mb-0">{{ active_count }}</h3></div></div>
+  </div>
+  <div class="col-md-3">
+    <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Decommissioned</span><i class="la la-archive"></i></div><h3 class="mt-2 mb-0">{{ decommissioned_count }}</h3></div></div>
   </div>
   <div class="col-md-3">
     <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Readonly mode</span><i class="la la-lock"></i></div><h3 class="mt-2 mb-0">{% if request.user.readonly %}On{% else %}Off{% endif %}</h3></div></div>
-  </div>
-  <div class="col-md-3">
-    <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Live updates</span><i class="la la-broadcast-tower"></i></div><h3 class="mt-2 mb-0">WS</h3></div></div>
   </div>
 </div>
 
@@ -25,28 +25,39 @@
     </button>
   </div>
   <div class="card-body">
+    <form id="assets-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter assets, e.g. cpus=4, cpus, active=false, assetname=min-pc">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center gap-2">
+        <a class="btn btn-default btn-sm" href="{% url 'assets' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>cpus=4</code>, <code>cpus</code>, <code>active=false</code>, <code>assetname=server</code></small>
+      </div>
+    </form>
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Assetname</th>
-          <th>Active</th>
-          <th>Attributes</th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.assetname.field }}" data-sort-dir="{{ sort_links.assetname.next_dir }}">Assetname {{ sort_links.assetname.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.active.field }}" data-sort-dir="{{ sort_links.active.next_dir }}">Active {{ sort_links.active.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.attributes_count.field }}" data-sort-dir="{{ sort_links.attributes_count.next_dir }}">Attributes {{ sort_links.attributes_count.indicator }}</button></th>
           <th></th>
         </tr>
       </thead>
       <tbody>
         {% for asset in assets %}
-        <tr>
-          <td>{{ asset.id }}</td>
+        <tr class="{% if not asset.active %}table-warning{% endif %}">
           <td>{{ asset.assetname }}</td>
           <td>{% if asset.active %}Yes{% else %}No{% endif %}</td>
           <td>{{ asset.attributes|length }}</td>
           <td><a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a></td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No assets found.</td></tr>
+        <tr><td colspan="4">No assets found.</td></tr>
         {% endfor %}
       </tbody>
     </table>

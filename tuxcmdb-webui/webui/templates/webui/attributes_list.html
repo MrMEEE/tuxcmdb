@@ -10,14 +10,27 @@
     </button>
   </div>
   <div class="card-body">
+    <form id="attributes-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter attributes, e.g. datatype=string, allow_multiple=true, name=cpu">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'attributes' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>datatype=string</code>, <code>allow_multiple=true</code>, <code>description=network</code></small>
+      </div>
+    </form>
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Datatype</th>
-          <th>Allow multiple</th>
-          <th>Description</th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.data_type.field }}" data-sort-dir="{{ sort_links.data_type.next_dir }}">Datatype {{ sort_links.data_type.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.allow_multiple.field }}" data-sort-dir="{{ sort_links.allow_multiple.next_dir }}">Allow multiple {{ sort_links.allow_multiple.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
           <th></th>
         </tr>
       </thead>
@@ -62,11 +75,6 @@
         <div class="mb-3">
           <label class="form-label">Data type</label>
           {{ create_form.data_type }}
-          {% if datatypes %}
-          <div class="mt-1" style="font-size:0.8rem;color:var(--bs-secondary-color)">
-            Available: {% for dt in datatypes %}<span class="pill">{{ dt.name }}</span>{% endfor %}
-          </div>
-          {% endif %}
         </div>
         <div class="mb-3 form-check">
           {{ create_form.allow_multiple }}

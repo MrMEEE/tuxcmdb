@@ -10,14 +10,27 @@
     </button>
   </div>
   <div class="card-body">
+    <form id="datatypes-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter datatypes, e.g. validator=ipv4, regex=^[0-9], name=string">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'datatypes' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>validator=ipv4</code>, <code>regex=^10\.</code>, <code>description=address</code></small>
+      </div>
+    </form>
     <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Builtin validator</th>
-          <th>Regex</th>
-          <th>Description</th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.builtin_validator.field }}" data-sort-dir="{{ sort_links.builtin_validator.next_dir }}">Builtin validator {{ sort_links.builtin_validator.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.regex_pattern.field }}" data-sort-dir="{{ sort_links.regex_pattern.next_dir }}">Regex {{ sort_links.regex_pattern.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
         </tr>
       </thead>
       <tbody>

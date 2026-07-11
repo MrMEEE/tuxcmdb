@@ -16,7 +16,6 @@
         <div class="form-group">
           <label>Data type</label>
           {{ form.data_type }}
-          <p class="form-help">Available: {% for item in datatypes %}<span class="pill">{{ item.name }}</span>{% endfor %}</p>
         </div>
         <div class="form-group checkbox-row">
           <label>{{ form.allow_multiple }} Allow multiple active assignments</label>

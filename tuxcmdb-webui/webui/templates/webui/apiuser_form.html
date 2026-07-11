@@ -14,8 +14,20 @@
           {{ form.username }}
         </div>
         <div class="form-group">
+          <label>Name</label>
+          {{ form.name }}
+        </div>
+        <div class="form-group">
+          <label>Description</label>
+          {{ form.description }}
+        </div>
+        <div class="form-group">
           <label>Password {% if user_record %}<span class="text-muted">(leave blank to keep current)</span>{% endif %}</label>
           {{ form.password }}
+        </div>
+        <div class="form-group">
+          <label>Verify password {% if user_record %}<span class="text-muted">(only needed when changing password)</span>{% endif %}</label>
+          {{ form.password_verify }}
         </div>
         <div class="form-group checkbox-row">
           <label>{{ form.is_active }} Active</label>
