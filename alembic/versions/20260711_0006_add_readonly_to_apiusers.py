@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -19,10 +20,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    with op.batch_alter_table("apiusers", recreate="always") as batch_op:
-        batch_op.add_column(sa.Column("readonly", sa.Boolean(), server_default=sa.text("false"), nullable=False))
+    bind = op.get_bind()
+    columns = {col["name"] for col in inspect(bind).get_columns("apiusers")}
+    if "readonly" not in columns:
+        with op.batch_alter_table("apiusers", recreate="always") as batch_op:
+            batch_op.add_column(sa.Column("readonly", sa.Boolean(), server_default=sa.text("false"), nullable=False))
 
 
 def downgrade() -> None:
-    with op.batch_alter_table("apiusers", recreate="always") as batch_op:
-        batch_op.drop_column("readonly")
+    bind = op.get_bind()
+    columns = {col["name"] for col in inspect(bind).get_columns("apiusers")}
+    if "readonly" in columns:
+        with op.batch_alter_table("apiusers", recreate="always") as batch_op:
+            batch_op.drop_column("readonly")
