@@ -79,6 +79,46 @@
           <label class="form-label">Assetname</label>
           {{ create_form.assetname }}
         </div>
+        <div class="mb-2 d-flex justify-content-between align-items-center">
+          <label class="form-label mb-0">Initial Attributes</label>
+          <button class="btn btn-default btn-xs js-add-asset-attr-row" type="button">Add Attribute</button>
+        </div>
+        <div id="createAssetAttributes" class="d-flex flex-column gap-2 mb-2">
+          <div class="row g-2 align-items-center js-asset-attr-row">
+            <div class="col-5">
+              <select class="form-control" name="new_attribute_name">
+                <option value="">Select attribute</option>
+                {% for attribute in attribute_catalog %}
+                <option value="{{ attribute.name }}">{{ attribute.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <input class="form-control" type="text" name="new_attribute_value" placeholder="Value">
+            </div>
+            <div class="col-1 d-flex justify-content-end">
+              <button class="btn btn-danger btn-xs js-remove-asset-attr-row" type="button" aria-label="Remove attribute row">&times;</button>
+            </div>
+          </div>
+        </div>
+        <template id="assetAttributeRowTemplate">
+          <div class="row g-2 align-items-center js-asset-attr-row">
+            <div class="col-5">
+              <select class="form-control" name="new_attribute_name">
+                <option value="">Select attribute</option>
+                {% for attribute in attribute_catalog %}
+                <option value="{{ attribute.name }}">{{ attribute.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <input class="form-control" type="text" name="new_attribute_value" placeholder="Value">
+            </div>
+            <div class="col-1 d-flex justify-content-end">
+              <button class="btn btn-danger btn-xs js-remove-asset-attr-row" type="button" aria-label="Remove attribute row">&times;</button>
+            </div>
+          </div>
+        </template>
         <p class="modal-form-error" hidden></p>
       </div>
       <div class="tuxcmdb-modal-footer">

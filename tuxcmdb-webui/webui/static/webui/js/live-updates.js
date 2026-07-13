@@ -219,7 +219,7 @@
   function renderHistoryRows(historyBody, rows) {
     historyBody.innerHTML = "";
     if (!rows.length) {
-      historyBody.innerHTML = '<tr><td colspan="3">No history entries found.</td></tr>';
+      historyBody.innerHTML = '<tr><td colspan="4">No history entries found.</td></tr>';
       return;
     }
 
@@ -238,6 +238,19 @@
       stateTd.textContent = entry.assigned ? "Assigned" : "Removed";
       tr.appendChild(stateTd);
 
+      const actionTd = document.createElement("td");
+      if (entry.can_restore) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-xs btn-accent js-history-restore-btn";
+        button.textContent = "Restore Value";
+        button.setAttribute("data-asset-ref", entry.asset_ref || "");
+        button.setAttribute("data-attribute-ref", entry.attribute_name || "");
+        button.setAttribute("data-value", entry.value === null ? "" : String(entry.value));
+        actionTd.appendChild(button);
+      }
+      tr.appendChild(actionTd);
+
       historyBody.appendChild(tr);
     });
   }
@@ -246,10 +259,54 @@
     historyBody.innerHTML = "";
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
+    td.colSpan = 4;
     td.textContent = message;
     tr.appendChild(td);
     historyBody.appendChild(tr);
+  }
+
+  function getCookie(name) {
+    const allCookies = document.cookie ? document.cookie.split(";") : [];
+    for (const part of allCookies) {
+      const cookie = part.trim();
+      if (cookie.startsWith(name + "=")) {
+        return decodeURIComponent(cookie.slice(name.length + 1));
+      }
+    }
+    return null;
+  }
+
+  async function restoreAssetAttributeValue(button) {
+    const assetRef = button.getAttribute("data-asset-ref");
+    const attributeRef = button.getAttribute("data-attribute-ref");
+    const value = button.getAttribute("data-value");
+    if (!assetRef || !attributeRef) {
+      return;
+    }
+
+    const csrfToken = getCookie("csrftoken");
+    const url =
+      "/assets/" + encodeURIComponent(assetRef) + "/attributes/" + encodeURIComponent(attributeRef) + "/restore/";
+
+    button.disabled = true;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ value: value }),
+      });
+      if (!response.ok) {
+        throw new Error("Restore failed");
+      }
+      await refreshCurrentView(window.location.href);
+    } catch (_err) {
+      button.disabled = false;
+    }
   }
 
   async function loadAssetAttributeHistory(button) {
@@ -283,7 +340,14 @@
         throw new Error("Failed to load history");
       }
       const payload = await response.json();
-      renderHistoryRows(body, Array.isArray(payload.history) ? payload.history : []);
+      const rows = Array.isArray(payload.history) ? payload.history : [];
+      const enriched = rows.map(function (entry) {
+        return {
+          ...entry,
+          asset_ref: payload.asset_ref || assetRef,
+        };
+      });
+      renderHistoryRows(body, enriched);
     } catch (_err) {
       showHistoryError(body, "Unable to load history");
     }
@@ -391,6 +455,49 @@
       if (body) {
         body.innerHTML = "";
       }
+      return;
+    }
+
+    const addAssetAttrButton = event.target.closest(".js-add-asset-attr-row");
+    if (addAssetAttrButton) {
+      event.preventDefault();
+      const container = document.getElementById("createAssetAttributes");
+      const template = document.getElementById("assetAttributeRowTemplate");
+      if (!container || !template || !template.content) {
+        return;
+      }
+      container.appendChild(template.content.cloneNode(true));
+      return;
+    }
+
+    const removeAssetAttrButton = event.target.closest(".js-remove-asset-attr-row");
+    if (removeAssetAttrButton) {
+      event.preventDefault();
+      const container = document.getElementById("createAssetAttributes");
+      const row = removeAssetAttrButton.closest(".js-asset-attr-row");
+      if (!container || !row) {
+        return;
+      }
+      const rows = container.querySelectorAll(".js-asset-attr-row");
+      if (rows.length <= 1) {
+        const nameInput = row.querySelector("select[name='new_attribute_name']");
+        const valueInput = row.querySelector("input[name='new_attribute_value']");
+        if (nameInput) {
+          nameInput.value = "";
+        }
+        if (valueInput) {
+          valueInput.value = "";
+        }
+      } else {
+        row.remove();
+      }
+      return;
+    }
+
+    const restoreButton = event.target.closest(".js-history-restore-btn");
+    if (restoreButton) {
+      event.preventDefault();
+      await restoreAssetAttributeValue(restoreButton);
       return;
     }
 

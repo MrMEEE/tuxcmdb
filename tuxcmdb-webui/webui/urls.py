@@ -13,6 +13,11 @@ urlpatterns = [
         views.asset_attribute_history_view,
         name="asset-attribute-history",
     ),
+    path(
+        "assets/<str:asset_ref>/attributes/<str:attribute_ref>/restore/",
+        views.asset_attribute_restore_view,
+        name="asset-attribute-restore",
+    ),
     path("attributes/", views.attributes_view, name="attributes"),
     path("attributes/new/", views.attribute_form_view, name="attribute-create"),
     path("attributes/<int:attribute_id>/edit/", views.attribute_form_view, name="attribute-edit"),

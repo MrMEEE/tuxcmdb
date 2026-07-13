@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import json
 from typing import Any
 from urllib.parse import urlencode
 
@@ -446,13 +447,46 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     sort_by = _param(request, "sort_by") or "assetname"
     sort_dir = _sort_direction(request)
     create_form = AssetCreateForm(request.POST or None)
+
+    attribute_catalog: list[dict[str, Any]] = []
+    try:
+        attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
+    except ServiceError:
+        attribute_catalog = []
+
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("assets")
         if create_form.is_valid():
             try:
-                api_request(*_creds(request), "POST", "/v1/assets", payload={"assetname": create_form.cleaned_data["assetname"]})
+                created_asset = api_request(*_creds(request), "POST", "/v1/assets", payload={"assetname": create_form.cleaned_data["assetname"]})
+
+                asset_ref = str(created_asset.get("id") or create_form.cleaned_data["assetname"])
+                attribute_names = request.POST.getlist("new_attribute_name")
+                attribute_values = request.POST.getlist("new_attribute_value")
+                assignment_errors: list[str] = []
+
+                for index, raw_name in enumerate(attribute_names):
+                    attribute_name = (raw_name or "").strip().lower()
+                    if not attribute_name:
+                        continue
+
+                    raw_value = attribute_values[index] if index < len(attribute_values) else ""
+                    value = raw_value if raw_value != "" else None
+                    try:
+                        api_request(
+                            *_creds(request),
+                            "POST",
+                            f"/v1/assets/{asset_ref}/attributes",
+                            payload={"attribute_name": attribute_name, "value": value},
+                        )
+                    except ServiceError as exc:
+                        assignment_errors.append(f"{attribute_name}: {exc}")
+
+                if assignment_errors:
+                    messages.warning(request, "Asset created, but some assignments failed: " + "; ".join(assignment_errors))
+
                 messages.success(request, "Asset created")
                 notify_ui_update("assets", "created", create_form.cleaned_data["assetname"])
                 return redirect("assets")
@@ -494,6 +528,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
         {
             "assets": assets,
             "create_form": create_form,
+            "attribute_catalog": attribute_catalog,
             "active_count": active_count,
             "decommissioned_count": decommissioned_count,
             "filters": {
@@ -597,7 +632,55 @@ def asset_attribute_history_view(request: HttpRequest, asset_ref: str, attribute
             "GET",
             f"/v1/assets/{asset_ref}/attributes/{attribute_ref}/history",
         )
-        return JsonResponse({"attribute": attribute_ref, "history": history_entries})
+        rows = []
+        for entry in history_entries:
+            row = dict(entry)
+            row["can_restore"] = not request.user.readonly and row.get("value") is not None
+            rows.append(row)
+        return JsonResponse(
+            {
+                "asset_ref": asset_ref,
+                "attribute": attribute_ref,
+                "readonly": request.user.readonly,
+                "history": rows,
+            }
+        )
+    except ServiceError as exc:
+        return JsonResponse({"detail": str(exc)}, status=400)
+
+
+@login_required
+def asset_attribute_restore_view(request: HttpRequest, asset_ref: str, attribute_ref: str) -> JsonResponse:
+    if request.method != "POST":
+        return JsonResponse({"detail": "Method not allowed"}, status=405)
+    if request.user.readonly:
+        return JsonResponse({"detail": "This user has readonly access."}, status=403)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"detail": "Invalid JSON payload"}, status=400)
+
+    if "value" not in payload:
+        return JsonResponse({"detail": "Missing value"}, status=400)
+
+    try:
+        asset: dict[str, Any] | None = None
+        if str(asset_ref).isdigit():
+            try:
+                asset = api_request(*_creds(request), "GET", f"/v1/assets/{asset_ref}")
+            except ServiceError:
+                asset = None
+        if asset is None:
+            assets = api_request(*_creds(request), "GET", "/v1/assets", params={"q": asset_ref})
+            asset = next((item for item in assets if item["assetname"] == asset_ref or str(item["id"]) == asset_ref), None)
+        if asset is None:
+            return JsonResponse({"detail": "Asset not found"}, status=404)
+
+        restore_payload = {attribute_ref: payload.get("value")}
+        api_request(*_creds(request), "POST", f"/v1/assets/{asset['id']}/attributes", payload=restore_payload)
+        notify_ui_update("assignments", "restored", asset["assetname"])
+        return JsonResponse({"status": "ok", "message": "Value restored"})
     except ServiceError as exc:
         return JsonResponse({"detail": str(exc)}, status=400)
 
