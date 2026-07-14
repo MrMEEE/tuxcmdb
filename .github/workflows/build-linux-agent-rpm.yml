@@ -11,26 +11,33 @@ on:
 jobs:
   build-linux-packages:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - el: 9
+            container: registry.access.redhat.com/ubi9/ubi:latest
+          - el: 10
+            container: registry.access.redhat.com/ubi10/ubi:latest
+
+    container:
+      image: ${{ matrix.container }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Install fpm
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ruby ruby-dev rpm
-          sudo gem install --no-document fpm
+          set -euo pipefail
+          dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
+          gem install --no-document fpm
 
       - name: Prepare build root
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          ITERATION="1.el${{ matrix.el }}"
           mkdir -p buildroot/opt/tuxcmdb-agent
           mkdir -p buildroot/usr/bin
           mkdir -p buildroot/usr/lib/systemd/system
@@ -55,32 +62,23 @@ jobs:
           fpm -s dir -t rpm \
             -n tuxcmdb-agent \
             -v "$VERSION" \
+            --iteration "$ITERATION" \
             --architecture noarch \
             --depends python3 \
             --after-install packaging/scripts/postinstall.sh \
             --before-remove packaging/scripts/preuninstall.sh \
             -C buildroot .
 
-          fpm -s dir -t deb \
-            -n tuxcmdb-agent \
-            -v "$VERSION" \
-            --architecture all \
-            --depends python3 \
-            --after-install packaging/scripts/postinstall.sh \
-            --before-remove packaging/scripts/preuninstall.sh \
-            -C buildroot .
-
-          mkdir -p dist
-          mv ./*.rpm dist/
-          mv ./*.deb dist/
+          mkdir -p dist/el${{ matrix.el }}
+          mv ./*.rpm dist/el${{ matrix.el }}/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tuxcmdb-agent-rpm
-          path: dist/*
+          name: tuxcmdb-agent-rpm-el${{ matrix.el }}
+          path: dist/el${{ matrix.el }}/*.rpm
 
       - name: Attach RPM to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/el${{ matrix.el }}/*.rpm
