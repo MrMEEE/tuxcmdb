@@ -1,0 +1,1530 @@
+INFO:     Started server process [78820]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:36166 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55948 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55950 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50858 - "POST /v1/attributes HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:50870 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50886 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34914 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34922 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37570 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37586 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37598 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37600 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46334 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46350 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34664 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34670 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47714 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52532 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52542 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52550 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52558 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52566 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52580 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41162 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41166 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41174 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41180 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41188 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41194 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41200 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41206 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41220 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [78820]
+INFO:     Started server process [103451]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51332 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51342 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51344 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51358 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51360 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51374 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51380 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51392 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51402 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42926 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42942 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42946 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42962 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42972 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42984 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43000 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55108 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55118 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55128 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55136 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56304 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56310 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56324 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56328 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56338 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56354 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47104 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47114 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47122 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47126 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47128 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47132 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47146 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47162 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47170 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51792 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51798 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51808 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51824 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51832 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51836 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51844 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51030 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51040 - "POST /v1/assets HTTP/1.1" 201 Created
+INFO:     127.0.0.1:51052 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51590 - "GET /v1/assets?active=true&q=fisk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51606 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51608 - "GET /v1/assets/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51620 - "GET /v1/assets?active=true&q=fisk HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51634 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51648 - "POST /v1/assets/3/decommission HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51662 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51670 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37484 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37500 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37514 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [103451]
+INFO:     Started server process [117950]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:41324 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54126 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54132 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54146 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52026 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52030 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52046 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52062 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52078 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58542 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58554 - "GET /v1/assets?active=true HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:58568 - "GET /v1/assets HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51816 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43462 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43478 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49816 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49830 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49840 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55208 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55222 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55238 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42024 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [117950]
+INFO:     Started server process [130218]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52546 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41160 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39936 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44406 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44420 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44432 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44434 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44440 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44444 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37050 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42268 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42276 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [130218]
+INFO:     Started server process [139672]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57556 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39590 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39596 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39602 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39612 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39622 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39634 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39644 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35494 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35508 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35522 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45278 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45282 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45292 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45296 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45964 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45980 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45982 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56028 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56034 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53084 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53086 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53092 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53100 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45380 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45382 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35754 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33062 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33072 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37704 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37716 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37728 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37736 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37744 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59784 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59788 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59802 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [139672]
+INFO:     Started server process [146369]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:49036 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52182 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52196 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52208 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52224 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52228 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46350 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34092 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34096 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46478 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59928 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59942 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59948 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45728 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44950 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44964 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44980 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41646 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41650 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41656 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55850 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55856 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55862 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55876 - "GET /v1/assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40220 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40230 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43252 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51372 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51380 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51384 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51386 - "GET /v1/assets?active=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51390 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51394 - "GET /v1/assets?active=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36322 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36332 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58114 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58128 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38874 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49042 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [146369]
+INFO:     Started server process [155951]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:43494 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43496 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43500 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43508 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43514 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46500 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46512 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46518 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46530 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46546 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46548 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46556 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46570 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46576 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46578 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46586 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53234 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53246 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55046 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55052 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55054 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35144 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35154 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35160 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35168 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35180 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35190 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38014 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38018 - "GET /v1/assets?active=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54404 - "GET /v1/assets?active=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35364 - "GET /v1/assets?active=false HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50714 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50802 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50810 - "POST /v1/assets HTTP/1.1" 201 Created
+INFO:     127.0.0.1:50812 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40766 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33944 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33958 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33960 - "GET /v1/assets/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52084 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52096 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52104 - "POST /v1/assets/4/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52110 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52112 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52116 - "GET /v1/assets/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55956 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55970 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55978 - "POST /v1/assets/4/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55994 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55998 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56010 - "GET /v1/assets/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40486 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40490 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40500 - "POST /v1/assets/4/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40516 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40524 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40526 - "GET /v1/assets/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47558 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [155951]
+INFO:     Started server process [1090021]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55576 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47146 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47150 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47158 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47160 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47166 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57794 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36608 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36620 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36628 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36638 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55908 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55920 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51932 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51946 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51962 - "GET /v1/assets?q=1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50880 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50896 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50912 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50924 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46208 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46222 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46238 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46246 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34244 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34246 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34254 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34270 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34272 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34274 - "POST /v1/assets/1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34276 - "GET /v1/assets?active=true&q=min-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34292 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34306 - "GET /v1/assets/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45136 - "GET /v1/assets/1/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35622 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35626 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35630 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35634 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56450 - "GET /v1/assets?active=true&q=newserver01 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56456 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58624 - "GET /v1/assets/4 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58630 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46414 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46416 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46424 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46428 - "POST /v1/assets HTTP/1.1" 201 Created
+INFO:     127.0.0.1:46444 - "POST /v1/assets/5/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46450 - "POST /v1/assets/5/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46460 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46470 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46476 - "GET /v1/assets?active=true&q=bulk-asset-1783936527 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46488 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46492 - "GET /v1/assets/5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54886 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54900 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37190 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37204 - "POST /v1/assets HTTP/1.1" 201 Created
+INFO:     127.0.0.1:37216 - "POST /v1/assets/6/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37224 - "POST /v1/assets/6/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37226 - "POST /v1/assets/6/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37234 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37242 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37256 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37266 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37272 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60476 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60482 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60492 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60494 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60508 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34588 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34604 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48998 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49006 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48476 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59170 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59174 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59176 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59188 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59202 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56524 - "GET /v1/assets/6/attributes/ip_address/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56534 - "GET /v1/assets/6/attributes/ip_address/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33644 - "GET /v1/assets/6/attributes/ip_address/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33652 - "GET /v1/assets/6/attributes/ip_address/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33662 - "GET /v1/assets/6/attributes/ip_address/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38404 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38410 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38412 - "POST /v1/assets/6/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38420 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38436 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38440 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38452 - "GET /v1/assets/6/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38466 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38478 - "POST /v1/assets/6/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38484 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38486 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38496 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38506 - "GET /v1/assets/6/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41136 - "GET /v1/assets/6/attributes/cpus/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41144 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41154 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50256 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50258 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50274 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50280 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50296 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50308 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50324 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50336 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50352 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50368 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50382 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50394 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33676 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33684 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41028 - "GET / HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:41034 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:41046 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41052 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36422 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36434 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1090021]
+INFO:     Started server process [2160781]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56744 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56754 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56756 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49870 - "POST /v1/operatingsystems HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49880 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49790 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39000 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39008 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55362 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55366 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55378 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55380 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55392 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55398 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55414 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55430 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55436 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34208 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34224 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34240 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34242 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34248 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34256 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44110 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44114 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44128 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44132 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55370 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55376 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55392 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42888 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42898 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42904 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42906 - "PATCH /v1/attributes/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42908 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42922 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42930 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45548 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45556 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45560 - "POST /v1/attributes HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:45566 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46362 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46364 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2160781]
+INFO:     Started server process [2201296]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:33074 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39810 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39824 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39834 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39840 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39848 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39858 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39868 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39870 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37834 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37838 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37854 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49858 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49868 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49882 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52172 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52176 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52192 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52196 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52206 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52222 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52230 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52242 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52246 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52258 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52262 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52264 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49570 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49572 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49588 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53446 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53456 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53472 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53480 - "PATCH /v1/attributes/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53486 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53502 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53510 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53520 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53522 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53526 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45702 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49292 - "POST /v1/operatingsystems HTTP/1.1" 201 Created
+INFO:     127.0.0.1:49304 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49316 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49332 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49344 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49352 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49364 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49370 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43808 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43824 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43838 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43852 - "PATCH /v1/attributes/2 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43854 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43866 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43878 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59618 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59620 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2201296]
+INFO:     Started server process [2221913]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:41602 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41610 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2221913]
+INFO:     Started server process [2227785]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55796 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55808 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55810 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55812 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55822 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55830 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55846 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55858 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55872 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55882 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37344 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37348 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37358 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37364 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37374 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37380 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59624 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59628 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59636 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59652 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40240 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40256 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40272 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40276 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40292 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40304 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40318 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40328 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40344 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40358 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40374 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37874 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37880 - "POST /v1/assets/1/approve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37886 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37896 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48778 - "POST /v1/agent/register HTTP/1.1" 201 Created
+INFO:     127.0.0.1:48786 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33606 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33612 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33614 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34924 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34936 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34950 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34964 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34980 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34996 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44884 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44886 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44902 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44910 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44918 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56588 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56592 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2227785]
+INFO:     Started server process [2249526]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:60356 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60362 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60374 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60380 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37516 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49148 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49160 - "POST /v1/assets/7/approve HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49176 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49184 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41642 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41646 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41648 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41656 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41668 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41076 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41078 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41080 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41094 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41108 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41118 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41126 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53322 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53326 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53334 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33248 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33256 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33272 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33280 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33290 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47710 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47712 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47724 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47736 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52952 - "POST /v1/operatingsystems HTTP/1.1" 201 Created
+INFO:     127.0.0.1:52958 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51694 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51704 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51708 - "PATCH /v1/operatingsystems/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51710 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51718 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57290 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57302 - "PATCH /v1/operatingsystems/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57304 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57320 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57332 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47510 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47514 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47520 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47528 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47532 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47534 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39946 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39960 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39964 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39966 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39982 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42880 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42888 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42902 - "POST /v1/attributes HTTP/1.1" 201 Created
+INFO:     127.0.0.1:42918 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48766 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48778 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59066 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59076 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59090 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59648 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59650 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59656 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59662 - "PATCH /v1/attributes/5 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2683, in app
+    await route.handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1266, in handle
+    await super().handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 346, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 2596, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 1029, in run
+    result = context.run(func, *args)
+  File "/home/mj/Ansible/tuxcmdb/tuxcmdb-api/app.py", line 1310, in update_attribute
+    if payload.immutable is not None:
+       ^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AttributeUpdate' object has no attribute 'immutable'
+INFO:     127.0.0.1:59666 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59672 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59676 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46464 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46474 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46480 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46484 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46490 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46494 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46496 - "PATCH /v1/attributes/5 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2683, in app
+    await route.handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1266, in handle
+    await super().handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 346, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 2596, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 1029, in run
+    result = context.run(func, *args)
+  File "/home/mj/Ansible/tuxcmdb/tuxcmdb-api/app.py", line 1310, in update_attribute
+    if payload.immutable is not None:
+       ^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AttributeUpdate' object has no attribute 'immutable'
+INFO:     127.0.0.1:49104 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49110 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49116 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33302 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33314 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33324 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57260 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57272 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57276 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57286 - "PATCH /v1/attributes/5 HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 2683, in app
+    await route.handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 1266, in handle
+    await super().handle(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/fastapi/routing.py", line 346, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/starlette/concurrency.py", line 34, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        func, args, abandon_on_cancel=abandon_on_cancel, limiter=limiter
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 2596, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 1029, in run
+    result = context.run(func, *args)
+  File "/home/mj/Ansible/tuxcmdb/tuxcmdb-api/app.py", line 1310, in update_attribute
+    def update_attribute(attribute_id: int, payload: AttributeUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> AttributeOut:
+           ^^^^^^^^^^^^^^^^^
+  File "/home/mj/Ansible/tuxcmdb/.venv/lib/python3.14/site-packages/pydantic/main.py", line 1042, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'AttributeUpdate' object has no attribute 'immutable'
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2249526]
+INFO:     Started server process [2261542]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58492 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58506 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58508 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58520 - "PATCH /v1/attributes/5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58524 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58530 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58542 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37056 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37058 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37068 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37074 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37090 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37096 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37108 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52678 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52692 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52694 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52708 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52718 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52730 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52742 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52758 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48184 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48188 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48204 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48214 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48224 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48232 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45720 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53046 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53054 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44332 - "GET /v1/assets?active=true&q=test-pc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44334 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44338 - "GET /v1/assets/6 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35260 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35264 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52044 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52060 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52076 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2261542]
+INFO:     Started server process [2275771]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:35726 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35730 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35744 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35748 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35750 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35756 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35768 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35770 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35786 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42854 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42864 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42878 - "PATCH /v1/operatingsystems/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42894 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42896 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42902 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42906 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2275771]
+INFO:     Started server process [2280180]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51448 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51460 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51474 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51266 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51278 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51282 - "PATCH /v1/operatingsystems/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51284 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51300 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51304 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51266 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51270 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51280 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51284 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46558 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46560 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46568 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46576 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60198 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60204 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60216 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60222 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60228 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60236 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60242 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60252 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60268 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60278 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60284 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60292 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60298 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60300 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60308 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60316 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55742 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55758 - "POST /v1/agent/report HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:41584 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41590 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41600 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41604 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41612 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41624 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41638 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38148 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38154 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38156 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38166 - "PATCH /v1/attributes/5 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38176 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38190 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38196 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54176 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54188 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54204 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54220 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54224 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38778 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38790 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38804 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:38820 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50724 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50734 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50738 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50744 - "PATCH /v1/operatingsystems/3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50750 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50764 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50768 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50778 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50784 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50792 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50808 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50816 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50830 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50844 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50850 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44406 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60074 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60078 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60086 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60090 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60094 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60110 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47024 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47036 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47048 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47060 - "PATCH /v1/attributes/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47066 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47070 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47078 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47086 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47094 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47764 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47780 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47794 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47804 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47808 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47820 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47824 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47834 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47836 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47844 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45790 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45798 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45812 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60564 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60566 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60572 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42036 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42038 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42042 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42052 - "PATCH /v1/attributes/1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42064 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42068 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42084 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37250 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37264 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37276 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37284 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37294 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37300 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37304 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37306 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:37308 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59158 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59172 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59174 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59186 - "DELETE /v1/assets/7/attributes/ipv4_address?value=awk%3A+fatal%3A+cannot+open+file+%60127.0.0.1%27+for+reading%3A+Ingen+s%C3%A5dan+fil+eller+filkatalog HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59198 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59212 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59214 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47454 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47468 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42874 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42878 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42880 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42892 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42900 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42914 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42920 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42930 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:42944 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54626 - "GET /v1/assets/7/attributes/memory_gb/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50130 - "GET /v1/assets/7/attributes/memory_gb/history HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2280180]
+INFO:     Started server process [2294518]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:43220 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43228 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56300 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56312 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56328 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56336 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56340 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56356 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56360 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56370 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56382 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48156 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48158 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48160 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48172 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48178 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48188 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48190 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48204 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48206 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48214 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48230 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48238 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48240 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48244 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:48260 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48266 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48272 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48282 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48286 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51222 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51228 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51238 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51250 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51252 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51256 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51268 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51270 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51286 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51298 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51302 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51314 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51318 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51334 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51346 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51348 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51354 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51360 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51374 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51384 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51400 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51414 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51416 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51428 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51442 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51444 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51452 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51454 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51466 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51480 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54774 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54778 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54786 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54800 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54810 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54826 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54838 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54844 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54860 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54874 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54884 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54890 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54894 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54910 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54920 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54930 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54934 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54946 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54958 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54966 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54980 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40426 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40440 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40446 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40452 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40462 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40476 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59196 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59206 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59208 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59212 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59218 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59226 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59232 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59234 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59240 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59244 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59248 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59252 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59256 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59450 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59454 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59464 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59480 - "DELETE /v1/assets/7/attributes/ipv4_address?value=192.168.60.61 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59484 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59500 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59502 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59512 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2294518]
+INFO:     Started server process [2299058]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:41352 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41354 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41370 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41384 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41398 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41404 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41416 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41418 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1%0D%0A192.168.60.61%0D%0A172.17.0.1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41420 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41434 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41438 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:41440 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46522 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46530 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46542 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46550 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46558 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46574 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46582 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46592 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46600 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46608 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46610 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46626 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58268 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58280 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58288 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2299058]
+INFO:     Started server process [2301979]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:57430 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57442 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57452 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57456 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45688 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45698 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45704 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45720 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45726 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45742 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45750 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45752 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58614 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58628 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2301979]
+INFO:     Started server process [2304916]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8080 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51060 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51066 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51078 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51094 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56172 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56186 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56196 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56202 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56218 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56226 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56228 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56238 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56926 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56942 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43106 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43112 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43116 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43132 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59882 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59894 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59906 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59916 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53416 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53424 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53438 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53442 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53456 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53462 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53466 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49112 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49128 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49136 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49148 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48686 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48692 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48704 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:48720 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49196 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49212 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49228 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49238 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49252 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49260 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40906 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40908 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40922 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40936 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54806 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54816 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54832 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54848 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54862 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54870 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54886 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54898 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54920 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54914 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54930 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54934 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54950 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54952 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54968 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54974 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58660 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58672 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58688 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58690 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58696 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58710 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50994 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51010 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51024 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51040 - "POST /v1/assets/7/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51056 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51062 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51074 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51088 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51102 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51108 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51124 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51134 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51140 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51150 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51164 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51180 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51192 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51204 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51214 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51220 - "DELETE /v1/assets/7/attributes/ipv4_address?value=192.168.60.61 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51234 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51244 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51252 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51256 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51264 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51272 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51278 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51288 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51290 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51296 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51312 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51326 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51328 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51344 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51350 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51364 - "DELETE /v1/assets/7/attributes/memory_gb?value=3Gi HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51390 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51380 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51400 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51414 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51430 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51426 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51434 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51442 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39152 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39156 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39164 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39180 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39182 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39188 - "DELETE /v1/assets/7/attributes/ipv4_address?value=127.0.0.1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39190 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39202 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39206 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39222 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39234 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39240 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39242 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39252 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39254 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39268 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39274 - "POST /v1/agent/bootstrap HTTP/1.1" 200 OK
+INFO:     127.0.0.1:39288 - "POST /v1/agent/report HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57608 - "GET /v1/assets?active=true&q=red5.outerrim.lan HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57618 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57628 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57634 - "GET /v1/assets/7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57642 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57652 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57654 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57664 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52842 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52846 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52856 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52860 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52874 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52886 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52896 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52902 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52904 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45134 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45140 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45154 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47694 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47696 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47700 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40352 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40364 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40370 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35218 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35220 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35224 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35226 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35230 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35244 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35248 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35260 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35276 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:35290 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34042 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34050 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:34058 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54830 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54846 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54858 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54866 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54880 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54888 - "GET /v1/assets?active=true HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54900 - "GET /v1/datatypes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54902 - "GET /v1/operatingsystems HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54914 - "GET /v1/attributes HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59534 - "GET /v1/datatypes HTTP/1.1" 200 OK

@@ -219,6 +219,13 @@ def list_audit_logs() -> list[AuditLogRecord]:
     return [AuditLogRecord(**row._mapping) for row in rows]
 
 
+def latest_audit_marker() -> int:
+    engine = db_engine()
+    with engine.connect() as conn:
+        marker = conn.execute(select(func.max(audit_log.c.id))).scalar_one_or_none()
+    return int(marker or 0)
+
+
 def get_apiuser(user_id: int) -> APIUserRecord | None:
     engine = db_engine()
     with engine.connect() as conn:

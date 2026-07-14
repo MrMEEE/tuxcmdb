@@ -14,13 +14,13 @@
       <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
       <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
       <div class="col-md-11">
-        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter attributes, e.g. datatype=string, allow_multiple=true, name=cpu">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter attributes, e.g. datatype=string, os=rhel10, fetch=dmidecode, allow_multiple=true">
       </div>
       <div class="col-md-1 d-flex justify-content-end align-items-center">
         <a class="btn btn-default btn-sm" href="{% url 'attributes' %}">Clear</a>
       </div>
       <div class="col-12">
-        <small class="text-muted">Examples: <code>datatype=string</code>, <code>allow_multiple=true</code>, <code>description=network</code></small>
+        <small class="text-muted">Examples: <code>datatype=string</code>, <code>os=rhel10</code>, <code>fetch=dmidecode</code>, <code>allow_multiple=true</code></small>
       </div>
     </form>
     <div class="table-responsive">
@@ -30,6 +30,7 @@
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.data_type.field }}" data-sort-dir="{{ sort_links.data_type.next_dir }}">Datatype {{ sort_links.data_type.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.allow_multiple.field }}" data-sort-dir="{{ sort_links.allow_multiple.next_dir }}">Allow multiple {{ sort_links.allow_multiple.indicator }}</button></th>
+          <th>Fetch Methods by OS</th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="attributes-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
           <th></th>
         </tr>
@@ -40,17 +41,30 @@
           <td>{{ attribute.name }}</td>
           <td>{{ attribute.data_type }}</td>
           <td>{% if attribute.allow_multiple %}Yes{% else %}No{% endif %}</td>
+          <td>
+            {% if attribute.fetchmethods %}
+              {% for item in attribute.fetchmethods %}
+                <div><code>{{ item.command }}</code> =&gt; {{ item.supported_operatingsystems|join:', ' }}</div>
+              {% endfor %}
+            {% else %}
+              -
+            {% endif %}
+          </td>
           <td>{{ attribute.description|default:'-' }}</td>
           <td class="table-actions">
+            {% if attribute.immutable %}
+            <span class="badge bg-secondary-subtle text-body">Built-in</span>
+            {% else %}
             <a class="btn btn-xs btn-default" href="{% url 'attribute-edit' attribute.id %}">Edit</a>
             <form method="post" action="{% url 'attribute-delete' attribute.id %}" class="inline-form">
               {% csrf_token %}
               <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No attributes found.</td></tr>
+        <tr><td colspan="6">No attributes found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -80,6 +94,45 @@
           {{ create_form.allow_multiple }}
           <label class="form-check-label ms-1">Allow multiple active assignments</label>
         </div>
+        <div class="mb-2 d-flex justify-content-between align-items-center">
+          <label class="form-label mb-0">Fetch methods by operating system</label>
+          <button class="btn btn-default btn-xs js-add-fetchmethod-row" type="button" data-container="createAttributeFetchMethods" data-template="createFetchMethodRowTemplate">Add Fetch Method</button>
+        </div>
+        <div id="createAttributeFetchMethods" class="d-flex flex-column gap-2 mb-2" data-next-index="1">
+          <div class="row g-2 align-items-start js-fetchmethod-row">
+            <div class="col-5">
+              <input class="form-control" type="text" name="fetchmethod_command_0" placeholder="Command, e.g. dmidecode -s system-serial-number">
+            </div>
+            <div class="col-6">
+              <select class="form-control" name="fetchmethod_os_0" multiple size="4">
+                {% for os in operating_systems %}
+                <option value="{{ os.name }}">{{ os.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-1 d-flex justify-content-end">
+              <button class="btn btn-danger btn-xs js-remove-fetchmethod-row" type="button" aria-label="Remove fetch method row">&times;</button>
+            </div>
+          </div>
+        </div>
+        <template id="createFetchMethodRowTemplate">
+          <div class="row g-2 align-items-start js-fetchmethod-row">
+            <div class="col-5">
+              <input class="form-control" type="text" name="fetchmethod_command___ROW__" placeholder="Command, e.g. dmidecode -s system-serial-number">
+            </div>
+            <div class="col-6">
+              <select class="form-control" name="fetchmethod_os___ROW__" multiple size="4">
+                {% for os in operating_systems %}
+                <option value="{{ os.name }}">{{ os.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-1 d-flex justify-content-end">
+              <button class="btn btn-danger btn-xs js-remove-fetchmethod-row" type="button" aria-label="Remove fetch method row">&times;</button>
+            </div>
+          </div>
+        </template>
+        <small class="text-muted d-block mt-1">Each row maps one fetch command to one or more operating systems. Hold Ctrl/Cmd to select multiple.</small>
         <div class="mb-3">
           <label class="form-label">Description</label>
           {{ create_form.description }}

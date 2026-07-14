@@ -47,7 +47,7 @@ def ensure_venv() -> Path:
 
 def ensure_dependencies() -> None:
     missing = []
-    for module in ("django", "channels", "requests", "sqlalchemy", "yaml", "werkzeug"):
+    for module in ("django", "channels", "daphne", "requests", "sqlalchemy", "yaml", "werkzeug"):
         try:
             importlib.import_module(module)
         except ImportError:

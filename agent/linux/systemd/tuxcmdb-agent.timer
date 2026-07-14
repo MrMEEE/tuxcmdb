@@ -1,0 +1,11 @@
+[Unit]
+Description=Run TuxCMDB Agent every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Unit=tuxcmdb-agent.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

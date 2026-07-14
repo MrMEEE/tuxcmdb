@@ -1,0 +1,72 @@
+{% extends 'webui/base.html' %}
+{% block title %}API Documentation · TuxCMDB{% endblock %}
+{% block page_title %}API Documentation{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2"><h5 class="mb-0">Overview</h5></div>
+  <div class="card-body">
+    <p class="mb-2">TuxCMDB uses a FastAPI backend. Main endpoint groups:</p>
+    <ul class="mb-0">
+      <li>Assets and assignments</li>
+      <li>Attributes and fetch methods</li>
+      <li>Operating systems and aliases</li>
+      <li>Datatypes</li>
+      <li>Agent bootstrap and report</li>
+    </ul>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2"><h5 class="mb-0">Base URLs</h5></div>
+  <div class="card-body">
+    <p class="mb-1">API root:</p>
+    <pre class="mb-3"><code>http://127.0.0.1:8080</code></pre>
+    <p class="mb-1">Health checks:</p>
+    <pre class="mb-0"><code>GET /health
+GET /ok</code></pre>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2"><h5 class="mb-0">Common Endpoints</h5></div>
+  <div class="card-body">
+    <pre class="mb-0"><code>GET    /v1/assets
+GET    /v1/assets/{asset_ref}
+POST   /v1/assets
+PATCH  /v1/assets/{asset_id}
+POST   /v1/assets/{asset_id}/approve
+POST   /v1/assets/{asset_ref}/attributes
+DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}
+
+GET    /v1/attributes
+POST   /v1/attributes
+PATCH  /v1/attributes/{attribute_id}
+DELETE /v1/attributes/{attribute_id}
+
+GET    /v1/operatingsystems
+POST   /v1/operatingsystems
+PATCH  /v1/operatingsystems/{operatingsystem_id}
+DELETE /v1/operatingsystems/{operatingsystem_id}
+
+POST   /v1/agent/register
+POST   /v1/agent/bootstrap
+POST   /v1/agent/report</code></pre>
+  </div>
+</div>
+
+<div class="card shadow-sm">
+  <div class="card-header py-2"><h5 class="mb-0">Examples</h5></div>
+  <div class="card-body">
+    <p class="mb-1">List assets:</p>
+    <pre class="mb-3"><code>curl -u USER:PASSWORD http://127.0.0.1:8080/v1/assets</code></pre>
+    <p class="mb-1">Assign value to asset:</p>
+    <pre class="mb-3"><code>curl -u USER:PASSWORD -X POST \
+  -H 'Content-Type: application/json' \
+  -d '{"memory_gb":"32Gi"}' \
+  http://127.0.0.1:8080/v1/assets/7/attributes</code></pre>
+    <p class="mb-1">Remove assignment value:</p>
+    <pre class="mb-0"><code>curl -u USER:PASSWORD -X DELETE \
+  'http://127.0.0.1:8080/v1/assets/7/attributes/memory_gb?value=32Gi'</code></pre>
+  </div>
+</div>
+{% endblock %}

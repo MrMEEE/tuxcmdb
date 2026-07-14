@@ -222,6 +222,11 @@ a.tuxcmdb-sidebar-logo {
   }
 }
 
+/* Slightly wider collapsed sidebar for better logo and icon spacing */
+.small-nav .sidebar {
+  min-width: 64px;
+}
+
 /* ── Custom modal overlay (no Bootstrap Modal JS needed) ──── */
 .tuxcmdb-modal-overlay {
   position: fixed;

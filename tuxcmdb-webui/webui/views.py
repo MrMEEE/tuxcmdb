@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import json
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -12,7 +13,16 @@ from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
 from .auth import login_required
-from .forms import APIUserForm, AssetCreateForm, AssetUpdateForm, AssignmentForm, AttributeForm, DatatypeForm, LoginForm
+from .forms import (
+    APIUserForm,
+    AssetCreateForm,
+    AssetUpdateForm,
+    AssignmentForm,
+    AttributeForm,
+    DatatypeForm,
+    LoginForm,
+    OperatingSystemForm,
+)
 from .services import (
     ServiceError,
     api_request,
@@ -24,6 +34,11 @@ from .services import (
     list_apiusers,
     update_apiuser,
 )
+
+APPROVAL_NOT_PENDING = 0
+APPROVAL_PENDING = 1
+APPROVAL_APPROVED = 2
+APPROVAL_REJECTED = 3
 
 
 def notify_ui_update(entity: str, action: str, ref: str = "") -> None:
@@ -109,6 +124,120 @@ def _asset_filter_terms(query: str) -> list[tuple[str, str | None]]:
     return terms
 
 
+def _parse_aliases_text(value: str) -> list[str]:
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for token in re.split(r"[,\n]", value or ""):
+        alias = token.strip()
+        if not alias:
+            continue
+        key = alias.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        aliases.append(alias)
+    return aliases
+
+
+def _normalize_os_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _asset_os_value(asset: dict[str, Any]) -> str:
+    for item in asset.get("attributes", []):
+        if _normalize_os_text(item.get("name")) != "os":
+            continue
+        value = str(item.get("value") or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _os_matches_value(operatingsystem: dict[str, Any], value: str) -> bool:
+    needle = _normalize_os_text(value)
+    if not needle:
+        return False
+    names = [_normalize_os_text(operatingsystem.get("name"))]
+    names.extend(_normalize_os_text(alias) for alias in (operatingsystem.get("aliases") or []))
+    return needle in names
+
+
+def _find_matching_operatingsystem(operating_systems: list[dict[str, Any]], value: str) -> dict[str, Any] | None:
+    for item in operating_systems:
+        if _os_matches_value(item, value):
+            return item
+    return None
+
+
+def _append_alias(existing_aliases: list[Any], new_alias: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in list(existing_aliases or []) + [new_alias]:
+        alias = str(raw or "").strip()
+        if not alias:
+            continue
+        key = alias.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(alias)
+    return out
+
+
+_FETCHMETHOD_ROW_PATTERN = re.compile(r"^fetchmethod_command_(\d+)$")
+
+
+def _parse_fetchmethod_rows(post: Any) -> list[dict[str, Any]]:
+    row_indices: set[int] = set()
+    for key in post.keys():
+        match = _FETCHMETHOD_ROW_PATTERN.match(key)
+        if match:
+            row_indices.add(int(match.group(1)))
+
+    entries: list[dict[str, Any]] = []
+    seen_commands: set[str] = set()
+    os_to_command: dict[str, str] = {}
+    for index in sorted(row_indices):
+        command = (post.get(f"fetchmethod_command_{index}") or "").strip()
+        if not command:
+            continue
+
+        command_key = command.lower()
+        if command_key in seen_commands:
+            raise ValueError(f"Duplicate fetch method command: {command}")
+        seen_commands.add(command_key)
+
+        supported_operatingsystems: list[str] = []
+        seen_os: set[str] = set()
+        for raw_name in post.getlist(f"fetchmethod_os_{index}"):
+            name = (raw_name or "").strip().lower()
+            if not name or name in seen_os:
+                continue
+
+            existing_command = os_to_command.get(name)
+            if existing_command and existing_command != command:
+                raise ValueError(
+                    f"Operating system '{name}' is already assigned to fetch method '{existing_command}'. "
+                    "Each OS can only belong to one fetch method per attribute."
+                )
+
+            os_to_command[name] = command
+            seen_os.add(name)
+            supported_operatingsystems.append(name)
+
+        if not supported_operatingsystems:
+            raise ValueError(f"Fetch method '{command}' must include at least one operating system")
+
+        entries.append(
+            {
+                "command": command,
+                "supported_operatingsystems": supported_operatingsystems,
+            }
+        )
+
+    return entries
+
+
 def _asset_matches_logic_query(item: dict[str, Any], query: str) -> bool:
     terms = _asset_filter_terms(query)
     if not terms:
@@ -189,7 +318,14 @@ def _attribute_matches_logic_query(item: dict[str, Any], query: str) -> bool:
     data_type = item.get("data_type")
     description = item.get("description")
     allow_multiple = bool(item.get("allow_multiple"))
-    searchable = [name, data_type, description, "yes" if allow_multiple else "no"]
+    fetchmethods = item.get("fetchmethods") or []
+    fetch_commands = [str(entry.get("command") or "") for entry in fetchmethods]
+    supported_os = [
+        str(os_name)
+        for entry in fetchmethods
+        for os_name in (entry.get("supported_operatingsystems") or [])
+    ]
+    searchable = [name, data_type, description, " ".join(fetch_commands), "yes" if allow_multiple else "no", " ".join(supported_os)]
 
     for key, value in terms:
         if value is None:
@@ -215,6 +351,14 @@ def _attribute_matches_logic_query(item: dict[str, Any], query: str) -> bool:
             continue
         if key in {"description", "desc"}:
             if not _contains_text(description, value):
+                return False
+            continue
+        if key in {"fetchmethod", "fetch", "command"}:
+            if not any(_contains_text(command, value) for command in fetch_commands):
+                return False
+            continue
+        if key in {"supportedos", "supported_os", "operatingsystem", "os"}:
+            if not any(_contains_text(entry, value) for entry in supported_os):
                 return False
             continue
         if key in {"allow_multiple", "multiple"}:
@@ -258,6 +402,39 @@ def _datatype_matches_logic_query(item: dict[str, Any], query: str) -> bool:
             continue
         if key in {"description", "desc"}:
             if not _contains_text(description, value):
+                return False
+            continue
+        return False
+
+    return True
+
+
+def _operatingsystem_matches_logic_query(item: dict[str, Any], query: str) -> bool:
+    terms = _asset_filter_terms(query)
+    if not terms:
+        return True
+
+    name = item.get("name")
+    description = item.get("description")
+    aliases = item.get("aliases") or []
+    aliases_text = " ".join(str(alias) for alias in aliases)
+
+    for key, value in terms:
+        if value is None:
+            if not _matches_logic_text_fields([name, description, aliases_text], key):
+                return False
+            continue
+
+        if key in {"name", "os", "operatingsystem"}:
+            if not _contains_text(name, value):
+                return False
+            continue
+        if key in {"description", "desc"}:
+            if not _contains_text(description, value):
+                return False
+            continue
+        if key in {"alias", "aliases"}:
+            if not any(_contains_text(alias, value) for alias in aliases):
                 return False
             continue
         return False
@@ -449,15 +626,74 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     create_form = AssetCreateForm(request.POST or None)
 
     attribute_catalog: list[dict[str, Any]] = []
+    operating_systems: list[dict[str, Any]] = []
     try:
         attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
     except ServiceError:
         attribute_catalog = []
+    try:
+        operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+    except ServiceError:
+        operating_systems = []
 
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("assets")
+        action = request.POST.get("action")
+        if action == "approve":
+            asset_id = request.POST.get("asset_id", "").strip()
+            if not asset_id.isdigit():
+                messages.error(request, "Invalid asset id")
+                return redirect("assets")
+            try:
+                approved_asset = api_request(*_creds(request), "POST", f"/v1/assets/{asset_id}/approve")
+                messages.success(request, f"Asset approved: {approved_asset.get('assetname')}")
+                notify_ui_update("assets", "approved", approved_asset.get("assetname", ""))
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+            return redirect("assets")
+
+        if action == "approve-all":
+            try:
+                api_request(*_creds(request), "POST", "/v1/assets/approve-all")
+                messages.success(request, "All assets approved")
+                notify_ui_update("assets", "approve-all", "*")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+            return redirect("assets")
+
+        if action == "match-os":
+            asset_id = request.POST.get("asset_id", "").strip()
+            operating_system_id = request.POST.get("operatingsystem_id", "").strip()
+            source_os_value = (request.POST.get("source_os_value") or "").strip()
+            if not asset_id.isdigit() or not operating_system_id.isdigit() or not source_os_value:
+                messages.error(request, "Invalid operating system matching request")
+                return redirect("assets")
+
+            target = next((item for item in operating_systems if int(item.get("id", 0)) == int(operating_system_id)), None)
+            if target is None:
+                messages.error(request, "Selected operating system not found")
+                return redirect("assets")
+
+            if _os_matches_value(target, source_os_value):
+                messages.info(request, "OS value is already matched")
+                return redirect("assets")
+
+            updated_aliases = _append_alias(target.get("aliases") or [], source_os_value)
+            try:
+                api_request(
+                    *_creds(request),
+                    "PATCH",
+                    f"/v1/operatingsystems/{target['id']}",
+                    payload={"aliases": updated_aliases},
+                )
+                messages.success(request, f"Added alias '{source_os_value}' to OS '{target.get('name')}'")
+                notify_ui_update("operatingsystems", "alias-added", target.get("name", ""))
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+            return redirect("assets")
+
         if create_form.is_valid():
             try:
                 created_asset = api_request(*_creds(request), "POST", "/v1/assets", payload={"assetname": create_form.cleaned_data["assetname"]})
@@ -503,6 +739,10 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     for item in assets:
         if not _asset_matches_logic_query(item, filter_query):
             continue
+        asset_os_value = _asset_os_value(item)
+        matched_os = _find_matching_operatingsystem(operating_systems, asset_os_value) if asset_os_value else None
+        item["asset_os_value"] = asset_os_value
+        item["os_mismatch"] = bool(asset_os_value) and matched_os is None
         filtered_assets.append(item)
 
     assets = filtered_assets
@@ -519,6 +759,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
 
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
+    pending_approval_count = sum(1 for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING)
     base_params = {
         "q": filter_query,
     }
@@ -529,8 +770,10 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "assets": assets,
             "create_form": create_form,
             "attribute_catalog": attribute_catalog,
+            "operating_systems": operating_systems,
             "active_count": active_count,
             "decommissioned_count": decommissioned_count,
+            "pending_approval_count": pending_approval_count,
             "filters": {
                 "q": filter_query,
                 "sort_by": sort_by,
@@ -547,6 +790,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     update_form = AssetUpdateForm()
     asset: dict[str, Any] | None = None
     attributes: list[dict[str, Any]] = []
+    operating_systems: list[dict[str, Any]] = []
 
     try:
         assets = api_request(*_creds(request), "GET", "/v1/assets", params={"active": "true", "q": asset_ref})
@@ -556,6 +800,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             raise ServiceError("Asset not found")
         update_form = AssetUpdateForm(initial={"assetname": asset["assetname"]})
         attributes = api_request(*_creds(request), "GET", "/v1/attributes")
+        operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
         attribute_choices = [(item["name"], item["name"]) for item in attributes if item.get("name")]
         assignment_form = AssignmentForm(attribute_choices=attribute_choices)
     except ServiceError as exc:
@@ -591,6 +836,23 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 messages.success(request, "Assignment removed")
                 notify_ui_update("assignments", "removed", asset["assetname"])
                 return redirect("asset-detail", asset_ref=asset["assetname"])
+            elif action == "edit-assignment":
+                attribute_name = (request.POST.get("attribute_name") or "").strip()
+                if not attribute_name:
+                    messages.error(request, "Missing attribute name")
+                    return redirect("asset-detail", asset_ref=asset["assetname"])
+
+                raw_value = request.POST.get("value")
+                value = raw_value if raw_value not in {None, ""} else None
+                payload = {attribute_name: value}
+                result = api_request(*_creds(request), "POST", f"/v1/assets/{asset['id']}/attributes", payload=payload)
+                result_message = str((result or {}).get("message") or "")
+                if result_message == "Assignment unchanged":
+                    messages.info(request, f"Assignment unchanged for '{attribute_name}'")
+                else:
+                    messages.success(request, f"Assignment updated for '{attribute_name}'")
+                    notify_ui_update("assignments", "updated", asset["assetname"])
+                return redirect("asset-detail", asset_ref=asset["assetname"])
             elif action == "update-asset":
                 update_form = AssetUpdateForm(request.POST)
                 if update_form.is_valid():
@@ -603,6 +865,32 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 messages.success(request, "Asset decommissioned")
                 notify_ui_update("assets", "decommissioned", asset["assetname"])
                 return redirect("assets")
+            elif action == "match-os":
+                source_os_value = (request.POST.get("source_os_value") or "").strip()
+                operating_system_id = request.POST.get("operatingsystem_id", "").strip()
+                if not source_os_value or not operating_system_id.isdigit():
+                    messages.error(request, "Invalid operating system matching request")
+                    return redirect("asset-detail", asset_ref=asset["assetname"])
+
+                target = next((item for item in operating_systems if int(item.get("id", 0)) == int(operating_system_id)), None)
+                if target is None:
+                    messages.error(request, "Selected operating system not found")
+                    return redirect("asset-detail", asset_ref=asset["assetname"])
+
+                if _os_matches_value(target, source_os_value):
+                    messages.info(request, "OS value is already matched")
+                    return redirect("asset-detail", asset_ref=asset["assetname"])
+
+                updated_aliases = _append_alias(target.get("aliases") or [], source_os_value)
+                api_request(
+                    *_creds(request),
+                    "PATCH",
+                    f"/v1/operatingsystems/{target['id']}",
+                    payload={"aliases": updated_aliases},
+                )
+                messages.success(request, f"Added alias '{source_os_value}' to OS '{target.get('name')}'")
+                notify_ui_update("operatingsystems", "alias-added", target.get("name", ""))
+                return redirect("asset-detail", asset_ref=asset["assetname"])
         except ServiceError as exc:
             messages.error(request, str(exc))
 
@@ -612,6 +900,9 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         messages.error(request, str(exc))
         return redirect("assets")
 
+    asset_os_value = _asset_os_value(asset)
+    asset_os_mismatch = bool(asset_os_value) and _find_matching_operatingsystem(operating_systems, asset_os_value) is None
+
     return render(
         request,
         "webui/asset_detail.html",
@@ -620,6 +911,9 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             "attributes": attributes,
             "assignment_form": assignment_form,
             "update_form": update_form,
+            "operating_systems": operating_systems,
+            "asset_os_value": asset_os_value,
+            "asset_os_mismatch": asset_os_mismatch,
         },
     )
 
@@ -691,8 +985,13 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
     sort_by = _param(request, "sort_by") or "name"
     sort_dir = _sort_direction(request)
     datatypes: list[dict[str, Any]] = []
+    operating_systems: list[dict[str, Any]] = []
     try:
         datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
+    except ServiceError:
+        pass
+    try:
+        operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
     except ServiceError:
         pass
 
@@ -707,10 +1006,14 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
             return redirect("attributes")
         if create_form.is_valid():
             try:
-                api_request(*_creds(request), "POST", "/v1/attributes", payload=create_form.cleaned_data)
+                payload = dict(create_form.cleaned_data)
+                payload["fetchmethods"] = _parse_fetchmethod_rows(request.POST)
+                api_request(*_creds(request), "POST", "/v1/attributes", payload=payload)
                 messages.success(request, "Attribute created")
                 notify_ui_update("attributes", "created", create_form.cleaned_data["name"])
                 return redirect("attributes")
+            except ValueError as exc:
+                messages.error(request, str(exc))
             except ServiceError as exc:
                 messages.error(request, str(exc))
 
@@ -745,6 +1048,7 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
             "attributes": filtered_items,
             "create_form": create_form,
             "datatypes": datatypes,
+            "operating_systems": operating_systems,
             "filters": {
                 "q": search,
                 "sort_by": sort_by,
@@ -758,13 +1062,19 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
 @login_required
 def attribute_form_view(request: HttpRequest, attribute_id: int | None = None) -> HttpResponse:
     datatypes: list[dict[str, Any]] = []
+    operating_systems: list[dict[str, Any]] = []
     try:
         datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
+    except ServiceError:
+        pass
+    try:
+        operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
     except ServiceError:
         pass
     datatype_choices = [(item["name"], item["name"]) for item in datatypes if item.get("name")]
 
     attribute = None
+    fetchmethod_rows: list[dict[str, Any]] = []
     initial: dict[str, Any] = {}
     if attribute_id is not None:
         try:
@@ -779,30 +1089,52 @@ def attribute_form_view(request: HttpRequest, attribute_id: int | None = None) -
                 "description": attribute.get("description") or "",
                 "allow_multiple": attribute.get("allow_multiple", False),
             }
+            fetchmethod_rows = attribute.get("fetchmethods") or []
         except ServiceError as exc:
             messages.error(request, str(exc))
             return redirect("attributes")
 
-    form = AttributeForm(request.POST or None, initial=initial, datatype_choices=datatype_choices)
+    form = AttributeForm(
+        request.POST or None,
+        initial=initial,
+        datatype_choices=datatype_choices,
+    )
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("attributes")
+        if attribute is not None and attribute.get("immutable"):
+            messages.error(request, f"Attribute '{attribute.get('name')}' is immutable and cannot be changed")
+            return redirect("attributes")
         if form.is_valid():
             try:
+                payload = dict(form.cleaned_data)
+                payload["fetchmethods"] = _parse_fetchmethod_rows(request.POST)
                 if attribute_id is None:
-                    api_request(*_creds(request), "POST", "/v1/attributes", payload=form.cleaned_data)
+                    api_request(*_creds(request), "POST", "/v1/attributes", payload=payload)
                     messages.success(request, "Attribute created")
                     notify_ui_update("attributes", "created", form.cleaned_data["name"])
                 else:
-                    api_request(*_creds(request), "PATCH", f"/v1/attributes/{attribute_id}", payload=form.cleaned_data)
+                    api_request(*_creds(request), "PATCH", f"/v1/attributes/{attribute_id}", payload=payload)
                     messages.success(request, "Attribute updated")
                     notify_ui_update("attributes", "updated", form.cleaned_data["name"])
                 return redirect("attributes")
+            except ValueError as exc:
+                messages.error(request, str(exc))
             except ServiceError as exc:
                 messages.error(request, str(exc))
 
-    return render(request, "webui/attribute_form.html", {"form": form, "attribute": attribute, "datatypes": datatypes})
+    return render(
+        request,
+        "webui/attribute_form.html",
+        {
+            "form": form,
+            "attribute": attribute,
+            "datatypes": datatypes,
+            "operating_systems": operating_systems,
+            "fetchmethod_rows": fetchmethod_rows,
+        },
+    )
 
 
 @login_required
@@ -813,6 +1145,12 @@ def attribute_delete_view(request: HttpRequest, attribute_id: int) -> HttpRespon
         messages.error(request, "This user has readonly access.")
         return redirect("attributes")
     try:
+        attributes = api_request(*_creds(request), "GET", "/v1/attributes")
+        attribute = next((item for item in attributes if item.get("id") == attribute_id), None)
+        if attribute is not None and attribute.get("immutable"):
+            messages.error(request, f"Attribute '{attribute.get('name')}' is immutable and cannot be deleted")
+            return redirect("attributes")
+
         api_request(*_creds(request), "DELETE", f"/v1/attributes/{attribute_id}")
         messages.success(request, "Attribute deleted")
         notify_ui_update("attributes", "deleted", str(attribute_id))
@@ -879,6 +1217,134 @@ def datatypes_view(request: HttpRequest) -> HttpResponse:
             "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "builtin_validator", "regex_pattern", "description"]),
         },
     )
+
+
+@login_required
+def operatingsystems_view(request: HttpRequest) -> HttpResponse:
+    search = _raw_param(request, "q") or _param(request, "name")
+    sort_by = _param(request, "sort_by") or "name"
+    sort_dir = _sort_direction(request)
+    create_form = OperatingSystemForm(request.POST if request.method == "POST" else None)
+
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("operatingsystems")
+        if create_form.is_valid():
+            try:
+                payload = {
+                    "name": create_form.cleaned_data["name"],
+                    "description": create_form.cleaned_data["description"] or None,
+                    "aliases": _parse_aliases_text(create_form.cleaned_data["aliases"]),
+                }
+                api_request(*_creds(request), "POST", "/v1/operatingsystems", payload=payload)
+                messages.success(request, "Operating system created")
+                notify_ui_update("operatingsystems", "created", create_form.cleaned_data["name"])
+                return redirect("operatingsystems")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    items: list[dict[str, Any]] = []
+    try:
+        items = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+
+    filtered_items: list[dict[str, Any]] = []
+    for item in items:
+        if not _operatingsystem_matches_logic_query(item, search):
+            continue
+        filtered_items.append(item)
+
+    filtered_items = _sort_items(
+        filtered_items,
+        sort_by,
+        sort_dir,
+        {
+            "name": lambda item: str(item.get("name") or "").lower(),
+            "description": lambda item: str(item.get("description") or "").lower(),
+            "aliases": lambda item: " ".join(item.get("aliases") or []).lower(),
+        },
+    )
+
+    return render(
+        request,
+        "webui/operatingsystems_list.html",
+        {
+            "operatingsystems": filtered_items,
+            "create_form": create_form,
+            "filters": {
+                "q": search,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "aliases", "description"]),
+        },
+    )
+
+
+@login_required
+def operatingsystem_form_view(request: HttpRequest, operatingsystem_id: int | None = None) -> HttpResponse:
+    item: dict[str, Any] | None = None
+    initial: dict[str, Any] = {}
+
+    if operatingsystem_id is not None:
+        try:
+            operatingsystems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+            item = next((entry for entry in operatingsystems if entry["id"] == operatingsystem_id), None)
+            if item is None:
+                messages.error(request, "Operating system not found")
+                return redirect("operatingsystems")
+            initial = {
+                "name": item["name"],
+                "description": item.get("description") or "",
+                "aliases": ", ".join(item.get("aliases") or []),
+            }
+        except ServiceError as exc:
+            messages.error(request, str(exc))
+            return redirect("operatingsystems")
+
+    form = OperatingSystemForm(request.POST or None, initial=initial)
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("operatingsystems")
+        if form.is_valid():
+            payload = {
+                "name": form.cleaned_data["name"],
+                "description": form.cleaned_data["description"] or None,
+                "aliases": _parse_aliases_text(form.cleaned_data["aliases"]),
+            }
+            try:
+                if operatingsystem_id is None:
+                    api_request(*_creds(request), "POST", "/v1/operatingsystems", payload=payload)
+                    messages.success(request, "Operating system created")
+                    notify_ui_update("operatingsystems", "created", payload["name"])
+                else:
+                    api_request(*_creds(request), "PATCH", f"/v1/operatingsystems/{operatingsystem_id}", payload=payload)
+                    messages.success(request, "Operating system updated")
+                    notify_ui_update("operatingsystems", "updated", payload["name"])
+                return redirect("operatingsystems")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    return render(request, "webui/operatingsystem_form.html", {"form": form, "operatingsystem": item})
+
+
+@login_required
+def operatingsystem_delete_view(request: HttpRequest, operatingsystem_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("operatingsystems")
+    if request.user.readonly:
+        messages.error(request, "This user has readonly access.")
+        return redirect("operatingsystems")
+    try:
+        api_request(*_creds(request), "DELETE", f"/v1/operatingsystems/{operatingsystem_id}")
+        messages.success(request, "Operating system deleted")
+        notify_ui_update("operatingsystems", "deleted", str(operatingsystem_id))
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    return redirect("operatingsystems")
 
 
 @login_required
@@ -961,6 +1427,11 @@ def audit_view(request: HttpRequest) -> HttpResponse:
             "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["created_at", "actor_username", "entity_type", "entity_ref", "action", "details"]),
         },
     )
+
+
+@login_required
+def docs_view(request: HttpRequest) -> HttpResponse:
+    return render(request, "webui/docs.html")
 
 
 @login_required

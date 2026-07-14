@@ -27,7 +27,7 @@ cd tuxcmdb-webui
 python manage.py runserver
 ```
 
-From the repository root you can also use:
+From the repository root you can also use the helper, which starts Daphne (ASGI + WebSockets):
 
 ```bash
 python tuxcmdb-webui.py start

@@ -2,11 +2,14 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    Column,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
+    Table,
     Text,
     func,
     false,
@@ -25,6 +28,12 @@ class Asset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     assetname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    operatingsystem_id: Mapped[int | None] = mapped_column(
+        ForeignKey("operatingsystems.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    approved: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    systempass_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -34,6 +43,7 @@ class Asset(Base):
     )
 
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="asset")
+    operatingsystem: Mapped["OperatingSystem | None"] = relationship()
 
     @validates("assetname")
     def normalize_assetname(self, key: str, value: str) -> str:
@@ -49,6 +59,7 @@ class Attribute(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_type: Mapped[str] = mapped_column(String(32), ForeignKey("datatypes.name"), nullable=False, default="string")
     allow_multiple: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
+    immutable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -58,6 +69,49 @@ class Attribute(Base):
 
     assignments: Mapped[list["Assignment"]] = relationship(back_populates="attribute")
     datatype: Mapped["Datatype"] = relationship(back_populates="attributes")
+    fetchmethods: Mapped[list["AttributeFetchMethod"]] = relationship(back_populates="attribute")
+
+
+attribute_fetchmethod_operatingsystems = Table(
+    "attribute_fetchmethod_operatingsystems",
+    Base.metadata,
+    Column("fetchmethod_id", Integer, ForeignKey("attribute_fetchmethods.id", ondelete="CASCADE"), primary_key=True),
+    Column("operatingsystem_id", Integer, ForeignKey("operatingsystems.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class AttributeFetchMethod(Base):
+    __tablename__ = "attribute_fetchmethods"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    attribute_id: Mapped[int] = mapped_column(ForeignKey("attributes.id", ondelete="CASCADE"), nullable=False)
+    command: Mapped[str] = mapped_column(Text, nullable=False)
+
+    attribute: Mapped[Attribute] = relationship(back_populates="fetchmethods")
+    supported_operatingsystems: Mapped[list["OperatingSystem"]] = relationship(
+        secondary="attribute_fetchmethod_operatingsystems",
+        back_populates="fetchmethods",
+    )
+
+
+class OperatingSystem(Base):
+    __tablename__ = "operatingsystems"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    aliases: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    fetchmethods: Mapped[list[AttributeFetchMethod]] = relationship(
+        secondary="attribute_fetchmethod_operatingsystems",
+        back_populates="supported_operatingsystems",
+    )
 
 
 class Datatype(Base):

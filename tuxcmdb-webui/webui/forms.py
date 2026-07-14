@@ -81,3 +81,9 @@ class DatatypeForm(forms.Form):
     description = forms.CharField(widget=forms.Textarea(attrs=TEXTAREA_INPUT), required=False)
     builtin_validator = forms.CharField(max_length=32, required=False, widget=forms.TextInput(attrs=TEXT_INPUT))
     regex_pattern = forms.CharField(widget=forms.Textarea(attrs={**TEXTAREA_INPUT, "rows": 2}), required=False)
+
+
+class OperatingSystemForm(forms.Form):
+    name = forms.CharField(max_length=120, widget=forms.TextInput(attrs=TEXT_INPUT))
+    description = forms.CharField(widget=forms.Textarea(attrs=TEXTAREA_INPUT), required=False)
+    aliases = forms.CharField(widget=forms.Textarea(attrs={**TEXTAREA_INPUT, "rows": 2}), required=False)

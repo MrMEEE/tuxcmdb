@@ -51,6 +51,8 @@ curl -s -u "$AUTH" "$API/v1/datatypes" | jq '.[] | select(.builtin_validator != 
 
 ## 1) Create attributes
 
+Note: Attributes can be marked immutable internally (for example `os`). Immutable attribute definitions cannot be updated or deleted via API/WebUI; only assignments are allowed.
+
 Create a `location` attribute:
 
 ```bash
@@ -256,6 +258,80 @@ Find assets by attribute ID instead of name:
 
 ```bash
 curl -u "$AUTH" "$API/v1/assets/by-attribute?attribute_id=$LOCATION_ATTR_ID&value=dc1"
+```
+
+## 6) Approval workflow for agent onboarding
+
+Approval state values:
+
+- `0` = not pending
+- `1` = pending
+- `2` = approved
+- `3` = rejected
+
+List assets and inspect `approved` state:
+
+```bash
+curl -u "$AUTH" "$API/v1/assets"
+```
+
+Approve one asset:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/approve"
+```
+
+Approve all pending assets:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/approve-all"
+```
+
+## 7) Agent registration/bootstrap/report flow
+
+Register a new asset without API user credentials:
+
+```bash
+curl -X POST "$API/v1/agent/register" \
+  -H "Content-Type: application/json" \
+  -d '{"assetname":"srv-new-01"}'
+```
+
+Register against an existing asset id:
+
+```bash
+curl -X POST "$API/v1/agent/register" \
+  -H "Content-Type: application/json" \
+  -d '{"asset_id": 123}'
+```
+
+The response contains a one-time `systempass`. Keep it safe on the agent host.
+
+Bootstrap tasks for a specific OS (example: `linux`):
+
+```bash
+curl -X POST "$API/v1/agent/bootstrap" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asset_id": 123,
+    "systempass": "paste-systempass-here",
+    "operating_system": "linux"
+  }'
+```
+
+Report fetched values:
+
+```bash
+curl -X POST "$API/v1/agent/report" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asset_id": 123,
+    "systempass": "paste-systempass-here",
+    "values": [
+      {"attribute_name": "hostname", "value": "srv-new-01"},
+      {"attribute_name": "kernel", "value": "6.8.0-57-generic"}
+    ]
+  }'
 ```
 
 ## Common errors

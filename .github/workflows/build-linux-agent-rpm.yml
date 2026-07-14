@@ -1,0 +1,82 @@
+name: Build Linux Agent Packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-linux-packages:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install fpm
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev rpm
+          sudo gem install --no-document fpm
+
+      - name: Prepare build root
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p buildroot/opt/tuxcmdb-agent
+          mkdir -p buildroot/usr/bin
+          mkdir -p buildroot/usr/lib/systemd/system
+
+          python -m pip install --upgrade pip
+          python -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
+
+          cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+
+          cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
+          #!/usr/bin/env bash
+          exec /usr/bin/python3 /opt/tuxcmdb-agent/tuxcmdb_agent.py "$@"
+          EOF
+          chmod +x buildroot/usr/bin/tuxcmdb-agent
+
+          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/usr/lib/systemd/system/tuxcmdb-agent.service
+          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/usr/lib/systemd/system/tuxcmdb-agent.timer
+
+          chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-agent \
+            -v "$VERSION" \
+            --architecture noarch \
+            --depends python3 \
+            --after-install packaging/scripts/postinstall.sh \
+            --before-remove packaging/scripts/preuninstall.sh \
+            -C buildroot .
+
+          fpm -s dir -t deb \
+            -n tuxcmdb-agent \
+            -v "$VERSION" \
+            --architecture all \
+            --depends python3 \
+            --after-install packaging/scripts/postinstall.sh \
+            --before-remove packaging/scripts/preuninstall.sh \
+            -C buildroot .
+
+          mkdir -p dist
+          mv ./*.rpm dist/
+          mv ./*.deb dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuxcmdb-agent-rpm
+          path: dist/*
+
+      - name: Attach RPM to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*

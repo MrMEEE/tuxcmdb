@@ -494,10 +494,93 @@
       return;
     }
 
+    const addFetchMethodButton = event.target.closest(".js-add-fetchmethod-row");
+    if (addFetchMethodButton) {
+      event.preventDefault();
+      const containerId = addFetchMethodButton.getAttribute("data-container");
+      const templateId = addFetchMethodButton.getAttribute("data-template");
+      const container = containerId ? document.getElementById(containerId) : null;
+      const template = templateId ? document.getElementById(templateId) : null;
+      if (!container || !template || !template.content) {
+        return;
+      }
+      const nextIndex = parseInt(container.getAttribute("data-next-index") || "0", 10);
+      const fragment = template.content.cloneNode(true);
+      fragment.querySelectorAll("[name]").forEach((el) => {
+        el.setAttribute("name", el.getAttribute("name").replace("__ROW__", String(nextIndex)));
+      });
+      container.appendChild(fragment);
+      container.setAttribute("data-next-index", String(nextIndex + 1));
+      return;
+    }
+
+    const removeFetchMethodButton = event.target.closest(".js-remove-fetchmethod-row");
+    if (removeFetchMethodButton) {
+      event.preventDefault();
+      const row = removeFetchMethodButton.closest(".js-fetchmethod-row");
+      const container = row ? row.parentElement : null;
+      if (!container || !row) {
+        return;
+      }
+      const rows = container.querySelectorAll(".js-fetchmethod-row");
+      if (rows.length <= 1) {
+        row.querySelectorAll("input").forEach((input) => {
+          input.value = "";
+        });
+        row.querySelectorAll("select").forEach((select) => {
+          Array.from(select.options).forEach((option) => {
+            option.selected = false;
+          });
+        });
+      } else {
+        row.remove();
+      }
+      return;
+    }
+
     const restoreButton = event.target.closest(".js-history-restore-btn");
     if (restoreButton) {
       event.preventDefault();
-      await restoreAssetAttributeValue(restoreButton);
+      await restoreAssetAttributeValue(restoreButton);      return;
+    }
+
+    const editAssignmentButton = event.target.closest(".js-edit-assignment-btn");
+    if (editAssignmentButton) {
+      event.preventDefault();
+      const modal = document.getElementById("editAssignmentModal");
+      const nameInput = document.getElementById("editAssignmentAttributeName");
+      const nameLabel = document.getElementById("editAssignmentAttributeLabel");
+      const valueInput = document.getElementById("editAssignmentValue");
+      if (!modal || !nameInput || !nameLabel || !valueInput) {
+        return;
+      }
+
+      const attributeName = editAssignmentButton.getAttribute("data-attribute-name") || "";
+      const assignmentValue = editAssignmentButton.getAttribute("data-assignment-value") || "";
+      nameInput.value = attributeName;
+      nameLabel.value = attributeName;
+      valueInput.value = assignmentValue;
+      modal.removeAttribute("hidden");
+      valueInput.focus();
+      return;
+    }
+
+    const matchOsButton = event.target.closest(".js-match-os-btn");
+    if (matchOsButton) {
+      const sourceOsValue = matchOsButton.getAttribute("data-source-os-value") || "";
+      const assetId = matchOsButton.getAttribute("data-asset-id") || "";
+      const sourceInput = document.getElementById("matchOsSourceValue");
+      const assetInput = document.getElementById("matchOsAssetId");
+      const detectedLabel = document.getElementById("matchOsDetectedLabel");
+      if (sourceInput) {
+        sourceInput.value = sourceOsValue;
+      }
+      if (assetInput) {
+        assetInput.value = assetId;
+      }
+      if (detectedLabel) {
+        detectedLabel.value = sourceOsValue;
+      }
       return;
     }
 

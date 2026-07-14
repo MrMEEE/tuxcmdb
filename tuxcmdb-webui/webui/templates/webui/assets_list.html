@@ -13,6 +13,9 @@
     <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Decommissioned</span><i class="la la-archive"></i></div><h3 class="mt-2 mb-0">{{ decommissioned_count }}</h3></div></div>
   </div>
   <div class="col-md-3">
+    <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Pending approval</span><i class="la la-hourglass-half"></i></div><h3 class="mt-2 mb-0">{{ pending_approval_count }}</h3></div></div>
+  </div>
+  <div class="col-md-3">
     <div class="card"><div class="card-body card-block info"><div class="d-flex justify-content-between"><span>Readonly mode</span><i class="la la-lock"></i></div><h3 class="mt-2 mb-0">{% if request.user.readonly %}On{% else %}Off{% endif %}</h3></div></div>
   </div>
 </div>
@@ -20,9 +23,16 @@
 <div class="card shadow-sm">
   <div class="card-header d-flex justify-content-between align-items-center py-2">
     <h5 class="mb-0">Asset Inventory</h5>
-    <button class="btn btn-accent btn-sm" data-open-modal="createAssetModal" {% if request.user.readonly %}disabled{% endif %}>
-      <i class="la la-plus me-1"></i>New Asset
-    </button>
+    <div class="d-flex gap-2">
+      <form method="post" action="{% url 'assets' %}" class="m-0">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="approve-all">
+        <button class="btn btn-default btn-sm" type="submit" {% if request.user.readonly %}disabled{% endif %}>Approve All</button>
+      </form>
+      <button class="btn btn-accent btn-sm" data-open-modal="createAssetModal" {% if request.user.readonly %}disabled{% endif %}>
+        <i class="la la-plus me-1"></i>New Asset
+      </button>
+    </div>
   </div>
   <div class="card-body">
     <form id="assets-filters" method="get" class="row g-2 mb-3" data-auto-submit>
@@ -43,6 +53,7 @@
       <thead>
         <tr>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.assetname.field }}" data-sort-dir="{{ sort_links.assetname.next_dir }}">Assetname {{ sort_links.assetname.indicator }}</button></th>
+          <th>Approved</th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.active.field }}" data-sort-dir="{{ sort_links.active.next_dir }}">Active {{ sort_links.active.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.attributes_count.field }}" data-sort-dir="{{ sort_links.attributes_count.next_dir }}">Attributes {{ sort_links.attributes_count.indicator }}</button></th>
           <th></th>
@@ -52,16 +63,79 @@
         {% for asset in assets %}
         <tr class="{% if not asset.active %}table-warning{% endif %}">
           <td>{{ asset.assetname }}</td>
+          <td>
+            {% if asset.approved == 2 %}
+            <span class="badge bg-success-subtle text-success-emphasis">Approved</span>
+            {% elif asset.approved == 1 %}
+            <form method="post" action="{% url 'assets' %}" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="approve">
+              <input type="hidden" name="asset_id" value="{{ asset.id }}">
+              <button class="btn btn-xs btn-default" type="submit" {% if request.user.readonly %}disabled{% endif %}>Approve</button>
+            </form>
+            {% elif asset.approved == 3 %}
+            <span class="badge bg-danger-subtle text-danger-emphasis">Rejected</span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-body">Not pending</span>
+            {% endif %}
+          </td>
           <td>{% if asset.active %}Yes{% else %}No{% endif %}</td>
           <td>{{ asset.attributes|length }}</td>
-          <td><a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a></td>
+          <td class="d-flex gap-2 align-items-center">
+            <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a>
+            {% if asset.os_mismatch %}
+            <button
+              class="btn btn-sm btn-warning js-match-os-btn"
+              type="button"
+              data-open-modal="matchOsModal"
+              data-asset-id="{{ asset.id }}"
+              data-source-os-value="{{ asset.asset_os_value }}"
+              {% if request.user.readonly %}disabled{% endif %}
+            >
+              Match OS
+            </button>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="4">No assets found.</td></tr>
+        <tr><td colspan="5">No assets found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
     </div>
+  </div>
+</div>
+
+<div id="matchOsModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Match OS</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="matchOsModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'assets' %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="match-os">
+      <input type="hidden" id="matchOsAssetId" name="asset_id" value="">
+      <input type="hidden" id="matchOsSourceValue" name="source_os_value" value="">
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Detected OS</label>
+          <input class="form-control" id="matchOsDetectedLabel" type="text" value="" readonly>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Match to Operating System</label>
+          <select class="form-control" name="operatingsystem_id">
+            {% for os in operating_systems %}
+            <option value="{{ os.id }}">{{ os.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="matchOsModal">Cancel</button>
+        <button class="btn btn-warning btn-sm" type="submit" {% if request.user.readonly %}disabled{% endif %}>Match OS</button>
+      </div>
+    </form>
   </div>
 </div>
 

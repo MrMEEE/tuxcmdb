@@ -9,6 +9,9 @@
       <div class="card-body">
       <form method="post">
         {% csrf_token %}
+        {% if attribute and attribute.immutable %}
+        <div class="alert alert-warning">This attribute is immutable and cannot be changed.</div>
+        {% endif %}
         <div class="form-group">
           <label>Name</label>
           {{ form.name }}
@@ -21,11 +24,70 @@
           <label>{{ form.allow_multiple }} Allow multiple active assignments</label>
         </div>
         <div class="form-group">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="mb-0">Fetch methods by operating system</label>
+            <button class="btn btn-default btn-xs js-add-fetchmethod-row" type="button" data-container="attributeFetchMethods" data-template="fetchMethodRowTemplate">Add Fetch Method</button>
+          </div>
+          <div id="attributeFetchMethods" class="d-flex flex-column gap-2 mb-2" data-next-index="{{ fetchmethod_rows|length|default:1 }}">
+            {% for row in fetchmethod_rows %}
+            <div class="row g-2 align-items-start js-fetchmethod-row">
+              <div class="col-5">
+                <input class="form-control" type="text" name="fetchmethod_command_{{ forloop.counter0 }}" value="{{ row.command }}" placeholder="Command, e.g. dmidecode -s system-serial-number">
+              </div>
+              <div class="col-6">
+                <select class="form-control" name="fetchmethod_os_{{ forloop.counter0 }}" multiple size="4">
+                  {% for os in operating_systems %}
+                  <option value="{{ os.name }}" {% if os.name in row.supported_operatingsystems %}selected{% endif %}>{{ os.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-1 d-flex justify-content-end">
+                <button class="btn btn-danger btn-xs js-remove-fetchmethod-row" type="button" aria-label="Remove fetch method row">&times;</button>
+              </div>
+            </div>
+            {% empty %}
+            <div class="row g-2 align-items-start js-fetchmethod-row">
+              <div class="col-5">
+                <input class="form-control" type="text" name="fetchmethod_command_0" placeholder="Command, e.g. dmidecode -s system-serial-number">
+              </div>
+              <div class="col-6">
+                <select class="form-control" name="fetchmethod_os_0" multiple size="4">
+                  {% for os in operating_systems %}
+                  <option value="{{ os.name }}">{{ os.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-1 d-flex justify-content-end">
+                <button class="btn btn-danger btn-xs js-remove-fetchmethod-row" type="button" aria-label="Remove fetch method row">&times;</button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          <template id="fetchMethodRowTemplate">
+            <div class="row g-2 align-items-start js-fetchmethod-row">
+              <div class="col-5">
+                <input class="form-control" type="text" name="fetchmethod_command___ROW__" placeholder="Command, e.g. dmidecode -s system-serial-number">
+              </div>
+              <div class="col-6">
+                <select class="form-control" name="fetchmethod_os___ROW__" multiple size="4">
+                  {% for os in operating_systems %}
+                  <option value="{{ os.name }}">{{ os.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-1 d-flex justify-content-end">
+                <button class="btn btn-danger btn-xs js-remove-fetchmethod-row" type="button" aria-label="Remove fetch method row">&times;</button>
+              </div>
+            </div>
+          </template>
+          <small class="text-muted d-block mt-1">Each row maps one fetch command to one or more operating systems. Hold Ctrl/Cmd to select multiple.</small>
+        </div>
+        <div class="form-group">
           <label>Description</label>
           {{ form.description }}
         </div>
         <div class="button-row">
-          <button class="btn btn-accent" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+          <button class="btn btn-accent" type="submit" {% if request.user.readonly or attribute and attribute.immutable %}disabled{% endif %}>Save</button>
           <a class="btn btn-default" href="{% url 'attributes' %}">Cancel</a>
         </div>
       </form>

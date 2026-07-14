@@ -1,5 +1,7 @@
 # TuxCMDB
 
+**Current version:** 0.1.0
+
 A simple Content Management Database for servers, switches, and other infrastructure components.
 
 ## Current Scope
@@ -90,6 +92,20 @@ python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
 ```
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
+
+## Releasing
+
+Use the release script from the repository root:
+
+```bash
+./release.sh
+```
+
+Or call the Python tool directly:
+
+```bash
+python tools/release.py
+```
 
 ## Example Connection URLs
 

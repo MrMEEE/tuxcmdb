@@ -7,17 +7,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TuxCMDB WebUI{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'webui/vendor/vvveb/admin.css' %}">
-  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}">
+  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}?v=20260714-3">
 </head>
 <body class="home" data-bs-theme="dark">
   <div id="container">
     <div class="sidebar">
       <div class="logo sidebar-brand-wrap">
         <a href="{% url 'assets' %}" class="tuxcmdb-sidebar-logo" title="TuxCMDB">
-          <span class="tuxcmdb-logo-text"><span class="tux-green">Tux</span>CMDB</span>
-        </a>
-        <a id="search-btn" title="Search">
-          <i class="icon-search"></i>
+          <span
+            id="sidebarBrandText"
+            class="tuxcmdb-logo-text"
+            data-full="CMDB"
+            data-short="DB"
+          ><span class="tux-green">Tux</span>CMDB</span>
         </a>
       </div>
       <nav class="navbar navbar-expand-md">
@@ -57,6 +59,16 @@
               </a>
             </li>
             <li class="nav-item">
+              <a href="{% url 'operatingsystems' %}" class="nav-link d-none d-md-block" title="Operating systems">
+                <i class="la la-desktop"></i>
+                <span class="title">Operating Systems</span>
+              </a>
+              <a href="{% url 'operatingsystems' %}" class="nav-link mobile d-block d-md-none" title="Operating systems">
+                <i class="la la-desktop"></i>
+                <span class="title">Operating Systems</span>
+              </a>
+            </li>
+            <li class="nav-item">
               <a href="{% url 'apiusers' %}" class="nav-link d-none d-md-block" title="Apiusers">
                 <i class="la la-users"></i>
                 <span class="title">Apiusers</span>
@@ -87,33 +99,6 @@
           <button class="btn px-2 ms-1 menu-toggle" title="Toggle sidebar width" type="button">
             <i class="la la-bars"></i>
           </button>
-          <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="icon-eye-outline"></i>
-            <span>View live website</span>
-          </button>
-          <div class="dropdown-menu">
-            <a class="dropdown-item d-flex" href="{% url 'assets' %}">
-              <span class="flex-grow-1">Assets</span>
-              <i class="la la-external-link-alt"></i>
-            </a>
-            <a class="dropdown-item d-flex" href="{% url 'attributes' %}">
-              <span class="flex-grow-1">Attributes</span>
-              <i class="la la-external-link-alt"></i>
-            </a>
-            <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
-              <span class="flex-grow-1">Apiusers</span>
-              <i class="la la-external-link-alt"></i>
-            </a>
-            <a class="dropdown-item d-flex" href="{% url 'audit' %}">
-              <span class="flex-grow-1">Audit</span>
-              <i class="la la-external-link-alt"></i>
-            </a>
-            <div class="dropdown-divider"></div>
-            <a class="dropdown-item" href="{% url 'datatypes' %}">
-              <span class="flex-grow-1">Datatypes</span>
-              <i class="la la-edit ms-2"></i>
-            </a>
-          </div>
         </div>
         <div class="btn-group">
           <button type="button" class="btn px-1 dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -130,26 +115,25 @@
             <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
               <div class="flex-grow-1"><i class="icon-server-outline me-2 text-body-tertiary"></i><span>Apiusers</span></div>
             </a>
+            <a class="dropdown-item d-flex" href="{% url 'operatingsystems' %}">
+              <div class="flex-grow-1"><i class="icon-server-outline me-2 text-body-tertiary"></i><span>Operating Systems</span></div>
+            </a>
             <a class="dropdown-item d-flex" href="{% url 'audit' %}">
               <div class="flex-grow-1"><i class="icon-list-outline me-2 text-body-tertiary"></i><span>Audit</span></div>
             </a>
           </div>
         </div>
         <div class="btn-group">
-          <button type="button" class="btn dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+          <button type="button" class="btn" aria-label="Language">
             <i class="la la-flag me-1"></i>
             <span>English</span>
           </button>
-          <div class="dropdown-menu">
-            <button class="dropdown-item" type="button">English</button>
-            <button class="dropdown-item" type="button">Romanian</button>
-          </div>
         </div>
         <div class="vr align-middle mx-1"></div>
         <button id="color-theme-switch" title="Switch sidebar color theme" class="btn px-1 ms-1" type="button">
           <i class="la la-sun"></i>
         </button>
-        <a id="top-docs-btn" class="btn px-1" href="https://github.com/givanz/vvveb-admin-template" target="_blank" rel="noreferrer">
+        <a id="top-docs-btn" class="btn px-1" href="{% url 'docs' %}">
           <i class="la la-lg la-question-circle"></i>
           <span>Docs</span>
         </a>
@@ -201,14 +185,34 @@
   <script src="{% static 'webui/vendor/vvveb/jquery.min.js' %}"></script>
   <script src="{% static 'webui/vendor/vvveb/popper.min.js' %}"></script>
   <script src="{% static 'webui/vendor/vvveb/bootstrap.min.js' %}"></script>
-  <script src="{% static 'webui/vendor/vvveb/theme.js' %}?v=20260711-1"></script>
+  <script src="{% static 'webui/vendor/vvveb/theme.js' %}?v=20260714-1"></script>
   <script src="{% static 'webui/js/modal-forms.js' %}?v=20260711-1"></script>
-  <script src="{% static 'webui/js/live-updates.js' %}?v=20260713-1"></script>
+  <script src="{% static 'webui/js/live-updates.js' %}?v=20260715-2"></script>
   <script>
     (function () {
+      function syncSidebarBrand() {
+        var container = document.getElementById('container');
+        var brand = document.getElementById('sidebarBrandText');
+        if (!container || !brand) return;
+
+        var suffix = container.classList.contains('small-nav') ? brand.dataset.short : brand.dataset.full;
+        var prefix = container.classList.contains('small-nav') ? 'T' : 'Tux';
+        brand.innerHTML = '<span class="tux-green">' + prefix + '</span>' + suffix;
+      }
+
       var toggle = document.getElementById('userMenuToggle');
       var menu   = document.getElementById('userMenu');
       if (!toggle || !menu) return;
+
+      var sidebarToggle = document.querySelector('.menu-toggle');
+      if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', function () {
+          setTimeout(syncSidebarBrand, 0);
+        });
+      }
+
+      syncSidebarBrand();
+
       toggle.addEventListener('click', function (e) {
         e.stopPropagation();
         var open = menu.classList.toggle('open');
