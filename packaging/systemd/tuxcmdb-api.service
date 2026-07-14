@@ -1,0 +1,13 @@
+[Unit]
+Description=TuxCMDB API Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/tuxcmdb-api
+ExecStart=/opt/tuxcmdb-api/venv/bin/python /opt/tuxcmdb-api/tuxcmdb-api/app.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

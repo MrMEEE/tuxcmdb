@@ -1,0 +1,170 @@
+name: Build RHEL RPM Packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-rpms:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - el: 9
+            container: almalinux:9
+          - el: 10
+            container: almalinux:10
+
+    container:
+      image: ${{ matrix.container }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          dnf install -y git ca-certificates python3 python3-pip python3-virtualenv ruby ruby-devel rpm-build findutils
+          gem install --no-document fpm
+
+      - name: Build RPMs
+        run: |
+          set -euo pipefail
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          ITERATION="1.el${{ matrix.el }}"
+          DIST_DIR="dist/el${{ matrix.el }}"
+
+          rm -rf buildroot "$DIST_DIR"
+          mkdir -p "$DIST_DIR"
+
+          chmod +x packaging/scripts/*.sh
+
+          make_venv() {
+            local target_dir="$1"
+            local requirements="$2"
+            python3 -m venv "$target_dir"
+            "$target_dir/bin/pip" install --upgrade pip
+            "$target_dir/bin/pip" install -r "$requirements"
+          }
+
+          # Build pydeps roots
+          mkdir -p buildroot/tuxcmdb-pydeps/opt/tuxcmdb
+          mkdir -p buildroot/tuxcmdb-api-pydeps/opt/tuxcmdb-api
+          mkdir -p buildroot/tuxcmdb-webui-pydeps/opt/tuxcmdb-webui
+
+          make_venv buildroot/tuxcmdb-pydeps/opt/tuxcmdb/venv tuxcmdb/requirements.txt
+          make_venv buildroot/tuxcmdb-api-pydeps/opt/tuxcmdb-api/venv tuxcmdb-api/requirements.txt
+          make_venv buildroot/tuxcmdb-webui-pydeps/opt/tuxcmdb-webui/venv tuxcmdb-webui/requirements.txt
+
+          # Build tuxcmdb code package root
+          mkdir -p buildroot/tuxcmdb/opt/tuxcmdb
+          mkdir -p buildroot/tuxcmdb/usr/bin
+          cp -r tuxcmdb buildroot/tuxcmdb/opt/tuxcmdb/
+          cp -r alembic buildroot/tuxcmdb/opt/tuxcmdb/
+          cp alembic.ini buildroot/tuxcmdb/opt/tuxcmdb/
+          cp tuxcmdb.py buildroot/tuxcmdb/opt/tuxcmdb/
+          cp version.py buildroot/tuxcmdb/opt/tuxcmdb/
+          cat > buildroot/tuxcmdb/usr/bin/tuxcmdb <<'EOF'
+          #!/usr/bin/env bash
+          exec /opt/tuxcmdb/venv/bin/python /opt/tuxcmdb/tuxcmdb.py "$@"
+          EOF
+          chmod +x buildroot/tuxcmdb/usr/bin/tuxcmdb
+
+          # Build API code package root
+          mkdir -p buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api
+          mkdir -p buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb
+          mkdir -p buildroot/tuxcmdb-api/usr/bin
+          mkdir -p buildroot/tuxcmdb-api/usr/lib/systemd/system
+          cp tuxcmdb-api/app.py buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/app.py
+          cp -r tuxcmdb-api/conf buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/
+          cp -r tuxcmdb buildroot/tuxcmdb-api/opt/tuxcmdb-api/
+          cat > buildroot/tuxcmdb-api/usr/bin/tuxcmdb-api <<'EOF'
+          #!/usr/bin/env bash
+          exec /opt/tuxcmdb-api/venv/bin/python /opt/tuxcmdb-api/tuxcmdb-api/app.py "$@"
+          EOF
+          chmod +x buildroot/tuxcmdb-api/usr/bin/tuxcmdb-api
+          cp packaging/systemd/tuxcmdb-api.service buildroot/tuxcmdb-api/usr/lib/systemd/system/tuxcmdb-api.service
+
+          # Build WebUI code package root
+          mkdir -p buildroot/tuxcmdb-webui/opt/tuxcmdb-webui
+          mkdir -p buildroot/tuxcmdb-webui/usr/bin
+          mkdir -p buildroot/tuxcmdb-webui/usr/lib/systemd/system
+          cp tuxcmdb-webui/manage.py buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cp -r tuxcmdb-webui/tuxcmdb_webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cp -r tuxcmdb-webui/webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cp -r tuxcmdb buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cat > buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui <<'EOF'
+          #!/usr/bin/env bash
+          exec /opt/tuxcmdb-webui/venv/bin/python /opt/tuxcmdb-webui/manage.py runserver 0.0.0.0:8000 --noreload
+          EOF
+          chmod +x buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui
+          cp packaging/systemd/tuxcmdb-webui.service buildroot/tuxcmdb-webui/usr/lib/systemd/system/tuxcmdb-webui.service
+
+          # Build RPMs
+          fpm -s dir -t rpm \
+            -n tuxcmdb-pydeps \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends python3 \
+            -C buildroot/tuxcmdb-pydeps .
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends "tuxcmdb-pydeps = ${VERSION}-${ITERATION}" \
+            -C buildroot/tuxcmdb .
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-api-pydeps \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends python3 \
+            -C buildroot/tuxcmdb-api-pydeps .
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-api \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends "tuxcmdb-api-pydeps = ${VERSION}-${ITERATION}" \
+            --after-install packaging/scripts/postinstall-api.sh \
+            --before-remove packaging/scripts/preuninstall-api.sh \
+            -C buildroot/tuxcmdb-api .
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-webui-pydeps \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends python3 \
+            -C buildroot/tuxcmdb-webui-pydeps .
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-webui \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends "tuxcmdb-webui-pydeps = ${VERSION}-${ITERATION}" \
+            --after-install packaging/scripts/postinstall-webui.sh \
+            --before-remove packaging/scripts/preuninstall-webui.sh \
+            -C buildroot/tuxcmdb-webui .
+
+          mv ./*.rpm "$DIST_DIR"/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuxcmdb-rpms-el${{ matrix.el }}
+          path: dist/el${{ matrix.el }}/*.rpm
+
+      - name: Attach RPMs to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/el${{ matrix.el }}/*.rpm
