@@ -19,9 +19,9 @@ jobs:
       matrix:
         include:
           - el: 9
-            container: registry.access.redhat.com/ubi9/ubi:latest
+            container: registry.access.redhat.com/ubi9/python-311:latest
           - el: 10
-            container: registry.access.redhat.com/ubi10/ubi:latest
+            container: registry.access.redhat.com/ubi10/python-312:latest
 
     container:
       image: ${{ matrix.container }}
@@ -33,7 +33,7 @@ jobs:
       - name: Install build dependencies
         run: |
           set -euo pipefail
-          dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
+          dnf install -y git ca-certificates ruby ruby-devel rpm-build findutils
           gem install --no-document fpm
 
       - name: Build RPMs

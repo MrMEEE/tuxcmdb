@@ -1,4 +1,4 @@
-name: Build Linux Agent Packages
+name: Build Linux Agent DEB Package
 
 on:
   push:
@@ -12,41 +12,32 @@ permissions:
   contents: write
 
 jobs:
-  build-linux-packages:
+  build-linux-deb:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - el: 8
-            container: registry.access.redhat.com/ubi8/python-39:latest
-          - el: 9
-            container: registry.access.redhat.com/ubi9/python-311:latest
-          - el: 10
-            container: registry.access.redhat.com/ubi10/python-312:latest
-
-    container:
-      image: ${{ matrix.container }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install fpm
+      - name: Install build dependencies
         run: |
           set -euo pipefail
-          dnf install -y git ca-certificates ruby ruby-devel rpm-build findutils
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates ruby ruby-dev
           gem install --no-document fpm
 
       - name: Prepare build root
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          ITERATION="1.el${{ matrix.el }}"
-          mkdir -p buildroot/opt/tuxcmdb-agent
+          ITERATION="1.debian"
+          DIST_DIR="dist/deb"
+
+          rm -rf buildroot "$DIST_DIR"
+          mkdir -p "$DIST_DIR"
           mkdir -p buildroot/opt/tuxcmdb-agent/lib
           mkdir -p buildroot/usr/bin
-          mkdir -p buildroot/usr/lib/systemd/system
+          mkdir -p buildroot/lib/systemd/system
 
           python3 -m pip install --upgrade pip
           python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
@@ -61,31 +52,30 @@ jobs:
           EOF
           chmod +x buildroot/usr/bin/tuxcmdb-agent
 
-          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/usr/lib/systemd/system/tuxcmdb-agent.service
-          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/usr/lib/systemd/system/tuxcmdb-agent.timer
+          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/lib/systemd/system/tuxcmdb-agent.service
+          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/lib/systemd/system/tuxcmdb-agent.timer
 
           chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
 
-          fpm -s dir -t rpm \
+          fpm -s dir -t deb \
             -n tuxcmdb-agent \
             -v "$VERSION" \
             --iteration "$ITERATION" \
-            --architecture noarch \
+            --architecture all \
             --depends python3 \
             --after-install packaging/scripts/postinstall.sh \
             --before-remove packaging/scripts/preuninstall.sh \
             -C buildroot .
 
-          mkdir -p dist/el${{ matrix.el }}
-          mv ./*.rpm dist/el${{ matrix.el }}/
+          mv ./*.deb "$DIST_DIR"/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tuxcmdb-agent-rpm-el${{ matrix.el }}
-          path: dist/el${{ matrix.el }}/*.rpm
+          name: tuxcmdb-agent-deb
+          path: dist/deb/*.deb
 
-      - name: Attach RPM to release
+      - name: Attach DEB to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/el${{ matrix.el }}/*.rpm
+          files: dist/deb/*.deb

@@ -11,6 +11,8 @@ Agent script: `agent/linux/tuxcmdb_agent.py`
 - Fetches approved task list via `POST /v1/agent/bootstrap`
 - Reports values via `POST /v1/agent/report`
 
+Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
+
 Systemd units:
 
 - `agent/linux/systemd/tuxcmdb-agent.service`
