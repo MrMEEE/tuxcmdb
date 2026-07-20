@@ -1431,7 +1431,8 @@ def audit_view(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def docs_view(request: HttpRequest) -> HttpResponse:
-    return render(request, "webui/docs.html")
+    api_url = request.build_absolute_uri("/api")
+    return render(request, "webui/docs.html", {"api_url": api_url})
 
 
 @login_required

@@ -102,7 +102,8 @@ jobs:
           cat > buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui <<'EOF'
           #!/usr/bin/env bash
           export PYTHONPATH="/opt/tuxcmdb-webui/lib${PYTHONPATH:+:$PYTHONPATH}"
-          exec /usr/bin/python3 /opt/tuxcmdb-webui/manage.py runserver 0.0.0.0:8000 --noreload
+          /usr/bin/python3 /opt/tuxcmdb-webui/manage.py migrate --noinput
+          exec /usr/bin/python3 /opt/tuxcmdb-webui/manage.py runserver 127.0.0.1:8000 --noreload
           EOF
           chmod +x buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui
           cp packaging/systemd/tuxcmdb-webui.service buildroot/tuxcmdb-webui/usr/lib/systemd/system/tuxcmdb-webui.service

@@ -20,10 +20,10 @@
   <div class="card-header py-2"><h5 class="mb-0">Base URLs</h5></div>
   <div class="card-body">
     <p class="mb-1">API root:</p>
-    <pre class="mb-3"><code>http://127.0.0.1:8080</code></pre>
+    <pre class="mb-3"><code>{{ api_url }}</code></pre>
     <p class="mb-1">Health checks:</p>
-    <pre class="mb-0"><code>GET /health
-GET /ok</code></pre>
+    <pre class="mb-0"><code>GET {{ api_url }}/health
+GET {{ api_url }}/ok</code></pre>
   </div>
 </div>
 
@@ -58,15 +58,15 @@ POST   /v1/agent/report</code></pre>
   <div class="card-header py-2"><h5 class="mb-0">Examples</h5></div>
   <div class="card-body">
     <p class="mb-1">List assets:</p>
-    <pre class="mb-3"><code>curl -u USER:PASSWORD http://127.0.0.1:8080/v1/assets</code></pre>
+    <pre class="mb-3"><code>curl -u USER:PASSWORD {{ api_url }}/v1/assets</code></pre>
     <p class="mb-1">Assign value to asset:</p>
     <pre class="mb-3"><code>curl -u USER:PASSWORD -X POST \
   -H 'Content-Type: application/json' \
   -d '{"memory_gb":"32Gi"}' \
-  http://127.0.0.1:8080/v1/assets/7/attributes</code></pre>
+  {{ api_url }}/v1/assets/7/attributes</code></pre>
     <p class="mb-1">Remove assignment value:</p>
     <pre class="mb-0"><code>curl -u USER:PASSWORD -X DELETE \
-  'http://127.0.0.1:8080/v1/assets/7/attributes/memory_gb?value=32Gi'</code></pre>
+  '{{ api_url }}/v1/assets/7/attributes/memory_gb?value=32Gi'</code></pre>
   </div>
 </div>
 {% endblock %}

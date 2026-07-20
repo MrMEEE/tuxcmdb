@@ -76,6 +76,8 @@ class AuditLogRecord:
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
     with path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):

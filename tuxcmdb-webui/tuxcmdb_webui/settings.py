@@ -5,6 +5,11 @@ SECRET_KEY = "tuxcmdb-webui-dev-secret-key-change-me"
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
 
+# Trust X-Forwarded-Proto from nginx/apache so request.is_secure() and
+# build_absolute_uri() return the correct scheme behind a reverse proxy.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+
 INSTALLED_APPS = [
     "daphne",
     "django.contrib.auth",
