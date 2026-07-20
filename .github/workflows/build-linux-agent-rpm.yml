@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
-          gem install --no-document fpm
+          gem install --no-document fpm -v 1.15.1
 
       - name: Prepare build root
         run: |
