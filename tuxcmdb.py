@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -17,6 +18,7 @@ REQUIREMENTS_FILE = BASE_DIR / "tuxcmdb" / "requirements.txt"
 VENV_DIR = BASE_DIR / ".venv"
 RPM_VENV_DIRS = (Path("/opt/tuxcmdb/venv"),)
 PACKAGED_INSTALL_ROOTS = (Path("/opt/tuxcmdb"),)
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
 
 def venv_python_path() -> Path:
@@ -157,18 +159,96 @@ def sqlite_url(database: str) -> str:
     return f"sqlite+pysqlite:///{db_path}"
 
 
+def mysql_drivername() -> str:
+    try:
+        import MySQLdb  # noqa: F401
+
+        return "mysql+mysqldb"
+    except Exception:
+        return "mysql+pymysql"
+
+
 def server_url(backend: str, host: str, port: int | None, username: str, password: str, database: str) -> str:
-    drivername = "postgresql+psycopg" if backend == "postgresql" else "mysql+pymysql"
-    return str(
-        URL.create(
-            drivername=drivername,
-            username=username,
-            password=password,
-            host=host,
-            port=port or default_port(backend),
-            database=database,
-        )
+    drivername = "postgresql+psycopg" if backend == "postgresql" else mysql_drivername()
+    return URL.create(
+        drivername=drivername,
+        username=username,
+        password=password,
+        host=host,
+        port=port or default_port(backend),
+        database=database,
+    ).render_as_string(hide_password=False)
+
+
+def mysql_socket_url(username: str, password: str, database: str, unix_socket: str) -> str:
+    return URL.create(
+        drivername=mysql_drivername(),
+        username=username,
+        password=password,
+        host=None,
+        database=database,
+        query={"unix_socket": unix_socket},
+    ).render_as_string(hide_password=False)
+
+
+def mysql_connection_candidates(
+    host: str,
+    port: int | None,
+    username: str,
+    password: str,
+    database: str,
+    unix_socket: str | None,
+) -> list[str]:
+    candidates = [server_url("mysql", host, port, username, password, database)]
+    if host.strip().lower() not in LOCAL_HOSTS:
+        return candidates
+
+    socket_paths: list[Path] = []
+    if unix_socket:
+        socket_paths.append(Path(unix_socket).expanduser())
+
+    for probe_command in (("mysql_config", "--socket"), ("mariadb_config", "--socket")):
+        probe = shutil.which(probe_command[0])
+        if not probe:
+            continue
+        try:
+            probe_result = subprocess.run(
+                [probe, probe_command[1]],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except Exception:  # pragma: no cover
+            continue
+        probe_socket = probe_result.stdout.strip() or probe_result.stderr.strip()
+        if probe_socket:
+            socket_paths.append(Path(probe_socket).expanduser())
+
+    for env_var in ("MARIADB_UNIX_SOCKET", "MYSQL_UNIX_SOCKET"):
+        env_socket = os.getenv(env_var)
+        if env_socket:
+            socket_paths.append(Path(env_socket).expanduser())
+
+    socket_paths.extend(
+        [
+            Path("/run/mariadb/mariadb.sock"),
+            Path("/var/run/mariadb/mariadb.sock"),
+            Path("/run/mysqld/mysqld.sock"),
+            Path("/var/run/mysqld/mysqld.sock"),
+            Path("/var/lib/mysql/mysql.sock"),
+            Path("/tmp/mysql.sock"),
+        ]
     )
+
+    seen_paths: set[str] = set()
+    for socket_path in socket_paths:
+        resolved_path = str(socket_path)
+        if resolved_path in seen_paths or not socket_path.exists():
+            continue
+        seen_paths.add(resolved_path)
+        candidates.insert(0, mysql_socket_url(username, password, database, resolved_path))
+
+    return candidates
 
 
 def write_database_config(config_file: Path, payload: dict[str, object]) -> None:
@@ -209,10 +289,23 @@ def run_migrations(database_url: str) -> None:
     command.upgrade(config, "head")
 
 
-def ensure_connection(database_url: str) -> None:
-    engine = create_db_engine(database_url)
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
+def ensure_connection(database_urls: list[str]) -> str:
+    failures: list[tuple[str, Exception]] = []
+    for database_url in database_urls:
+        try:
+            engine = create_db_engine(database_url)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            return database_url
+        except Exception as exc:  # pragma: no cover
+            failures.append((database_url, exc))
+
+    if failures:
+        if len(failures) == 1:
+            raise failures[0][1]
+        details = "\n".join(f"- {database_url}: {exc}" for database_url, exc in failures)
+        raise RuntimeError(f"Unable to connect to any database URL candidate:\n{details}") from failures[-1][1]
+    raise RuntimeError("No database URLs were provided")
 
 
 def seed_default_attributes(database_url: str) -> None:
@@ -241,6 +334,14 @@ def seed_default_attributes(database_url: str) -> None:
                     ),
                     {"name": name, "description": description},
                 )
+
+
+def test_database_connection(database_url: str) -> str:
+    engine = create_db_engine(database_url)
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT USER(), CURRENT_USER()"))
+        current_user, current_grant = row.one()
+    return f"Connected as {current_user} (effective grant {current_grant})"
 
 
 def ensure_database_exists_mysql(admin_url: str, database_name: str) -> None:
@@ -273,7 +374,7 @@ def command_setup(args: argparse.Namespace) -> int:
     if backend == "sqlite":
         database_name = args.database or "tuxcmdb.db"
         database_url = sqlite_url(database_name)
-        ensure_connection(database_url)
+        ensure_connection([database_url])
 
         if not args.skip_migrate:
             run_migrations(database_url)
@@ -316,15 +417,34 @@ def command_setup(args: argparse.Namespace) -> int:
 
     if is_admin_like_user(args.username):
         admin_db = args.admin_database or admin_database_name(backend)
-        admin_url = server_url(backend, args.host, args.port, args.username, password, admin_db)
         if backend == "postgresql":
+            admin_url = server_url(backend, args.host, args.port, args.username, password, admin_db)
             ensure_database_exists_postgresql(admin_url, target_database)
         else:
+            admin_connection_candidates = mysql_connection_candidates(
+                args.host,
+                args.port,
+                args.username,
+                password,
+                admin_db,
+                getattr(args, "unix_socket", None),
+            )
+            admin_url = ensure_connection(admin_connection_candidates)
             ensure_database_exists_mysql(admin_url, target_database)
 
     effective_port = args.port or default_port(backend)
     database_url = server_url(backend, args.host, args.port, args.username, password, target_database)
-    ensure_connection(database_url)
+    connection_candidates = [database_url]
+    if backend == "mysql":
+        connection_candidates = mysql_connection_candidates(
+            args.host,
+            args.port,
+            args.username,
+            password,
+            target_database,
+            getattr(args, "unix_socket", None),
+        )
+    database_url = ensure_connection(connection_candidates)
 
     if not args.skip_migrate:
         run_migrations(database_url)
@@ -363,6 +483,46 @@ def command_migrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_test(args: argparse.Namespace) -> int:
+    backend = normalize_backend(args.backend)
+
+    if backend == "sqlite":
+        database_name = args.database or "tuxcmdb.db"
+        database_url = sqlite_url(database_name)
+        ensure_connection([database_url])
+        print(test_database_connection(database_url))
+        return 0
+
+    if not args.host:
+        print("Error: --host is required for postgres and mysql", file=sys.stderr)
+        return 2
+    if not args.username:
+        print("Error: --username is required for postgres and mysql", file=sys.stderr)
+        return 2
+
+    password = args.password
+    if password is None:
+        password = getpass.getpass("Database password: ")
+
+    database_name = args.database or admin_database_name(backend)
+    if backend == "mysql":
+        connection_candidates = mysql_connection_candidates(
+            args.host,
+            args.port,
+            args.username,
+            password,
+            database_name,
+            getattr(args, "unix_socket", None),
+        )
+    else:
+        connection_candidates = [server_url(backend, args.host, args.port, args.username, password, database_name)]
+
+    database_url = ensure_connection(connection_candidates)
+    print(f"Authenticated using {database_url}")
+    print(test_database_connection(database_url))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="TuxCMDB manage script")
     subparsers = parser.add_subparsers(dest="command")
@@ -378,6 +538,10 @@ def build_parser() -> argparse.ArgumentParser:
     setup.add_argument("--port", type=int, help="Database port")
     setup.add_argument("--username", help="Database username (required for postgres and mysql)")
     setup.add_argument("--password", help="Database password. If omitted, prompt securely")
+    setup.add_argument(
+        "--unix-socket",
+        help="MySQL/MariaDB Unix socket path to try before TCP when connecting to localhost",
+    )
     setup.add_argument(
         "--database",
         help="Target database name. For sqlite, this is the db file path. Optional for admin/root users.",
@@ -406,6 +570,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to YAML config file used to read database URL",
     )
     migrate.set_defaults(func=command_migrate)
+
+    test_cmd = subparsers.add_parser("test", help="Test database credentials and report the authenticated user")
+    test_cmd.add_argument(
+        "--backend",
+        required=True,
+        choices=["sqlite", "mysql", "postgres"],
+        help="Database backend",
+    )
+    test_cmd.add_argument("--host", help="Database host (required for postgres and mysql)")
+    test_cmd.add_argument("--port", type=int, help="Database port")
+    test_cmd.add_argument("--username", help="Database username (required for postgres and mysql)")
+    test_cmd.add_argument("--password", help="Database password. If omitted, prompt securely")
+    test_cmd.add_argument(
+        "--unix-socket",
+        help="MySQL/MariaDB Unix socket path to try before TCP when connecting to localhost",
+    )
+    test_cmd.add_argument(
+        "--database",
+        help="Target database name. For sqlite, this is the db file path. Optional for admin/root users.",
+    )
+    test_cmd.set_defaults(func=command_test)
 
     return parser
 
