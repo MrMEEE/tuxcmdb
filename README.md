@@ -1,6 +1,6 @@
 # TuxCMDB
 
-**Current version:** 0.1.8
+**Current version:** 0.1.9
 
 A simple Content Management Database for servers, switches, and other infrastructure components.
 
