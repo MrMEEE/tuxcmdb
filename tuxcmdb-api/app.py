@@ -6,6 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 import ipaddress
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -45,6 +46,13 @@ import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_API_CONFIG = BASE_DIR / "conf" / "api.yaml"
+
+# Candidate paths for the tuxcmdb core database config (written by 'tuxcmdb setup').
+# The first existing file that contains a valid URL wins.
+TUXCMDB_DB_CONFIG_CANDIDATES = (
+    BASE_DIR.parent / "conf" / "database.yaml",  # development (repo root)
+    Path("/opt/tuxcmdb/conf/database.yaml"),      # production installation
+)
 
 APPROVAL_NOT_PENDING = 0
 APPROVAL_PENDING = 1
@@ -453,14 +461,29 @@ class AgentReportRequest(BaseModel):
     values: list[AgentAttributeValueIn] = Field(default_factory=list)
 
 
+def _load_tuxcmdb_database_url(path: Path) -> str | None:
+    """Read database.url from a tuxcmdb database.yaml config file."""
+    if not path.exists():
+        return None
+    with path.open("r", encoding="utf-8") as fh:
+        data = yaml.safe_load(fh) or {}
+    db_cfg = data.get("database")
+    if not isinstance(db_cfg, dict):
+        return None
+    url = db_cfg.get("url")
+    return str(url) if isinstance(url, str) and url else None
+
+
 def load_api_config(path: Path) -> dict:
+    if not path.exists():
+        return {}
     with path.open("r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
     if not isinstance(data, dict):
         raise ValueError("Invalid API config format")
     api_cfg = data.get("api")
     if not isinstance(api_cfg, dict):
-        raise ValueError("Invalid API config: missing 'api' mapping")
+        return {}
     return api_cfg
 
 
@@ -963,9 +986,23 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
 
 def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     api_cfg = load_api_config(config_path)
-    database_url = api_cfg.get("database_url")
-    if not isinstance(database_url, str) or not database_url:
-        raise ValueError("Invalid API config: missing api.database_url")
+    database_url: str | None = api_cfg.get("database_url") or None
+
+    if not database_url:
+        database_url = os.getenv("DATABASE_URL") or None
+
+    if not database_url:
+        for candidate in TUXCMDB_DB_CONFIG_CANDIDATES:
+            database_url = _load_tuxcmdb_database_url(candidate)
+            if database_url:
+                break
+
+    if not database_url:
+        raise ValueError(
+            "No database URL configured. Set 'api.database_url' in api.yaml, "
+            "set the DATABASE_URL environment variable, or run 'tuxcmdb setup' "
+            "to create /opt/tuxcmdb/conf/database.yaml."
+        )
 
     engine = create_db_engine(database_url)
 

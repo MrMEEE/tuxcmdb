@@ -283,8 +283,10 @@ def load_database_url(config_file: Path) -> str | None:
 def run_migrations(database_url: str) -> None:
     config = Config(str(BASE_DIR / "alembic.ini"))
     config.set_main_option("script_location", str(BASE_DIR / "alembic"))
-    config.set_main_option("sqlalchemy.url", database_url)
-
+    # Pass the URL via the DATABASE_URL env var rather than through
+    # set_main_option, because configparser interpolation chokes on
+    # percent-encoded characters (e.g. %2F in a unix_socket path).
+    # env.py's get_url() checks DATABASE_URL first.
     os.environ["DATABASE_URL"] = database_url
     command.upgrade(config, "head")
 
