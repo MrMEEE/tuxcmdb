@@ -16,6 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = BASE_DIR / "tuxcmdb" / "requirements.txt"
 VENV_DIR = BASE_DIR / ".venv"
 RPM_VENV_DIRS = (Path("/opt/tuxcmdb/venv"),)
+PACKAGED_INSTALL_ROOTS = (Path("/opt/tuxcmdb"),)
 
 
 def venv_python_path() -> Path:
@@ -33,11 +34,12 @@ def venv_python_path() -> Path:
 
 
 def ensure_venv_and_dependencies(requirements_file: Path, modules: tuple[str, ...]) -> None:
+    if BASE_DIR in PACKAGED_INSTALL_ROOTS:
+        return
+
     venv_python = venv_python_path()
 
     if not venv_python.exists():
-        if any(venv_python == (rpm_dir / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")) for rpm_dir in RPM_VENV_DIRS):
-            raise RuntimeError(f"RPM venv not found at {venv_python.parent.parent}; reinstall the tuxcmdb RPMs")
         print(f"Creating virtual environment in {VENV_DIR}")
         venv.EnvBuilder(with_pip=True).create(str(VENV_DIR))
         venv_python = venv_python_path()
