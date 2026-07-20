@@ -50,22 +50,15 @@ jobs:
 
           chmod +x packaging/scripts/*.sh
 
-          make_venv() {
-            local target_dir="$1"
-            local requirements="$2"
-            python3 -m venv "$target_dir"
-            "$target_dir/bin/pip" install --upgrade pip
-            "$target_dir/bin/pip" install -r "$requirements"
-          }
-
           # Build pydeps roots
           mkdir -p buildroot/tuxcmdb-pydeps/opt/tuxcmdb
           mkdir -p buildroot/tuxcmdb-api-pydeps/opt/tuxcmdb-api
           mkdir -p buildroot/tuxcmdb-webui-pydeps/opt/tuxcmdb-webui
 
-          make_venv buildroot/tuxcmdb-pydeps/opt/tuxcmdb/venv tuxcmdb/requirements.txt
-          make_venv buildroot/tuxcmdb-api-pydeps/opt/tuxcmdb-api/venv tuxcmdb-api/requirements.txt
-          make_venv buildroot/tuxcmdb-webui-pydeps/opt/tuxcmdb-webui/venv tuxcmdb-webui/requirements.txt
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r tuxcmdb/requirements.txt -t buildroot/tuxcmdb-pydeps/opt/tuxcmdb/lib
+          python3 -m pip install -r tuxcmdb-api/requirements.txt -t buildroot/tuxcmdb-api-pydeps/opt/tuxcmdb-api/lib
+          python3 -m pip install -r tuxcmdb-webui/requirements.txt -t buildroot/tuxcmdb-webui-pydeps/opt/tuxcmdb-webui/lib
 
           # Build tuxcmdb code package root
           mkdir -p buildroot/tuxcmdb/opt/tuxcmdb
@@ -77,7 +70,8 @@ jobs:
           cp version.py buildroot/tuxcmdb/opt/tuxcmdb/
           cat > buildroot/tuxcmdb/usr/bin/tuxcmdb <<'EOF'
           #!/usr/bin/env bash
-          exec /opt/tuxcmdb/venv/bin/python /opt/tuxcmdb/tuxcmdb.py "$@"
+          export PYTHONPATH="/opt/tuxcmdb/lib${PYTHONPATH:+:$PYTHONPATH}"
+          exec /usr/bin/python3 /opt/tuxcmdb/tuxcmdb.py "$@"
           EOF
           chmod +x buildroot/tuxcmdb/usr/bin/tuxcmdb
 
@@ -91,7 +85,8 @@ jobs:
           cp -r tuxcmdb buildroot/tuxcmdb-api/opt/tuxcmdb-api/
           cat > buildroot/tuxcmdb-api/usr/bin/tuxcmdb-api <<'EOF'
           #!/usr/bin/env bash
-          exec /opt/tuxcmdb-api/venv/bin/python /opt/tuxcmdb-api/tuxcmdb-api/app.py "$@"
+          export PYTHONPATH="/opt/tuxcmdb-api/lib${PYTHONPATH:+:$PYTHONPATH}"
+          exec /usr/bin/python3 /opt/tuxcmdb-api/tuxcmdb-api/app.py "$@"
           EOF
           chmod +x buildroot/tuxcmdb-api/usr/bin/tuxcmdb-api
           cp packaging/systemd/tuxcmdb-api.service buildroot/tuxcmdb-api/usr/lib/systemd/system/tuxcmdb-api.service
@@ -106,7 +101,8 @@ jobs:
           cp -r tuxcmdb buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cat > buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui <<'EOF'
           #!/usr/bin/env bash
-          exec /opt/tuxcmdb-webui/venv/bin/python /opt/tuxcmdb-webui/manage.py runserver 0.0.0.0:8000 --noreload
+          export PYTHONPATH="/opt/tuxcmdb-webui/lib${PYTHONPATH:+:$PYTHONPATH}"
+          exec /usr/bin/python3 /opt/tuxcmdb-webui/manage.py runserver 0.0.0.0:8000 --noreload
           EOF
           chmod +x buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui
           cp packaging/systemd/tuxcmdb-webui.service buildroot/tuxcmdb-webui/usr/lib/systemd/system/tuxcmdb-webui.service

@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/tuxcmdb-webui
-ExecStart=/opt/tuxcmdb-webui/venv/bin/python /opt/tuxcmdb-webui/manage.py runserver 0.0.0.0:8000 --noreload
+ExecStart=/usr/bin/tuxcmdb-webui
 Restart=on-failure
 RestartSec=3
 
