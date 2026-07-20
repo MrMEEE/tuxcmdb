@@ -24,7 +24,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y ca-certificates ruby ruby-dev
-          gem install --no-document fpm
+          sudo gem install --no-document fpm
 
       - name: Prepare build root
         run: |
