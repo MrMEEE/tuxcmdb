@@ -17,23 +17,35 @@ import venv
 BASE_DIR = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = BASE_DIR / "tuxcmdb-api" / "requirements.txt"
 VENV_DIR = BASE_DIR / ".venv"
+RPM_VENV_DIRS = (Path("/opt/tuxcmdb-api/venv"),)
 RUNTIME_DIR = BASE_DIR / ".runtime"
 PID_FILE = RUNTIME_DIR / "tuxcmdb-api.pid"
 LOG_FILE = RUNTIME_DIR / "tuxcmdb-api.log"
 
 
 def venv_python_path() -> Path:
-    if os.name == "nt":
-        return VENV_DIR / "Scripts" / "python.exe"
-    return VENV_DIR / "bin" / "python"
+    def python_from(venv_dir: Path) -> Path:
+        if os.name == "nt":
+            return venv_dir / "Scripts" / "python.exe"
+        return venv_dir / "bin" / "python"
+
+    for rpm_venv_dir in RPM_VENV_DIRS:
+        candidate = python_from(rpm_venv_dir)
+        if candidate.exists():
+            return candidate
+
+    return python_from(VENV_DIR)
 
 
 def ensure_venv_and_dependencies(requirements_file: Path, modules: tuple[str, ...]) -> None:
     venv_python = venv_python_path()
 
     if not venv_python.exists():
+        if any(venv_python == (rpm_dir / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")) for rpm_dir in RPM_VENV_DIRS):
+            raise RuntimeError(f"RPM venv not found at {venv_python.parent.parent}; reinstall the tuxcmdb-api RPMs")
         print(f"Creating virtual environment in {VENV_DIR}")
         venv.EnvBuilder(with_pip=True).create(str(VENV_DIR))
+        venv_python = venv_python_path()
 
     import_check = "\n".join([f"import {module}" for module in modules])
     check_result = subprocess.run(
