@@ -1,0 +1,96 @@
+{% extends 'webui/base.html' %}
+{% block title %}{% if source_record %}Edit{% else %}New{% endif %} Authentication Source · TuxCMDB{% endblock %}
+{% block page_title %}{% if source_record %}Edit Authentication Source{% else %}Create Authentication Source{% endif %}{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">LDAP Source Form</h5></div>
+      <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <div class="row">
+          <div class="col-md-6 form-group">
+            <label>Name</label>
+            {{ form.name }}
+          </div>
+          <div class="col-md-6 form-group">
+            <label>Hostname</label>
+            {{ form.hostname }}
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-4 form-group">
+            <label>Port</label>
+            {{ form.port }}
+          </div>
+          <div class="col-md-4 form-group">
+            <label>Protocol</label>
+            {{ form.protocol }}
+          </div>
+          <div class="col-md-4 form-group checkbox-row pt-4">
+            <label>{{ form.verify_certs }} Verify certificates</label>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-4 form-group">
+            <label>Server type</label>
+            {{ form.server_type }}
+          </div>
+          <div class="col-md-4 form-group">
+            <label>Group membership</label>
+            {{ form.group_membership }}
+          </div>
+          <div class="col-md-4 form-group checkbox-row pt-4">
+            <label>{{ form.is_active }} Active</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Bind DN</label>
+          {{ form.bind_dn }}
+        </div>
+        <div class="form-group">
+          <label>Bind password {% if source_record and source_record.bind_password_set %}<span class="text-muted">(leave blank to keep current)</span>{% endif %}</label>
+          {{ form.bind_password }}
+          <small class="text-muted">Stored encrypted at rest by the API service.</small>
+        </div>
+        <div class="form-group">
+          <label>Base DN</label>
+          {{ form.base_dn }}
+        </div>
+        <div class="form-group">
+          <label>Group Base DN</label>
+          {{ form.group_base_dn }}
+        </div>
+        <div class="form-group">
+          <label>LDAP Filter</label>
+          {{ form.ldap_filter }}
+        </div>
+        <div class="row">
+          <div class="col-md-3 form-group">
+            <label>Username attribute</label>
+            {{ form.attr_username }}
+          </div>
+          <div class="col-md-3 form-group">
+            <label>First name attribute</label>
+            {{ form.attr_first_name }}
+          </div>
+          <div class="col-md-3 form-group">
+            <label>Last name attribute</label>
+            {{ form.attr_last_name }}
+          </div>
+          <div class="col-md-3 form-group">
+            <label>Email attribute</label>
+            {{ form.attr_email }}
+          </div>
+        </div>
+        <div class="button-row">
+          <button class="btn btn-accent" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+          <a class="btn btn-default" href="{% url 'ldap-sources' %}">Cancel</a>
+        </div>
+      </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

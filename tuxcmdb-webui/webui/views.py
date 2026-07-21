@@ -20,6 +20,9 @@ from .forms import (
     AssignmentForm,
     AttributeForm,
     DatatypeForm,
+    LDAPGroupRoleMappingForm,
+    LDAPSourceForm,
+    LDAPUserAccessForm,
     LoginForm,
     OperatingSystemForm,
 )
@@ -28,10 +31,22 @@ from .services import (
     api_request,
     authenticate_apiuser,
     create_apiuser,
+    create_ldap_group_role_mapping,
+    create_ldap_source,
     delete_apiuser,
+    delete_ldap_group_role_mapping,
+    delete_ldap_source,
+    delete_ldap_user_access,
     get_apiuser,
+    get_ldap_source,
     list_audit_logs,
     list_apiusers,
+    list_ldap_group_role_mappings,
+    list_ldap_sources,
+    list_ldap_user_access,
+    update_ldap_group_role_mapping,
+    update_ldap_source,
+    update_ldap_user_access,
     update_apiuser,
 )
 
@@ -544,6 +559,165 @@ def _audit_matches_logic_query(item: Any, query: str) -> bool:
             continue
         if key in {"when", "created", "created_at", "time"}:
             if not _contains_text(item.created_at, value):
+                return False
+            continue
+        return False
+
+    return True
+
+
+def _ldap_source_matches_logic_query(item: Any, query: str) -> bool:
+    terms = _asset_filter_terms(query)
+    if not terms:
+        return True
+
+    searchable = [
+        item.name,
+        item.hostname,
+        item.protocol,
+        item.server_type,
+        item.base_dn,
+        item.group_base_dn or "",
+        item.group_membership,
+        item.ldap_filter,
+        item.attr_username,
+        item.attr_first_name,
+        item.attr_last_name,
+        item.attr_email,
+        "yes" if item.is_active else "no",
+    ]
+
+    for key, value in terms:
+        if value is None:
+            if key == "active" and not item.is_active:
+                return False
+            if key in {"inactive", "disabled"} and item.is_active:
+                return False
+            if not _matches_logic_text_fields(searchable, key):
+                return False
+            continue
+
+        if key in {"name", "source"}:
+            if not _contains_text(item.name, value):
+                return False
+            continue
+        if key in {"host", "hostname"}:
+            if not _contains_text(item.hostname, value):
+                return False
+            continue
+        if key in {"protocol", "server_type", "group_membership"}:
+            if not _matches_exact_text(getattr(item, key), value):
+                return False
+            continue
+        if key in {"base_dn", "group_base_dn", "ldap_filter", "attr_username", "attr_email"}:
+            if not _contains_text(getattr(item, key), value):
+                return False
+            continue
+        if key in {"active", "is_active", "status"}:
+            parsed = _parse_bool_text(value)
+            if parsed is None or item.is_active is not parsed:
+                return False
+            continue
+        return False
+
+    return True
+
+
+def _ldap_user_access_matches_logic_query(item: Any, query: str) -> bool:
+    terms = _asset_filter_terms(query)
+    if not terms:
+        return True
+
+    searchable = [
+        item.username,
+        item.source_name or "",
+        "yes" if item.readonly else "no",
+        "yes" if item.is_active else "no",
+        item.last_login_at,
+    ]
+    for key, value in terms:
+        if value is None:
+            if key == "readonly" and not item.readonly:
+                return False
+            if key in {"write", "writable", "readonly=false"} and item.readonly:
+                return False
+            if key == "active" and not item.is_active:
+                return False
+            if key in {"inactive", "disabled"} and item.is_active:
+                return False
+            if not _matches_logic_text_fields(searchable, key):
+                return False
+            continue
+
+        if key in {"username", "user"}:
+            if not _contains_text(item.username, value):
+                return False
+            continue
+        if key in {"source", "source_name"}:
+            if not _contains_text(item.source_name, value):
+                return False
+            continue
+        if key == "readonly":
+            parsed = _parse_bool_text(value)
+            if parsed is None or item.readonly is not parsed:
+                return False
+            continue
+        if key in {"active", "is_active", "status"}:
+            parsed = _parse_bool_text(value)
+            if parsed is None or item.is_active is not parsed:
+                return False
+            continue
+        if key in {"last_login", "last_login_at"}:
+            if not _contains_text(item.last_login_at, value):
+                return False
+            continue
+        return False
+
+    return True
+
+
+def _ldap_group_mapping_matches_logic_query(item: Any, query: str) -> bool:
+    terms = _asset_filter_terms(query)
+    if not terms:
+        return True
+
+    searchable = [
+        item.source_name or "",
+        item.group_name,
+        "yes" if item.readonly else "no",
+        "yes" if item.is_active else "no",
+        item.changed_at,
+    ]
+    for key, value in terms:
+        if value is None:
+            if key == "readonly" and not item.readonly:
+                return False
+            if key in {"write", "writable", "readonly=false"} and item.readonly:
+                return False
+            if key == "active" and not item.is_active:
+                return False
+            if key in {"inactive", "disabled"} and item.is_active:
+                return False
+            if not _matches_logic_text_fields(searchable, key):
+                return False
+            continue
+
+        if key in {"source", "source_name"}:
+            if not _contains_text(item.source_name, value):
+                return False
+            continue
+        if key in {"group", "group_name"}:
+            if not _contains_text(item.group_name, value):
+                return False
+            continue
+        if key == "readonly":
+            parsed = _parse_bool_text(value)
+            if parsed is None or item.readonly is not parsed:
+                return False
+            continue
+        if key in {"active", "is_active", "status"}:
+            parsed = _parse_bool_text(value)
+            if parsed is None or item.is_active is not parsed:
                 return False
             continue
         return False
@@ -1354,7 +1528,7 @@ def apiusers_view(request: HttpRequest) -> HttpResponse:
     sort_dir = _sort_direction(request)
 
     apiusers = []
-    for item in list_apiusers():
+    for item in list_apiusers(*_creds(request)):
         if not _apiuser_matches_logic_query(item, search):
             continue
         apiusers.append(item)
@@ -1389,13 +1563,328 @@ def apiusers_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def ldap_sources_view(request: HttpRequest) -> HttpResponse:
+    search = _raw_param(request, "q") or _param(request, "name") or _param(request, "hostname")
+    sort_by = _param(request, "sort_by") or "name"
+    sort_dir = _sort_direction(request)
+
+    sources = []
+    for item in list_ldap_sources(*_creds(request)):
+        if not _ldap_source_matches_logic_query(item, search):
+            continue
+        sources.append(item)
+
+    sources = _sort_items(
+        sources,
+        sort_by,
+        sort_dir,
+        {
+            "name": lambda item: str(item.name or "").lower(),
+            "hostname": lambda item: str(item.hostname or "").lower(),
+            "protocol": lambda item: str(item.protocol or "").lower(),
+            "is_active": lambda item: 1 if item.is_active else 0,
+            "changed_at": lambda item: str(item.changed_at or ""),
+        },
+    )
+
+    return render(
+        request,
+        "webui/ldap_sources_list.html",
+        {
+            "sources": sources,
+            "filters": {
+                "q": search,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "hostname", "protocol", "is_active", "changed_at"]),
+        },
+    )
+
+
+@login_required
+def ldap_source_form_view(request: HttpRequest, source_id: int | None = None) -> HttpResponse:
+    source_record = get_ldap_source(*_creds(request), source_id) if source_id is not None else None
+    if source_id is not None and source_record is None:
+        messages.error(request, "LDAP source not found")
+        return redirect("ldap-sources")
+
+    initial: dict[str, Any] = {}
+    if source_record is not None:
+        initial = {
+            "name": source_record.name,
+            "hostname": source_record.hostname,
+            "port": source_record.port,
+            "protocol": source_record.protocol,
+            "verify_certs": source_record.verify_certs,
+            "server_type": source_record.server_type,
+            "bind_dn": source_record.bind_dn or "",
+            "base_dn": source_record.base_dn,
+            "group_base_dn": source_record.group_base_dn or "",
+            "group_membership": source_record.group_membership,
+            "ldap_filter": source_record.ldap_filter,
+            "attr_username": source_record.attr_username,
+            "attr_first_name": source_record.attr_first_name,
+            "attr_last_name": source_record.attr_last_name,
+            "attr_email": source_record.attr_email,
+            "is_active": source_record.is_active,
+        }
+
+    form = LDAPSourceForm(request.POST or None, initial=initial)
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("ldap-sources")
+        if form.is_valid():
+            payload = {
+                "name": form.cleaned_data["name"],
+                "hostname": form.cleaned_data["hostname"],
+                "port": form.cleaned_data["port"],
+                "protocol": form.cleaned_data["protocol"],
+                "verify_certs": form.cleaned_data["verify_certs"],
+                "server_type": form.cleaned_data["server_type"],
+                "bind_dn": form.cleaned_data["bind_dn"] or None,
+                "base_dn": form.cleaned_data["base_dn"],
+                "group_base_dn": form.cleaned_data["group_base_dn"] or None,
+                "group_membership": form.cleaned_data["group_membership"],
+                "ldap_filter": form.cleaned_data["ldap_filter"],
+                "attr_username": form.cleaned_data["attr_username"],
+                "attr_first_name": form.cleaned_data["attr_first_name"],
+                "attr_last_name": form.cleaned_data["attr_last_name"],
+                "attr_email": form.cleaned_data["attr_email"],
+                "is_active": form.cleaned_data["is_active"],
+            }
+            if form.cleaned_data["bind_password"]:
+                payload["bind_password"] = form.cleaned_data["bind_password"]
+
+            try:
+                if source_id is None:
+                    create_ldap_source(*_creds(request), payload)
+                    messages.success(request, "LDAP source created")
+                    notify_ui_update("ldap-sources", "created", form.cleaned_data["name"])
+                else:
+                    update_ldap_source(*_creds(request), source_id, payload)
+                    messages.success(request, "LDAP source updated")
+                    notify_ui_update("ldap-sources", "updated", form.cleaned_data["name"])
+                return redirect("ldap-sources")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    return render(request, "webui/ldap_source_form.html", {"form": form, "source_record": source_record})
+
+
+@login_required
+def ldap_source_delete_view(request: HttpRequest, source_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("ldap-sources")
+    if request.user.readonly:
+        messages.error(request, "This user has readonly access.")
+        return redirect("ldap-sources")
+    try:
+        delete_ldap_source(*_creds(request), source_id)
+        messages.success(request, "LDAP source deleted")
+        notify_ui_update("ldap-sources", "deleted", str(source_id))
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    return redirect("ldap-sources")
+
+
+@login_required
+def ldap_users_view(request: HttpRequest) -> HttpResponse:
+    search = _raw_param(request, "q") or _param(request, "username") or _param(request, "source")
+    sort_by = _param(request, "sort_by") or "username"
+    sort_dir = _sort_direction(request)
+
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("ldap-users")
+        username = (request.POST.get("username") or "").strip()
+        action = (request.POST.get("action") or "").strip()
+        if not username:
+            messages.error(request, "Missing username")
+            return redirect("ldap-users")
+        try:
+            if action == "delete":
+                delete_ldap_user_access(*_creds(request), username)
+                messages.success(request, f"Deleted policy for {username}")
+                notify_ui_update("ldap-users", "deleted", username)
+            else:
+                form = LDAPUserAccessForm(request.POST)
+                if not form.is_valid():
+                    messages.error(request, "Invalid LDAP user policy form")
+                    return redirect("ldap-users")
+                update_ldap_user_access(
+                    *_creds(request),
+                    username,
+                    {
+                        "readonly": form.cleaned_data["readonly"],
+                        "is_active": form.cleaned_data["is_active"],
+                    },
+                )
+                messages.success(request, f"Updated policy for {username}")
+                notify_ui_update("ldap-users", "updated", username)
+        except ServiceError as exc:
+            messages.error(request, str(exc))
+        return redirect("ldap-users")
+
+    users = []
+    for item in list_ldap_user_access(*_creds(request)):
+        if not _ldap_user_access_matches_logic_query(item, search):
+            continue
+        users.append(item)
+
+    users = _sort_items(
+        users,
+        sort_by,
+        sort_dir,
+        {
+            "username": lambda item: str(item.username or "").lower(),
+            "source_name": lambda item: str(item.source_name or "").lower(),
+            "readonly": lambda item: 1 if item.readonly else 0,
+            "is_active": lambda item: 1 if item.is_active else 0,
+            "last_login_at": lambda item: str(item.last_login_at or ""),
+            "changed_at": lambda item: str(item.changed_at or ""),
+        },
+    )
+
+    return render(
+        request,
+        "webui/ldap_users_list.html",
+        {
+            "ldap_users": users,
+            "filters": {
+                "q": search,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["username", "source_name", "readonly", "is_active", "last_login_at", "changed_at"]),
+        },
+    )
+
+
+@login_required
+def ldap_group_mappings_view(request: HttpRequest) -> HttpResponse:
+    search = _raw_param(request, "q") or _param(request, "group_name") or _param(request, "source")
+    sort_by = _param(request, "sort_by") or "source_name"
+    sort_dir = _sort_direction(request)
+
+    sources = list_ldap_sources(*_creds(request))
+    source_choices = [(str(item.id), item.name) for item in sources]
+    create_form = LDAPGroupRoleMappingForm(
+        request.POST if request.method == "POST" and (request.POST.get("action") or "").strip() == "create" else None,
+        source_choices=source_choices,
+    )
+
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("ldap-group-mappings")
+
+        action = (request.POST.get("action") or "").strip()
+        try:
+            if action == "delete":
+                mapping_id = int((request.POST.get("mapping_id") or "0").strip())
+                if mapping_id <= 0:
+                    messages.error(request, "Invalid mapping id")
+                    return redirect("ldap-group-mappings")
+                delete_ldap_group_role_mapping(*_creds(request), mapping_id)
+                messages.success(request, "Deleted LDAP group mapping")
+                notify_ui_update("ldap-group-mappings", "deleted", str(mapping_id))
+                return redirect("ldap-group-mappings")
+
+            if action == "update":
+                mapping_id = int((request.POST.get("mapping_id") or "0").strip())
+                if mapping_id <= 0:
+                    messages.error(request, "Invalid mapping id")
+                    return redirect("ldap-group-mappings")
+
+                readonly_value = _parse_bool_text(request.POST.get("readonly") or "")
+                is_active_value = _parse_bool_text(request.POST.get("is_active") or "")
+                if readonly_value is None or is_active_value is None:
+                    messages.error(request, "Invalid role or status")
+                    return redirect("ldap-group-mappings")
+
+                update_ldap_group_role_mapping(
+                    *_creds(request),
+                    mapping_id,
+                    {
+                        "readonly": readonly_value,
+                        "is_active": is_active_value,
+                    },
+                )
+                messages.success(request, "Updated LDAP group mapping")
+                notify_ui_update("ldap-group-mappings", "updated", str(mapping_id))
+                return redirect("ldap-group-mappings")
+
+            if action == "create":
+                if not create_form.is_valid():
+                    messages.error(request, "Invalid mapping form")
+                    return redirect("ldap-group-mappings")
+
+                create_ldap_group_role_mapping(
+                    *_creds(request),
+                    {
+                        "source_id": int(create_form.cleaned_data["source_id"]),
+                        "group_name": create_form.cleaned_data["group_name"],
+                        "readonly": create_form.cleaned_data["readonly"],
+                        "is_active": create_form.cleaned_data["is_active"],
+                    },
+                )
+                messages.success(request, "Created LDAP group mapping")
+                notify_ui_update("ldap-group-mappings", "created", create_form.cleaned_data["group_name"])
+                return redirect("ldap-group-mappings")
+
+            messages.error(request, "Unknown action")
+            return redirect("ldap-group-mappings")
+        except (ServiceError, ValueError) as exc:
+            messages.error(request, str(exc))
+            return redirect("ldap-group-mappings")
+
+    mappings = []
+    for item in list_ldap_group_role_mappings(*_creds(request)):
+        if not _ldap_group_mapping_matches_logic_query(item, search):
+            continue
+        mappings.append(item)
+
+    mappings = _sort_items(
+        mappings,
+        sort_by,
+        sort_dir,
+        {
+            "source_name": lambda item: str(item.source_name or "").lower(),
+            "group_name": lambda item: str(item.group_name or "").lower(),
+            "readonly": lambda item: 1 if item.readonly else 0,
+            "is_active": lambda item: 1 if item.is_active else 0,
+            "changed_at": lambda item: str(item.changed_at or ""),
+        },
+    )
+
+    return render(
+        request,
+        "webui/ldap_group_mappings_list.html",
+        {
+            "mappings": mappings,
+            "source_choices": source_choices,
+            "create_form": create_form,
+            "filters": {
+                "q": search,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["source_name", "group_name", "readonly", "is_active", "changed_at"]),
+        },
+    )
+
+
+@login_required
 def audit_view(request: HttpRequest) -> HttpResponse:
     search = _raw_param(request, "q") or _param(request, "actor_username") or _param(request, "entity_type")
     sort_by = _param(request, "sort_by") or "created_at"
     sort_dir = _sort_direction(request)
 
     audit_logs = []
-    for item in list_audit_logs():
+    for item in list_audit_logs(*_creds(request)):
         if not _audit_matches_logic_query(item, search):
             continue
         audit_logs.append(item)
@@ -1437,7 +1926,7 @@ def docs_view(request: HttpRequest) -> HttpResponse:
 
 @login_required
 def apiuser_form_view(request: HttpRequest, user_id: int | None = None) -> HttpResponse:
-    user_record = get_apiuser(user_id) if user_id is not None else None
+    user_record = get_apiuser(*_creds(request), user_id) if user_id is not None else None
     if user_id is not None and user_record is None:
         messages.error(request, "API user not found")
         return redirect("apiusers")
@@ -1461,7 +1950,7 @@ def apiuser_form_view(request: HttpRequest, user_id: int | None = None) -> HttpR
             try:
                 if user_id is None:
                     create_apiuser(
-                        _current_actor(request),
+                        *_creds(request),
                         form.cleaned_data["username"],
                         form.cleaned_data["password"],
                         form.cleaned_data["is_active"],
@@ -1473,7 +1962,7 @@ def apiuser_form_view(request: HttpRequest, user_id: int | None = None) -> HttpR
                     notify_ui_update("apiusers", "created", form.cleaned_data["username"])
                 else:
                     update_apiuser(
-                        _current_actor(request),
+                        *_creds(request),
                         user_id,
                         form.cleaned_data["username"],
                         form.cleaned_data["password"] or None,
@@ -1499,7 +1988,7 @@ def apiuser_delete_view(request: HttpRequest, user_id: int) -> HttpResponse:
         messages.error(request, "This user has readonly access.")
         return redirect("apiusers")
     try:
-        delete_apiuser(_current_actor(request), user_id)
+        delete_apiuser(*_creds(request), user_id)
         messages.success(request, "API user deleted")
         notify_ui_update("apiusers", "deleted", str(user_id))
     except ServiceError as exc:

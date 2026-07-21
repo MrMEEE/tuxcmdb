@@ -2,3 +2,6 @@ api:
   database_url: sqlite+pysqlite:///../tuxcmdb.db
   host: 127.0.0.1
   port: 8080
+  # Optional static secret used to encrypt LDAP bind passwords at rest.
+  # If omitted, TUXCMDB_API_LDAP_BIND_PASSWORD_KEY env var is used, then database_url as fallback.
+  ldap_bind_password_key: change-this-strong-secret

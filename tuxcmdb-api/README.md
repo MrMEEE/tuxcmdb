@@ -53,6 +53,22 @@ cd tuxcmdb-api
 python app.py
 ```
 
+Create an API user directly via the API service module (no SQL needed):
+
+```bash
+cd tuxcmdb-api
+python app.py create-user --username admin
+```
+
+Optional flags:
+
+- `--readonly`
+- `--inactive`
+- `--name "Display Name"`
+- `--description "text"`
+- `--password "..."` (omit to get a secure prompt)
+- `--config /path/to/api.yaml`
+
 ## Quick Test
 
 Health (no auth):

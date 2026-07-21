@@ -3,13 +3,18 @@
 
 from __future__ import annotations
 
+import argparse
+import base64
 from datetime import datetime
+import getpass
+import hashlib
 import ipaddress
 import json
 import os
 from pathlib import Path
 import re
 import secrets
+import ssl
 import sys
 from typing import Any
 
@@ -40,6 +45,7 @@ if __package__ is None or __package__ == "":
 
 from tuxcmdb.db import create_db_engine
 from werkzeug.security import check_password_hash, generate_password_hash
+from cryptography.fernet import Fernet, InvalidToken
 import uvicorn
 import yaml
 
@@ -162,6 +168,56 @@ audit_log = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
+ldap_sources = Table(
+    "ldap_sources",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(255), nullable=False, unique=True),
+    Column("hostname", String(255), nullable=False),
+    Column("port", Integer, nullable=False, server_default=text("389")),
+    Column("protocol", String(5), nullable=False, server_default=text("'ldap'")),
+    Column("verify_certs", Boolean, nullable=False, server_default=text("true")),
+    Column("server_type", String(10), nullable=False, server_default=text("'ad'")),
+    Column("bind_dn", String(512), nullable=True),
+    Column("bind_password", Text, nullable=True),
+    Column("base_dn", String(512), nullable=False),
+    Column("group_base_dn", String(512), nullable=True),
+    Column("group_membership", String(10), nullable=False, server_default=text("'ad'")),
+    Column("ldap_filter", String(512), nullable=False, server_default=text("'(objectClass=person)'")),
+    Column("attr_username", String(64), nullable=False, server_default=text("'sAMAccountName'")),
+    Column("attr_first_name", String(64), nullable=False, server_default=text("'givenName'")),
+    Column("attr_last_name", String(64), nullable=False, server_default=text("'sn'")),
+    Column("attr_email", String(64), nullable=False, server_default=text("'mail'")),
+    Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+ldap_user_access = Table(
+    "ldap_user_access",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("username", String(120), nullable=False, unique=True),
+    Column("source_id", Integer, ForeignKey("ldap_sources.id", ondelete="SET NULL"), nullable=True),
+    Column("readonly", Boolean, nullable=False, server_default=text("true")),
+    Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("last_login_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
+ldap_group_role_mappings = Table(
+    "ldap_group_role_mappings",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("source_id", Integer, ForeignKey("ldap_sources.id", ondelete="CASCADE"), nullable=False),
+    Column("group_name", String(512), nullable=False),
+    Column("readonly", Boolean, nullable=False, server_default=text("true")),
+    Column("is_active", Boolean, nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
 security = HTTPBasic()
 
 
@@ -183,6 +239,140 @@ class MessageResponse(BaseModel):
 class AuthenticatedUser(BaseModel):
     username: str
     readonly: bool
+
+
+class APIUserOut(BaseModel):
+    id: int
+    username: str
+    name: str | None
+    description: str | None
+    is_active: bool
+    readonly: bool
+    created_at: datetime
+    changed_at: datetime
+
+
+class APIUserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    password: str = Field(min_length=1, max_length=255)
+    is_active: bool = True
+    readonly: bool = False
+
+
+class APIUserUpdate(BaseModel):
+    username: str | None = Field(default=None, min_length=1, max_length=120)
+    name: str | None = Field(default=None, max_length=120)
+    description: str | None = None
+    password: str | None = Field(default=None, min_length=1, max_length=255)
+    is_active: bool | None = None
+    readonly: bool | None = None
+
+
+class LDAPSourceOut(BaseModel):
+    id: int
+    name: str
+    hostname: str
+    port: int
+    protocol: str
+    verify_certs: bool
+    server_type: str
+    bind_dn: str | None
+    bind_password_set: bool
+    base_dn: str
+    group_base_dn: str | None
+    group_membership: str
+    ldap_filter: str
+    attr_username: str
+    attr_first_name: str
+    attr_last_name: str
+    attr_email: str
+    is_active: bool
+    created_at: datetime
+    changed_at: datetime
+
+
+class LDAPSourceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    hostname: str = Field(min_length=1, max_length=255)
+    port: int = 389
+    protocol: str = Field(default="ldap", min_length=4, max_length=5)
+    verify_certs: bool = True
+    server_type: str = Field(default="ad", min_length=2, max_length=10)
+    bind_dn: str | None = Field(default=None, max_length=512)
+    bind_password: str | None = None
+    base_dn: str = Field(min_length=1, max_length=512)
+    group_base_dn: str | None = Field(default=None, max_length=512)
+    group_membership: str = Field(default="ad", min_length=2, max_length=10)
+    ldap_filter: str = Field(default="(objectClass=person)", min_length=1, max_length=512)
+    attr_username: str = Field(default="sAMAccountName", min_length=1, max_length=64)
+    attr_first_name: str = Field(default="givenName", min_length=1, max_length=64)
+    attr_last_name: str = Field(default="sn", min_length=1, max_length=64)
+    attr_email: str = Field(default="mail", min_length=1, max_length=64)
+    is_active: bool = True
+
+
+class LDAPSourceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    hostname: str | None = Field(default=None, min_length=1, max_length=255)
+    port: int | None = None
+    protocol: str | None = Field(default=None, min_length=4, max_length=5)
+    verify_certs: bool | None = None
+    server_type: str | None = Field(default=None, min_length=2, max_length=10)
+    bind_dn: str | None = Field(default=None, max_length=512)
+    bind_password: str | None = None
+    base_dn: str | None = Field(default=None, min_length=1, max_length=512)
+    group_base_dn: str | None = Field(default=None, max_length=512)
+    group_membership: str | None = Field(default=None, min_length=2, max_length=10)
+    ldap_filter: str | None = Field(default=None, min_length=1, max_length=512)
+    attr_username: str | None = Field(default=None, min_length=1, max_length=64)
+    attr_first_name: str | None = Field(default=None, min_length=1, max_length=64)
+    attr_last_name: str | None = Field(default=None, min_length=1, max_length=64)
+    attr_email: str | None = Field(default=None, min_length=1, max_length=64)
+    is_active: bool | None = None
+
+
+class LDAPUserAccessOut(BaseModel):
+    id: int
+    username: str
+    source_id: int | None
+    source_name: str | None
+    readonly: bool
+    is_active: bool
+    last_login_at: datetime | None
+    created_at: datetime
+    changed_at: datetime
+
+
+class LDAPUserAccessUpdate(BaseModel):
+    readonly: bool | None = None
+    is_active: bool | None = None
+
+
+class LDAPGroupRoleMappingOut(BaseModel):
+    id: int
+    source_id: int
+    source_name: str | None
+    group_name: str
+    readonly: bool
+    is_active: bool
+    created_at: datetime
+    changed_at: datetime
+
+
+class LDAPGroupRoleMappingCreate(BaseModel):
+    source_id: int
+    group_name: str = Field(min_length=1, max_length=512)
+    readonly: bool = True
+    is_active: bool = True
+
+
+class LDAPGroupRoleMappingUpdate(BaseModel):
+    source_id: int | None = None
+    group_name: str | None = Field(default=None, min_length=1, max_length=512)
+    readonly: bool | None = None
+    is_active: bool | None = None
 
 
 class AttributeCreate(BaseModel):
@@ -487,8 +677,436 @@ def load_api_config(path: Path) -> dict:
     return api_cfg
 
 
+def resolve_database_url(config_path: Path = DEFAULT_API_CONFIG) -> str:
+    api_cfg = load_api_config(config_path)
+    database_url: str | None = api_cfg.get("database_url") or None
+
+    if not database_url:
+        database_url = os.getenv("DATABASE_URL") or None
+
+    if not database_url:
+        for candidate in TUXCMDB_DB_CONFIG_CANDIDATES:
+            database_url = _load_tuxcmdb_database_url(candidate)
+            if database_url:
+                break
+
+    if not database_url:
+        raise ValueError(
+            "No database URL configured. Set 'api.database_url' in api.yaml, "
+            "set the DATABASE_URL environment variable, or run 'tuxcmdb setup' "
+            "to create /opt/tuxcmdb/conf/database.yaml."
+        )
+
+    return database_url
+
+
+def create_apiuser_cli(
+    *,
+    config_path: Path,
+    username: str,
+    password: str,
+    name: str | None,
+    description: str | None,
+    is_active: bool,
+    readonly: bool,
+) -> None:
+    normalized_username = username.strip()
+    if not normalized_username:
+        raise ValueError("username must not be empty")
+    if not password:
+        raise ValueError("password must not be empty")
+
+    engine = create_db_engine(resolve_database_url(config_path))
+    metadata.create_all(engine, tables=[apiusers, audit_log])
+
+    with engine.begin() as conn:
+        existing = conn.execute(
+            select(apiusers.c.id).where(apiusers.c.username == normalized_username)
+        ).scalar_one_or_none()
+        if existing is not None:
+            raise ValueError(f"API user '{normalized_username}' already exists")
+
+        conn.execute(
+            apiusers.insert().values(
+                username=normalized_username,
+                name=name or None,
+                description=description or None,
+                password_hash=generate_password_hash(password),
+                is_active=is_active,
+                readonly=readonly,
+            )
+        )
+        log_audit_entry(
+            conn,
+            "local-cli",
+            "apiuser",
+            normalized_username,
+            "create",
+            {
+                "name": name or None,
+                "description": description or None,
+                "is_active": is_active,
+                "readonly": readonly,
+            },
+        )
+
+
+def run_create_user_command(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="tuxcmdb-api create-user",
+        description="Create an API user directly in the configured database.",
+    )
+    parser.add_argument("--username", required=True, help="API username")
+    parser.add_argument("--password", help="API password. If omitted, prompt securely")
+    parser.add_argument("--name", help="Display name", default=None)
+    parser.add_argument("--description", help="Description", default=None)
+    parser.add_argument("--readonly", action="store_true", help="Create user with readonly access")
+    parser.add_argument("--inactive", action="store_true", help="Create user as inactive")
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_API_CONFIG),
+        help=f"Path to api.yaml (default: {DEFAULT_API_CONFIG})",
+    )
+    args = parser.parse_args(argv)
+
+    password = args.password
+    if password is None:
+        first = getpass.getpass("New password: ")
+        second = getpass.getpass("Repeat password: ")
+        if first != second:
+            print("Error: passwords do not match", file=sys.stderr)
+            return 2
+        password = first
+
+    try:
+        create_apiuser_cli(
+            config_path=Path(args.config),
+            username=args.username,
+            password=password,
+            name=args.name,
+            description=args.description,
+            is_active=not args.inactive,
+            readonly=args.readonly,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Created API user '{args.username.strip()}'")
+    return 0
+
+
+def print_top_level_help() -> None:
+    prog = Path(sys.argv[0]).name or "tuxcmdb-api"
+    print(
+        "\n".join(
+            [
+                f"usage: {prog} [--help] [create-user [options]]",
+                "",
+                "Commands:",
+                "  create-user    Create an API user in the configured database",
+                "",
+                "Without a command, the API server starts normally.",
+                f"Use '{prog} create-user --help' for create-user options.",
+            ]
+        )
+    )
+
+
 def normalize_assetname(value: str) -> str:
     return value.strip().lower()
+
+
+def normalize_apiuser_username(value: str) -> str:
+    username = value.strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Username must not be empty")
+    return username
+
+
+def _to_ldap_source_out(row: Any) -> LDAPSourceOut:
+    return LDAPSourceOut(
+        id=row.id,
+        name=row.name,
+        hostname=row.hostname,
+        port=row.port,
+        protocol=row.protocol,
+        verify_certs=row.verify_certs,
+        server_type=row.server_type,
+        bind_dn=row.bind_dn,
+        bind_password_set=bool(row.bind_password),
+        base_dn=row.base_dn,
+        group_base_dn=row.group_base_dn,
+        group_membership=row.group_membership,
+        ldap_filter=row.ldap_filter,
+        attr_username=row.attr_username,
+        attr_first_name=row.attr_first_name,
+        attr_last_name=row.attr_last_name,
+        attr_email=row.attr_email,
+        is_active=row.is_active,
+        created_at=row.created_at,
+        changed_at=row.changed_at,
+    )
+
+
+def _ldap_escape_filter(value: str) -> str:
+    return (
+        value.replace("\\", "\\5c")
+        .replace("*", "\\2a")
+        .replace("(", "\\28")
+        .replace(")", "\\29")
+        .replace("\x00", "\\00")
+    )
+
+
+def _fernet_from_secret(secret_value: str) -> Fernet:
+    digest = hashlib.sha256(secret_value.encode("utf-8")).digest()
+    key = base64.urlsafe_b64encode(digest)
+    return Fernet(key)
+
+
+def _encrypt_ldap_bind_password(raw_password: str | None, *, secret_value: str) -> str | None:
+    if raw_password is None:
+        return None
+    value = raw_password.strip()
+    if not value:
+        return None
+    token = _fernet_from_secret(secret_value).encrypt(value.encode("utf-8")).decode("utf-8")
+    return f"enc:v1:{token}"
+
+
+def _decrypt_ldap_bind_password(stored_value: str | None, *, secret_value: str) -> str | None:
+    if stored_value is None:
+        return None
+    value = stored_value.strip()
+    if not value:
+        return None
+    if not value.startswith("enc:v1:"):
+        return value
+    token = value[len("enc:v1:") :]
+    try:
+        clear = _fernet_from_secret(secret_value).decrypt(token.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, ValueError):
+        return None
+    return clear
+
+
+def _ldap_user_groups(service_conn: Any, source: Any, user_dn: str, ldap3_module: Any) -> list[str]:
+    groups: set[str] = set()
+
+    try:
+        membership_mode = str(source.group_membership or "").lower()
+    except Exception:
+        membership_mode = ""
+
+    try:
+        if service_conn.entries:
+            entry = service_conn.entries[0]
+            member_of_values = getattr(entry, "memberOf", None)
+            if member_of_values is not None:
+                for item in list(member_of_values.values):
+                    name = str(item or "").strip()
+                    if name:
+                        groups.add(name.lower())
+    except Exception:
+        pass
+
+    group_base = str(source.group_base_dn or source.base_dn or "").strip()
+    if membership_mode in {"ad", "memberof"} and group_base:
+        escaped_dn = _ldap_escape_filter(user_dn)
+        filter_text = f"(&(objectClass=group)(member={escaped_dn}))"
+        try:
+            found = service_conn.search(
+                search_base=group_base,
+                search_filter=filter_text,
+                search_scope=ldap3_module.SUBTREE,
+                attributes=["distinguishedName", "cn"],
+            )
+            if found and service_conn.entries:
+                for entry in service_conn.entries:
+                    dn = str(getattr(entry, "entry_dn", "") or "").strip()
+                    if dn:
+                        groups.add(dn.lower())
+                    try:
+                        cn_values = list(entry["cn"].values)
+                    except Exception:
+                        cn_values = []
+                    for cn in cn_values:
+                        name = str(cn or "").strip()
+                        if name:
+                            groups.add(name.lower())
+        except Exception:
+            pass
+
+    return sorted(groups)
+
+
+def _ldap_authenticate(conn: Connection, username: str, password: str, *, ldap_secret_key: str) -> AuthenticatedUser | None:
+    if not username or not password:
+        return None
+
+    try:
+        import ldap3  # type: ignore
+    except Exception:
+        return None
+
+    sources = conn.execute(
+        select(
+            ldap_sources.c.id,
+            ldap_sources.c.name,
+            ldap_sources.c.hostname,
+            ldap_sources.c.port,
+            ldap_sources.c.protocol,
+            ldap_sources.c.verify_certs,
+            ldap_sources.c.bind_dn,
+            ldap_sources.c.bind_password,
+            ldap_sources.c.base_dn,
+            ldap_sources.c.ldap_filter,
+            ldap_sources.c.attr_username,
+            ldap_sources.c.is_active,
+        )
+        .where(ldap_sources.c.is_active.is_(True))
+        .order_by(ldap_sources.c.name)
+    ).all()
+
+    for source in sources:
+        tls_ctx = ldap3.Tls(validate=ssl.CERT_REQUIRED if source.verify_certs else ssl.CERT_NONE)
+        server = ldap3.Server(
+            source.hostname,
+            port=int(source.port),
+            use_ssl=str(source.protocol).lower() == "ldaps",
+            tls=tls_ctx,
+            get_info=ldap3.NONE,
+            connect_timeout=5,
+        )
+
+        bind_dn = str(source.bind_dn or "").strip() or None
+        bind_password = _decrypt_ldap_bind_password(source.bind_password, secret_value=ldap_secret_key)
+        try:
+            service_conn = ldap3.Connection(
+                server,
+                user=bind_dn,
+                password=bind_password,
+                authentication=ldap3.SIMPLE if bind_dn else ldap3.ANONYMOUS,
+                auto_bind=ldap3.AUTO_BIND_NO_TLS,
+            )
+        except Exception:
+            continue
+
+        search_attr = str(source.attr_username or "sAMAccountName")
+        base_filter = str(source.ldap_filter or "(objectClass=person)")
+        escaped_username = _ldap_escape_filter(username)
+        search_filter = f"(&{base_filter}({search_attr}={escaped_username}))"
+
+        search_ok = service_conn.search(
+            search_base=str(source.base_dn),
+            search_filter=search_filter,
+            search_scope=ldap3.SUBTREE,
+            attributes=[search_attr],
+        )
+        if not search_ok or not service_conn.entries:
+            service_conn.unbind()
+            continue
+
+        entry = service_conn.entries[0]
+        user_dn = entry.entry_dn
+        user_groups = _ldap_user_groups(service_conn, source, user_dn, ldap3)
+        ldap_username = username
+        try:
+            values = list(entry[search_attr].values)
+            if values:
+                ldap_username = str(values[0])
+        except Exception:
+            pass
+        service_conn.unbind()
+
+        try:
+            user_conn = ldap3.Connection(
+                server,
+                user=user_dn,
+                password=password,
+                authentication=ldap3.SIMPLE,
+                auto_bind=ldap3.AUTO_BIND_NO_TLS,
+            )
+            ok = user_conn.bind()
+            user_conn.unbind()
+            if not ok:
+                continue
+        except Exception:
+            continue
+
+        normalized_username = ldap_username.strip()
+        if not normalized_username:
+            continue
+
+        access_row = conn.execute(
+            select(
+                ldap_user_access.c.id,
+                ldap_user_access.c.readonly,
+                ldap_user_access.c.is_active,
+            ).where(ldap_user_access.c.username == normalized_username)
+        ).one_or_none()
+
+        group_rule = conn.execute(
+            select(
+                ldap_group_role_mappings.c.id,
+                ldap_group_role_mappings.c.readonly,
+            )
+            .where(
+                and_(
+                    ldap_group_role_mappings.c.source_id == source.id,
+                    ldap_group_role_mappings.c.is_active.is_(True),
+                    ldap_group_role_mappings.c.group_name.in_(user_groups),
+                )
+            )
+            .order_by(ldap_group_role_mappings.c.id)
+        ).one_or_none() if user_groups else None
+
+        default_readonly = bool(group_rule.readonly) if group_rule is not None else True
+
+        if access_row is None:
+            conn.execute(
+                ldap_user_access.insert().values(
+                    username=normalized_username,
+                    source_id=source.id,
+                    readonly=default_readonly,
+                    is_active=True,
+                    last_login_at=func.now(),
+                )
+            )
+            access_row = conn.execute(
+                select(
+                    ldap_user_access.c.id,
+                    ldap_user_access.c.readonly,
+                    ldap_user_access.c.is_active,
+                ).where(ldap_user_access.c.username == normalized_username)
+            ).one()
+            log_audit_entry(
+                conn,
+                "ldap",
+                "ldap_user_access",
+                normalized_username,
+                "create",
+                {
+                    "readonly": default_readonly,
+                    "is_active": True,
+                    "source": source.name,
+                    "group_rule_id": group_rule.id if group_rule is not None else None,
+                },
+            )
+        else:
+            conn.execute(
+                ldap_user_access.update()
+                .where(ldap_user_access.c.id == access_row.id)
+                .values(source_id=source.id, last_login_at=func.now(), changed_at=func.now())
+            )
+
+        if not access_row.is_active:
+            return None
+
+        return AuthenticatedUser(username=normalized_username, readonly=bool(access_row.readonly))
+
+    return None
 
 
 def normalize_operatingsystem_name(value: str) -> str:
@@ -986,31 +1604,22 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
 
 def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     api_cfg = load_api_config(config_path)
-    database_url: str | None = api_cfg.get("database_url") or None
-
-    if not database_url:
-        database_url = os.getenv("DATABASE_URL") or None
-
-    if not database_url:
-        for candidate in TUXCMDB_DB_CONFIG_CANDIDATES:
-            database_url = _load_tuxcmdb_database_url(candidate)
-            if database_url:
-                break
-
-    if not database_url:
-        raise ValueError(
-            "No database URL configured. Set 'api.database_url' in api.yaml, "
-            "set the DATABASE_URL environment variable, or run 'tuxcmdb setup' "
-            "to create /opt/tuxcmdb/conf/database.yaml."
-        )
-
-    engine = create_db_engine(database_url)
+    engine = create_db_engine(resolve_database_url(config_path))
+    ldap_secret_key = str(
+        api_cfg.get("ldap_bind_password_key")
+        or os.getenv("TUXCMDB_API_LDAP_BIND_PASSWORD_KEY")
+        or resolve_database_url(config_path)
+    )
 
     metadata.create_all(
         engine,
         tables=[
+            apiusers,
             datatypes,
             audit_log,
+            ldap_sources,
+            ldap_user_access,
+            ldap_group_role_mappings,
             operatingsystems,
             attribute_fetchmethods,
             attribute_fetchmethod_operatingsystems,
@@ -1083,7 +1692,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     app = FastAPI(title="tuxcmdb-api", docs_url=None, redoc_url=None)
 
     def authenticate(credentials: HTTPBasicCredentials = Depends(security)) -> AuthenticatedUser:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             row = conn.execute(
                 select(
                     apiusers.c.username,
@@ -1098,14 +1707,30 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         hash_to_check = row.password_hash if row is not None else "x" * 60
         password_ok = check_password_hash(hash_to_check, credentials.password)
 
-        if not (is_valid_user and password_ok):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials",
-                headers={"WWW-Authenticate": 'Basic realm="tuxcmdb-api"'},
-            )
+        if is_valid_user and password_ok:
+            if row is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials",
+                    headers={"WWW-Authenticate": 'Basic realm="tuxcmdb-api"'},
+                )
+            return AuthenticatedUser(username=row.username, readonly=row.readonly)
 
-        return AuthenticatedUser(username=row.username, readonly=row.readonly)
+        with engine.begin() as conn:
+            ldap_user = _ldap_authenticate(
+                conn,
+                credentials.username,
+                credentials.password,
+                ldap_secret_key=ldap_secret_key,
+            )
+        if ldap_user is not None:
+            return ldap_user
+
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": 'Basic realm="tuxcmdb-api"'},
+        )
 
     def require_write_access(user: AuthenticatedUser = Depends(authenticate)) -> AuthenticatedUser:
         if user.readonly:
@@ -1119,6 +1744,690 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.get("/ok", response_model=OkResponse)
     def ok(user: AuthenticatedUser = Depends(authenticate)) -> OkResponse:
         return OkResponse(status="ok", user=user.username, readonly=user.readonly)
+
+    @app.get("/v1/apiusers", response_model=list[APIUserOut])
+    def list_apiusers(_: AuthenticatedUser = Depends(authenticate)) -> list[APIUserOut]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    apiusers.c.id,
+                    apiusers.c.username,
+                    apiusers.c.name,
+                    apiusers.c.description,
+                    apiusers.c.is_active,
+                    apiusers.c.readonly,
+                    apiusers.c.created_at,
+                    apiusers.c.changed_at,
+                ).order_by(apiusers.c.username)
+            ).all()
+        return [APIUserOut(**row._mapping) for row in rows]
+
+    @app.get("/v1/apiusers/{user_id}", response_model=APIUserOut)
+    def get_apiuser(user_id: int, _: AuthenticatedUser = Depends(authenticate)) -> APIUserOut:
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(
+                    apiusers.c.id,
+                    apiusers.c.username,
+                    apiusers.c.name,
+                    apiusers.c.description,
+                    apiusers.c.is_active,
+                    apiusers.c.readonly,
+                    apiusers.c.created_at,
+                    apiusers.c.changed_at,
+                ).where(apiusers.c.id == user_id)
+            ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="API user not found")
+        return APIUserOut(**row._mapping)
+
+    @app.post("/v1/apiusers", response_model=APIUserOut, status_code=status.HTTP_201_CREATED)
+    def create_apiuser(payload: APIUserCreate, _: AuthenticatedUser = Depends(require_write_access)) -> APIUserOut:
+        username = normalize_apiuser_username(payload.username)
+        with engine.begin() as conn:
+            existing = conn.execute(
+                select(apiusers.c.id).where(apiusers.c.username == username)
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail="API user already exists")
+
+            insert_result = conn.execute(
+                apiusers.insert().values(
+                    username=username,
+                    name=payload.name or None,
+                    description=payload.description or None,
+                    password_hash=generate_password_hash(payload.password),
+                    is_active=payload.is_active,
+                    readonly=payload.readonly,
+                )
+            )
+            user_id = insert_result.inserted_primary_key[0]
+            row = conn.execute(
+                select(
+                    apiusers.c.id,
+                    apiusers.c.username,
+                    apiusers.c.name,
+                    apiusers.c.description,
+                    apiusers.c.is_active,
+                    apiusers.c.readonly,
+                    apiusers.c.created_at,
+                    apiusers.c.changed_at,
+                ).where(apiusers.c.id == user_id)
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "apiuser",
+                username,
+                "create",
+                {
+                    "name": payload.name or None,
+                    "description": payload.description or None,
+                    "is_active": payload.is_active,
+                    "readonly": payload.readonly,
+                },
+            )
+        return APIUserOut(**row._mapping)
+
+    @app.patch("/v1/apiusers/{user_id}", response_model=APIUserOut)
+    def update_apiuser(user_id: int, payload: APIUserUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> APIUserOut:
+        updates: dict[str, Any] = {}
+        if payload.username is not None:
+            updates["username"] = normalize_apiuser_username(payload.username)
+        if payload.name is not None:
+            updates["name"] = payload.name
+        if payload.description is not None:
+            updates["description"] = payload.description
+        if payload.is_active is not None:
+            updates["is_active"] = payload.is_active
+        if payload.readonly is not None:
+            updates["readonly"] = payload.readonly
+        if payload.password:
+            updates["password_hash"] = generate_password_hash(payload.password)
+
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        updates["changed_at"] = func.now()
+
+        with engine.begin() as conn:
+            try:
+                updated = conn.execute(
+                    apiusers.update().where(apiusers.c.id == user_id).values(**updates)
+                )
+            except IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="API user already exists") from exc
+
+            if updated.rowcount == 0:
+                raise HTTPException(status_code=404, detail="API user not found")
+
+            row = conn.execute(
+                select(
+                    apiusers.c.id,
+                    apiusers.c.username,
+                    apiusers.c.name,
+                    apiusers.c.description,
+                    apiusers.c.is_active,
+                    apiusers.c.readonly,
+                    apiusers.c.created_at,
+                    apiusers.c.changed_at,
+                ).where(apiusers.c.id == user_id)
+            ).one()
+
+            log_audit_entry(
+                conn,
+                _.username,
+                "apiuser",
+                row.username,
+                "update",
+                {
+                    "name": row.name,
+                    "description": row.description,
+                    "is_active": row.is_active,
+                    "readonly": row.readonly,
+                    "password_changed": bool(payload.password),
+                },
+            )
+        return APIUserOut(**row._mapping)
+
+    @app.delete("/v1/apiusers/{user_id}", response_model=MessageResponse)
+    def delete_apiuser(user_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        with engine.begin() as conn:
+            row = conn.execute(
+                select(apiusers.c.id, apiusers.c.username).where(apiusers.c.id == user_id)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="API user not found")
+
+            conn.execute(apiusers.delete().where(apiusers.c.id == user_id))
+            log_audit_entry(conn, _.username, "apiuser", row.username, "delete")
+
+        return MessageResponse(status="ok", message="API user deleted")
+
+    @app.get("/v1/ldap/sources", response_model=list[LDAPSourceOut])
+    def list_ldap_sources(_: AuthenticatedUser = Depends(authenticate)) -> list[LDAPSourceOut]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    ldap_sources.c.id,
+                    ldap_sources.c.name,
+                    ldap_sources.c.hostname,
+                    ldap_sources.c.port,
+                    ldap_sources.c.protocol,
+                    ldap_sources.c.verify_certs,
+                    ldap_sources.c.server_type,
+                    ldap_sources.c.bind_dn,
+                    ldap_sources.c.bind_password,
+                    ldap_sources.c.base_dn,
+                    ldap_sources.c.group_base_dn,
+                    ldap_sources.c.group_membership,
+                    ldap_sources.c.ldap_filter,
+                    ldap_sources.c.attr_username,
+                    ldap_sources.c.attr_first_name,
+                    ldap_sources.c.attr_last_name,
+                    ldap_sources.c.attr_email,
+                    ldap_sources.c.is_active,
+                    ldap_sources.c.created_at,
+                    ldap_sources.c.changed_at,
+                ).order_by(ldap_sources.c.name)
+            ).all()
+        return [_to_ldap_source_out(row) for row in rows]
+
+    @app.get("/v1/ldap/sources/{source_id}", response_model=LDAPSourceOut)
+    def get_ldap_source(source_id: int, _: AuthenticatedUser = Depends(authenticate)) -> LDAPSourceOut:
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(
+                    ldap_sources.c.id,
+                    ldap_sources.c.name,
+                    ldap_sources.c.hostname,
+                    ldap_sources.c.port,
+                    ldap_sources.c.protocol,
+                    ldap_sources.c.verify_certs,
+                    ldap_sources.c.server_type,
+                    ldap_sources.c.bind_dn,
+                    ldap_sources.c.bind_password,
+                    ldap_sources.c.base_dn,
+                    ldap_sources.c.group_base_dn,
+                    ldap_sources.c.group_membership,
+                    ldap_sources.c.ldap_filter,
+                    ldap_sources.c.attr_username,
+                    ldap_sources.c.attr_first_name,
+                    ldap_sources.c.attr_last_name,
+                    ldap_sources.c.attr_email,
+                    ldap_sources.c.is_active,
+                    ldap_sources.c.created_at,
+                    ldap_sources.c.changed_at,
+                ).where(ldap_sources.c.id == source_id)
+            ).one_or_none()
+        if row is None:
+            raise HTTPException(status_code=404, detail="LDAP source not found")
+        return _to_ldap_source_out(row)
+
+    @app.post("/v1/ldap/sources", response_model=LDAPSourceOut, status_code=status.HTTP_201_CREATED)
+    def create_ldap_source(payload: LDAPSourceCreate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPSourceOut:
+        values = payload.model_dump()
+        values["name"] = values["name"].strip()
+        values["hostname"] = values["hostname"].strip()
+        values["base_dn"] = values["base_dn"].strip()
+        values["protocol"] = str(values["protocol"]).lower()
+        values["server_type"] = str(values["server_type"]).lower()
+        values["group_membership"] = str(values["group_membership"]).lower()
+
+        if values["protocol"] not in {"ldap", "ldaps"}:
+            raise HTTPException(status_code=400, detail="protocol must be ldap or ldaps")
+        if values["server_type"] not in {"ad", "openldap"}:
+            raise HTTPException(status_code=400, detail="server_type must be ad or openldap")
+        if values["group_membership"] not in {"ad", "memberof"}:
+            raise HTTPException(status_code=400, detail="group_membership must be ad or memberof")
+        if not (1 <= int(values["port"]) <= 65535):
+            raise HTTPException(status_code=400, detail="port must be in 1..65535")
+
+        bind_password = values.pop("bind_password", None)
+        if bind_password is not None and not bind_password:
+            bind_password = None
+        encrypted_bind_password = _encrypt_ldap_bind_password(bind_password, secret_value=ldap_secret_key)
+
+        with engine.begin() as conn:
+            existing = conn.execute(
+                select(ldap_sources.c.id).where(ldap_sources.c.name == values["name"])
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail="LDAP source already exists")
+
+            insert_values = {**values, "bind_password": encrypted_bind_password}
+            conn.execute(ldap_sources.insert().values(**insert_values))
+            row = conn.execute(
+                select(
+                    ldap_sources.c.id,
+                    ldap_sources.c.name,
+                    ldap_sources.c.hostname,
+                    ldap_sources.c.port,
+                    ldap_sources.c.protocol,
+                    ldap_sources.c.verify_certs,
+                    ldap_sources.c.server_type,
+                    ldap_sources.c.bind_dn,
+                    ldap_sources.c.bind_password,
+                    ldap_sources.c.base_dn,
+                    ldap_sources.c.group_base_dn,
+                    ldap_sources.c.group_membership,
+                    ldap_sources.c.ldap_filter,
+                    ldap_sources.c.attr_username,
+                    ldap_sources.c.attr_first_name,
+                    ldap_sources.c.attr_last_name,
+                    ldap_sources.c.attr_email,
+                    ldap_sources.c.is_active,
+                    ldap_sources.c.created_at,
+                    ldap_sources.c.changed_at,
+                ).where(ldap_sources.c.name == values["name"])
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "ldap_source",
+                row.name,
+                "create",
+                {
+                    "hostname": row.hostname,
+                    "port": row.port,
+                    "protocol": row.protocol,
+                    "verify_certs": row.verify_certs,
+                    "server_type": row.server_type,
+                    "is_active": row.is_active,
+                },
+            )
+        return _to_ldap_source_out(row)
+
+    @app.patch("/v1/ldap/sources/{source_id}", response_model=LDAPSourceOut)
+    def update_ldap_source(source_id: int, payload: LDAPSourceUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPSourceOut:
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        for key in (
+            "name",
+            "hostname",
+            "base_dn",
+            "group_base_dn",
+            "bind_dn",
+            "attr_username",
+            "attr_first_name",
+            "attr_last_name",
+            "attr_email",
+        ):
+            if key in updates and updates[key] is not None:
+                updates[key] = str(updates[key]).strip()
+
+        if "protocol" in updates and updates["protocol"] is not None:
+            updates["protocol"] = str(updates["protocol"]).lower()
+            if updates["protocol"] not in {"ldap", "ldaps"}:
+                raise HTTPException(status_code=400, detail="protocol must be ldap or ldaps")
+        if "server_type" in updates and updates["server_type"] is not None:
+            updates["server_type"] = str(updates["server_type"]).lower()
+            if updates["server_type"] not in {"ad", "openldap"}:
+                raise HTTPException(status_code=400, detail="server_type must be ad or openldap")
+        if "group_membership" in updates and updates["group_membership"] is not None:
+            updates["group_membership"] = str(updates["group_membership"]).lower()
+            if updates["group_membership"] not in {"ad", "memberof"}:
+                raise HTTPException(status_code=400, detail="group_membership must be ad or memberof")
+        if "port" in updates and updates["port"] is not None and not (1 <= int(updates["port"]) <= 65535):
+            raise HTTPException(status_code=400, detail="port must be in 1..65535")
+
+        if "bind_password" in updates:
+            raw_bind_password = updates["bind_password"]
+            if raw_bind_password is None:
+                updates["bind_password"] = None
+            elif str(raw_bind_password).strip() == "":
+                updates.pop("bind_password")
+            else:
+                updates["bind_password"] = _encrypt_ldap_bind_password(str(raw_bind_password), secret_value=ldap_secret_key)
+
+        updates["changed_at"] = func.now()
+
+        with engine.begin() as conn:
+            try:
+                result = conn.execute(
+                    ldap_sources.update().where(ldap_sources.c.id == source_id).values(**updates)
+                )
+            except IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="LDAP source already exists") from exc
+
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="LDAP source not found")
+
+            row = conn.execute(
+                select(
+                    ldap_sources.c.id,
+                    ldap_sources.c.name,
+                    ldap_sources.c.hostname,
+                    ldap_sources.c.port,
+                    ldap_sources.c.protocol,
+                    ldap_sources.c.verify_certs,
+                    ldap_sources.c.server_type,
+                    ldap_sources.c.bind_dn,
+                    ldap_sources.c.bind_password,
+                    ldap_sources.c.base_dn,
+                    ldap_sources.c.group_base_dn,
+                    ldap_sources.c.group_membership,
+                    ldap_sources.c.ldap_filter,
+                    ldap_sources.c.attr_username,
+                    ldap_sources.c.attr_first_name,
+                    ldap_sources.c.attr_last_name,
+                    ldap_sources.c.attr_email,
+                    ldap_sources.c.is_active,
+                    ldap_sources.c.created_at,
+                    ldap_sources.c.changed_at,
+                ).where(ldap_sources.c.id == source_id)
+            ).one()
+
+            log_audit_entry(
+                conn,
+                _.username,
+                "ldap_source",
+                row.name,
+                "update",
+                {
+                    "hostname": row.hostname,
+                    "port": row.port,
+                    "protocol": row.protocol,
+                    "verify_certs": row.verify_certs,
+                    "is_active": row.is_active,
+                    "bind_password_changed": "bind_password" in updates,
+                },
+            )
+        return _to_ldap_source_out(row)
+
+    @app.delete("/v1/ldap/sources/{source_id}", response_model=MessageResponse)
+    def delete_ldap_source(source_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        with engine.begin() as conn:
+            row = conn.execute(
+                select(ldap_sources.c.id, ldap_sources.c.name).where(ldap_sources.c.id == source_id)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="LDAP source not found")
+
+            conn.execute(ldap_sources.delete().where(ldap_sources.c.id == source_id))
+            log_audit_entry(conn, _.username, "ldap_source", row.name, "delete")
+        return MessageResponse(status="ok", message="LDAP source deleted")
+
+    @app.get("/v1/ldap/users", response_model=list[LDAPUserAccessOut])
+    def list_ldap_users(_: AuthenticatedUser = Depends(authenticate)) -> list[LDAPUserAccessOut]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    ldap_user_access.c.id,
+                    ldap_user_access.c.username,
+                    ldap_user_access.c.source_id,
+                    ldap_sources.c.name.label("source_name"),
+                    ldap_user_access.c.readonly,
+                    ldap_user_access.c.is_active,
+                    ldap_user_access.c.last_login_at,
+                    ldap_user_access.c.created_at,
+                    ldap_user_access.c.changed_at,
+                )
+                .select_from(ldap_user_access.outerjoin(ldap_sources, ldap_sources.c.id == ldap_user_access.c.source_id))
+                .order_by(ldap_user_access.c.username)
+            ).all()
+        return [LDAPUserAccessOut(**row._mapping) for row in rows]
+
+    @app.patch("/v1/ldap/users/{username}", response_model=LDAPUserAccessOut)
+    def update_ldap_user_access(username: str, payload: LDAPUserAccessUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPUserAccessOut:
+        normalized_username = normalize_apiuser_username(username)
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+        updates["changed_at"] = func.now()
+
+        with engine.begin() as conn:
+            result = conn.execute(
+                ldap_user_access.update()
+                .where(ldap_user_access.c.username == normalized_username)
+                .values(**updates)
+            )
+            if result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="LDAP user policy not found")
+
+            row = conn.execute(
+                select(
+                    ldap_user_access.c.id,
+                    ldap_user_access.c.username,
+                    ldap_user_access.c.source_id,
+                    ldap_sources.c.name.label("source_name"),
+                    ldap_user_access.c.readonly,
+                    ldap_user_access.c.is_active,
+                    ldap_user_access.c.last_login_at,
+                    ldap_user_access.c.created_at,
+                    ldap_user_access.c.changed_at,
+                )
+                .select_from(ldap_user_access.outerjoin(ldap_sources, ldap_sources.c.id == ldap_user_access.c.source_id))
+                .where(ldap_user_access.c.username == normalized_username)
+            ).one()
+
+            log_audit_entry(
+                conn,
+                _.username,
+                "ldap_user_access",
+                normalized_username,
+                "update",
+                {
+                    "readonly": row.readonly,
+                    "is_active": row.is_active,
+                },
+            )
+        return LDAPUserAccessOut(**row._mapping)
+
+    @app.delete("/v1/ldap/users/{username}", response_model=MessageResponse)
+    def delete_ldap_user_access(username: str, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        normalized_username = normalize_apiuser_username(username)
+        with engine.begin() as conn:
+            row = conn.execute(
+                select(ldap_user_access.c.id, ldap_user_access.c.username)
+                .where(ldap_user_access.c.username == normalized_username)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="LDAP user policy not found")
+            conn.execute(ldap_user_access.delete().where(ldap_user_access.c.id == row.id))
+            log_audit_entry(conn, _.username, "ldap_user_access", normalized_username, "delete")
+        return MessageResponse(status="ok", message="LDAP user policy deleted")
+
+    @app.get("/v1/ldap/group-mappings", response_model=list[LDAPGroupRoleMappingOut])
+    def list_ldap_group_mappings(source_id: int | None = None, _: AuthenticatedUser = Depends(authenticate)) -> list[LDAPGroupRoleMappingOut]:
+        with engine.connect() as conn:
+            stmt = (
+                select(
+                    ldap_group_role_mappings.c.id,
+                    ldap_group_role_mappings.c.source_id,
+                    ldap_sources.c.name.label("source_name"),
+                    ldap_group_role_mappings.c.group_name,
+                    ldap_group_role_mappings.c.readonly,
+                    ldap_group_role_mappings.c.is_active,
+                    ldap_group_role_mappings.c.created_at,
+                    ldap_group_role_mappings.c.changed_at,
+                )
+                .select_from(
+                    ldap_group_role_mappings.join(
+                        ldap_sources,
+                        ldap_sources.c.id == ldap_group_role_mappings.c.source_id,
+                    )
+                )
+                .order_by(ldap_sources.c.name, ldap_group_role_mappings.c.group_name)
+            )
+            if source_id is not None:
+                stmt = stmt.where(ldap_group_role_mappings.c.source_id == source_id)
+            rows = conn.execute(stmt).all()
+        return [LDAPGroupRoleMappingOut(**row._mapping) for row in rows]
+
+    @app.post("/v1/ldap/group-mappings", response_model=LDAPGroupRoleMappingOut, status_code=status.HTTP_201_CREATED)
+    def create_ldap_group_mapping(payload: LDAPGroupRoleMappingCreate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPGroupRoleMappingOut:
+        group_name = payload.group_name.strip().lower()
+        if not group_name:
+            raise HTTPException(status_code=400, detail="group_name must not be empty")
+
+        with engine.begin() as conn:
+            source_exists = conn.execute(
+                select(ldap_sources.c.id).where(ldap_sources.c.id == payload.source_id)
+            ).scalar_one_or_none()
+            if source_exists is None:
+                raise HTTPException(status_code=404, detail="LDAP source not found")
+
+            existing = conn.execute(
+                select(ldap_group_role_mappings.c.id).where(
+                    and_(
+                        ldap_group_role_mappings.c.source_id == payload.source_id,
+                        ldap_group_role_mappings.c.group_name == group_name,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail="Group mapping already exists for this source")
+
+            conn.execute(
+                ldap_group_role_mappings.insert().values(
+                    source_id=payload.source_id,
+                    group_name=group_name,
+                    readonly=payload.readonly,
+                    is_active=payload.is_active,
+                )
+            )
+            row = conn.execute(
+                select(
+                    ldap_group_role_mappings.c.id,
+                    ldap_group_role_mappings.c.source_id,
+                    ldap_sources.c.name.label("source_name"),
+                    ldap_group_role_mappings.c.group_name,
+                    ldap_group_role_mappings.c.readonly,
+                    ldap_group_role_mappings.c.is_active,
+                    ldap_group_role_mappings.c.created_at,
+                    ldap_group_role_mappings.c.changed_at,
+                )
+                .select_from(
+                    ldap_group_role_mappings.join(
+                        ldap_sources,
+                        ldap_sources.c.id == ldap_group_role_mappings.c.source_id,
+                    )
+                )
+                .where(
+                    and_(
+                        ldap_group_role_mappings.c.source_id == payload.source_id,
+                        ldap_group_role_mappings.c.group_name == group_name,
+                    )
+                )
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "ldap_group_mapping",
+                f"{row.source_name}:{row.group_name}",
+                "create",
+                {
+                    "readonly": row.readonly,
+                    "is_active": row.is_active,
+                },
+            )
+        return LDAPGroupRoleMappingOut(**row._mapping)
+
+    @app.patch("/v1/ldap/group-mappings/{mapping_id}", response_model=LDAPGroupRoleMappingOut)
+    def update_ldap_group_mapping(mapping_id: int, payload: LDAPGroupRoleMappingUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPGroupRoleMappingOut:
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        if "group_name" in updates and updates["group_name"] is not None:
+            updates["group_name"] = str(updates["group_name"]).strip().lower()
+            if not updates["group_name"]:
+                raise HTTPException(status_code=400, detail="group_name must not be empty")
+
+        with engine.begin() as conn:
+            current = conn.execute(
+                select(
+                    ldap_group_role_mappings.c.id,
+                    ldap_group_role_mappings.c.source_id,
+                    ldap_group_role_mappings.c.group_name,
+                ).where(ldap_group_role_mappings.c.id == mapping_id)
+            ).one_or_none()
+            if current is None:
+                raise HTTPException(status_code=404, detail="LDAP group mapping not found")
+
+            target_source_id = int(updates.get("source_id", current.source_id))
+            target_group_name = str(updates.get("group_name", current.group_name))
+
+            source_exists = conn.execute(
+                select(ldap_sources.c.id).where(ldap_sources.c.id == target_source_id)
+            ).scalar_one_or_none()
+            if source_exists is None:
+                raise HTTPException(status_code=404, detail="LDAP source not found")
+
+            duplicate = conn.execute(
+                select(ldap_group_role_mappings.c.id).where(
+                    and_(
+                        ldap_group_role_mappings.c.source_id == target_source_id,
+                        ldap_group_role_mappings.c.group_name == target_group_name,
+                        ldap_group_role_mappings.c.id != mapping_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if duplicate is not None:
+                raise HTTPException(status_code=409, detail="Group mapping already exists for this source")
+
+            updates["changed_at"] = func.now()
+            conn.execute(
+                ldap_group_role_mappings.update().where(ldap_group_role_mappings.c.id == mapping_id).values(**updates)
+            )
+
+            row = conn.execute(
+                select(
+                    ldap_group_role_mappings.c.id,
+                    ldap_group_role_mappings.c.source_id,
+                    ldap_sources.c.name.label("source_name"),
+                    ldap_group_role_mappings.c.group_name,
+                    ldap_group_role_mappings.c.readonly,
+                    ldap_group_role_mappings.c.is_active,
+                    ldap_group_role_mappings.c.created_at,
+                    ldap_group_role_mappings.c.changed_at,
+                )
+                .select_from(
+                    ldap_group_role_mappings.join(
+                        ldap_sources,
+                        ldap_sources.c.id == ldap_group_role_mappings.c.source_id,
+                    )
+                )
+                .where(ldap_group_role_mappings.c.id == mapping_id)
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "ldap_group_mapping",
+                f"{row.source_name}:{row.group_name}",
+                "update",
+                {
+                    "readonly": row.readonly,
+                    "is_active": row.is_active,
+                },
+            )
+        return LDAPGroupRoleMappingOut(**row._mapping)
+
+    @app.delete("/v1/ldap/group-mappings/{mapping_id}", response_model=MessageResponse)
+    def delete_ldap_group_mapping(mapping_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        with engine.begin() as conn:
+            row = conn.execute(
+                select(
+                    ldap_group_role_mappings.c.id,
+                    ldap_group_role_mappings.c.group_name,
+                    ldap_sources.c.name.label("source_name"),
+                )
+                .select_from(
+                    ldap_group_role_mappings.join(
+                        ldap_sources,
+                        ldap_sources.c.id == ldap_group_role_mappings.c.source_id,
+                    )
+                )
+                .where(ldap_group_role_mappings.c.id == mapping_id)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="LDAP group mapping not found")
+            conn.execute(ldap_group_role_mappings.delete().where(ldap_group_role_mappings.c.id == mapping_id))
+            log_audit_entry(conn, _.username, "ldap_group_mapping", f"{row.source_name}:{row.group_name}", "delete")
+        return MessageResponse(status="ok", message="LDAP group mapping deleted")
 
     @app.get("/v1/datatypes", response_model=list[DatatypeOut])
     def list_datatypes(_: AuthenticatedUser = Depends(authenticate)) -> list[DatatypeOut]:
@@ -1993,6 +3302,13 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] in {"-h", "--help", "help"}:
+        print_top_level_help()
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "create-user":
+        raise SystemExit(run_create_user_command(sys.argv[2:]))
+
     api_cfg = load_api_config(DEFAULT_API_CONFIG)
     host = str(api_cfg.get("host", "127.0.0.1"))
     port = int(api_cfg.get("port", 8080))

@@ -93,6 +93,17 @@ python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
 
+## Reverse Proxy Examples
+
+The `tuxcmdb-webui` RPM installs disabled example reverse-proxy configs at:
+
+- `/etc/nginx/conf.d/tuxcmdb.conf.example`
+- `/etc/httpd/conf.d/tuxcmdb.conf.example`
+
+Copy the one you want into your active web server config, update the TLS certificate paths, and reload the service.
+
+On Apache/httpd systems, disable or replace stock default vhosts such as `/etc/httpd/conf.d/welcome.conf` and `/etc/httpd/conf.d/ssl.conf` if they are still taking precedence over the TuxCMDB proxy vhost.
+
 ## Releasing
 
 Use the release script from the repository root:

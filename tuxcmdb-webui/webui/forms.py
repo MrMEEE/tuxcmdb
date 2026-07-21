@@ -87,3 +87,67 @@ class OperatingSystemForm(forms.Form):
     name = forms.CharField(max_length=120, widget=forms.TextInput(attrs=TEXT_INPUT))
     description = forms.CharField(widget=forms.Textarea(attrs=TEXTAREA_INPUT), required=False)
     aliases = forms.CharField(widget=forms.Textarea(attrs={**TEXTAREA_INPUT, "rows": 2}), required=False)
+
+
+class LDAPSourceForm(forms.Form):
+    name = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    hostname = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    port = forms.IntegerField(min_value=1, max_value=65535, widget=forms.NumberInput(attrs=TEXT_INPUT), initial=389)
+    protocol = forms.ChoiceField(
+        choices=[("ldap", "ldap"), ("ldaps", "ldaps")],
+        widget=forms.Select(attrs=TEXT_INPUT),
+        initial="ldap",
+    )
+    verify_certs = forms.BooleanField(required=False, initial=True)
+    server_type = forms.ChoiceField(
+        choices=[("ad", "ad"), ("openldap", "openldap")],
+        widget=forms.Select(attrs=TEXT_INPUT),
+        initial="ad",
+    )
+    bind_dn = forms.CharField(max_length=512, required=False, widget=forms.TextInput(attrs=TEXT_INPUT))
+    bind_password = forms.CharField(required=False, widget=forms.PasswordInput(render_value=True, attrs=PASSWORD_INPUT))
+    base_dn = forms.CharField(max_length=512, widget=forms.TextInput(attrs=TEXT_INPUT))
+    group_base_dn = forms.CharField(max_length=512, required=False, widget=forms.TextInput(attrs=TEXT_INPUT))
+    group_membership = forms.ChoiceField(
+        choices=[("ad", "ad"), ("memberof", "memberof")],
+        widget=forms.Select(attrs=TEXT_INPUT),
+        initial="ad",
+    )
+    ldap_filter = forms.CharField(max_length=512, initial="(objectClass=person)", widget=forms.TextInput(attrs=TEXT_INPUT))
+    attr_username = forms.CharField(max_length=64, initial="sAMAccountName", widget=forms.TextInput(attrs=TEXT_INPUT))
+    attr_first_name = forms.CharField(max_length=64, initial="givenName", widget=forms.TextInput(attrs=TEXT_INPUT))
+    attr_last_name = forms.CharField(max_length=64, initial="sn", widget=forms.TextInput(attrs=TEXT_INPUT))
+    attr_email = forms.CharField(max_length=64, initial="mail", widget=forms.TextInput(attrs=TEXT_INPUT))
+    is_active = forms.BooleanField(required=False, initial=True)
+
+
+class LDAPUserAccessForm(forms.Form):
+    readonly = forms.TypedChoiceField(
+        choices=[("1", "Readonly"), ("0", "Read/Write")],
+        coerce=lambda value: str(value) == "1",
+        widget=forms.Select(attrs=TEXT_INPUT),
+    )
+    is_active = forms.TypedChoiceField(
+        choices=[("1", "Active"), ("0", "Disabled")],
+        coerce=lambda value: str(value) == "1",
+        widget=forms.Select(attrs=TEXT_INPUT),
+    )
+
+
+class LDAPGroupRoleMappingForm(forms.Form):
+    source_id = forms.ChoiceField(choices=(), widget=forms.Select(attrs=TEXT_INPUT))
+    group_name = forms.CharField(max_length=512, widget=forms.TextInput(attrs=TEXT_INPUT))
+    readonly = forms.TypedChoiceField(
+        choices=[("1", "Readonly"), ("0", "Read/Write")],
+        coerce=lambda value: str(value) == "1",
+        widget=forms.Select(attrs=TEXT_INPUT),
+    )
+    is_active = forms.TypedChoiceField(
+        choices=[("1", "Active"), ("0", "Disabled")],
+        coerce=lambda value: str(value) == "1",
+        widget=forms.Select(attrs=TEXT_INPUT),
+    )
+
+    def __init__(self, *args, source_choices: list[tuple[str, str]] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["source_id"].choices = source_choices or []

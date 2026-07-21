@@ -82,6 +82,7 @@ jobs:
           mkdir -p buildroot/tuxcmdb-api/usr/lib/systemd/system
           cp tuxcmdb-api/app.py buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/app.py
           cp -r tuxcmdb-api/conf buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/
+          test -f buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/conf/api.yaml.ldap-bind-example
           cp -r tuxcmdb buildroot/tuxcmdb-api/opt/tuxcmdb-api/
           cat > buildroot/tuxcmdb-api/usr/bin/tuxcmdb-api <<'EOF'
           #!/usr/bin/env bash
@@ -93,12 +94,16 @@ jobs:
 
           # Build WebUI code package root
           mkdir -p buildroot/tuxcmdb-webui/opt/tuxcmdb-webui
+          mkdir -p buildroot/tuxcmdb-webui/etc/nginx/conf.d
+          mkdir -p buildroot/tuxcmdb-webui/etc/httpd/conf.d
           mkdir -p buildroot/tuxcmdb-webui/usr/bin
           mkdir -p buildroot/tuxcmdb-webui/usr/lib/systemd/system
           cp tuxcmdb-webui/manage.py buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp -r tuxcmdb-webui/tuxcmdb_webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp -r tuxcmdb-webui/webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp -r tuxcmdb buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cp packaging/nginx/tuxcmdb.conf buildroot/tuxcmdb-webui/etc/nginx/conf.d/tuxcmdb.conf.example
+          cp packaging/apache/tuxcmdb.conf buildroot/tuxcmdb-webui/etc/httpd/conf.d/tuxcmdb.conf.example
           cat > buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui <<'EOF'
           #!/usr/bin/env bash
           export PYTHONPATH="/opt/tuxcmdb-webui/lib${PYTHONPATH:+:$PYTHONPATH}"

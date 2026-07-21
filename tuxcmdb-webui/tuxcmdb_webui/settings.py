@@ -70,6 +70,5 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATICFILES_DIRS = []
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-SESSION_ENGINE = "django.contrib.sessions.backends.file"
-SESSION_FILE_PATH = BASE_DIR / ".sessions"
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
 CSRF_COOKIE_HTTPONLY = False

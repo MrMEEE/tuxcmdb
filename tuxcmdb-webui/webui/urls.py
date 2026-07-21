@@ -39,6 +39,12 @@ urlpatterns = [
     path("apiusers/new/", views.apiuser_form_view, name="apiuser-create"),
     path("apiusers/<int:user_id>/edit/", views.apiuser_form_view, name="apiuser-edit"),
     path("apiusers/<int:user_id>/delete/", views.apiuser_delete_view, name="apiuser-delete"),
+    path("apiusers/ldap-sources/", views.ldap_sources_view, name="ldap-sources"),
+    path("apiusers/ldap-sources/new/", views.ldap_source_form_view, name="ldap-source-create"),
+    path("apiusers/ldap-sources/<int:source_id>/edit/", views.ldap_source_form_view, name="ldap-source-edit"),
+    path("apiusers/ldap-sources/<int:source_id>/delete/", views.ldap_source_delete_view, name="ldap-source-delete"),
+    path("apiusers/ldap-users/", views.ldap_users_view, name="ldap-users"),
+    path("apiusers/ldap-group-mappings/", views.ldap_group_mappings_view, name="ldap-group-mappings"),
     path("docs/", views.docs_view, name="docs"),
     path("audit/", views.audit_view, name="audit"),
 ]
