@@ -1379,29 +1379,34 @@ def _ldap_user_groups(service_conn: Any, source: Any, user_dn: str, ldap3_module
     group_base = str(source.group_base_dn or source.base_dn or "").strip()
     if membership_mode == "ad" and group_base:
         escaped_dn = _ldap_escape_filter(user_dn)
-        filter_text = f"(&(objectClass=group)(memberof:1.2.840.113556.1.4.1941:={escaped_dn}))"
-        try:
-            found = service_conn.search(
-                search_base=group_base,
-                search_filter=filter_text,
-                search_scope=ldap3_module.SUBTREE,
-                attributes=["distinguishedName", "cn"],
-            )
-            if found and service_conn.entries:
-                for entry in service_conn.entries:
-                    dn = str(getattr(entry, "entry_dn", "") or "").strip()
-                    if dn:
-                        groups.add(dn.lower())
-                    try:
-                        cn_values = list(entry["cn"].values)
-                    except Exception:
-                        cn_values = []
-                    for cn in cn_values:
-                        name = str(cn or "").strip()
-                        if name:
-                            groups.add(name.lower())
-        except Exception:
-            pass
+        filter_candidates = [
+            f"(&(objectClass=group)(member:1.2.840.113556.1.4.1941:={escaped_dn}))",
+            f"(&(objectClass=group)(member={escaped_dn}))",
+        ]
+        for filter_text in filter_candidates:
+            try:
+                found = service_conn.search(
+                    search_base=group_base,
+                    search_filter=filter_text,
+                    search_scope=ldap3_module.SUBTREE,
+                    attributes=["distinguishedName", "cn"],
+                )
+                if found and service_conn.entries:
+                    for entry in service_conn.entries:
+                        dn = str(getattr(entry, "entry_dn", "") or "").strip()
+                        if dn:
+                            groups.add(dn.lower())
+                        try:
+                            cn_values = list(entry["cn"].values)
+                        except Exception:
+                            cn_values = []
+                        for cn in cn_values:
+                            name = str(cn or "").strip()
+                            if name:
+                                groups.add(name.lower())
+                    break
+            except Exception:
+                continue
     elif membership_mode == "memberof" and group_base:
         escaped_dn = _ldap_escape_filter(user_dn)
         filter_text = f"(&(objectClass=group)(member={escaped_dn}))"
@@ -1452,6 +1457,7 @@ def _ldap_authenticate(conn: Connection, username: str, password: str, *, ldap_s
             ldap_sources.c.bind_password,
             ldap_sources.c.base_dn,
             ldap_sources.c.group_base_dn,
+            ldap_sources.c.group_membership,
             ldap_sources.c.ldap_filter,
             ldap_sources.c.attr_username,
             ldap_sources.c.is_active,
