@@ -108,12 +108,34 @@ def remove_stale_pid() -> None:
         PID_FILE.unlink(missing_ok=True)
 
 
+def migrate_database() -> int:
+    ensure_runtime_dirs()
+    print("Running Django migrations for TuxCMDB WebUI")
+    result = subprocess.run(
+        [
+            str(venv_python_path()),
+            "manage.py",
+            "migrate",
+            "--noinput",
+        ],
+        cwd=str(WEBUI_DIR),
+        check=False,
+    )
+    if result.returncode != 0:
+        print("Migration failed")
+    return result.returncode
+
+
 def start_server(host: str, port: int) -> int:
     remove_stale_pid()
     pid = read_pid()
     if pid is not None and is_running(pid):
         print(f"TuxCMDB WebUI is already running with PID {pid}")
         return 1
+
+    migrate_rc = migrate_database()
+    if migrate_rc != 0:
+        return migrate_rc
 
     ensure_runtime_dirs()
     log_handle = LOG_FILE.open("a", encoding="utf-8")
@@ -176,7 +198,7 @@ def restart_server(host: str, port: int) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Start, stop, or restart the TuxCMDB Django web interface")
-    parser.add_argument("command", choices=("start", "stop", "restart"))
+    parser.add_argument("command", choices=("start", "stop", "restart", "migrate"))
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind the Django web UI to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind the Django web UI to")
     return parser
@@ -193,6 +215,8 @@ def main() -> int:
         return start_server(args.host, args.port)
     if args.command == "stop":
         return stop_server()
+    if args.command == "migrate":
+        return migrate_database()
     return restart_server(args.host, args.port)
 
 

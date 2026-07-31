@@ -23,6 +23,11 @@ urlpatterns = [
     path("attributes/<int:attribute_id>/edit/", views.attribute_form_view, name="attribute-edit"),
     path("attributes/<int:attribute_id>/delete/", views.attribute_delete_view, name="attribute-delete"),
     path("datatypes/", views.datatypes_view, name="datatypes"),
+    path("hypervisors/", views.hypervisors_view, name="hypervisors"),
+    path("hypervisors/<int:cluster_id>/", views.hypervisor_detail_view, name="hypervisor-detail"),
+    path("hypervisors/<int:cluster_id>/edit/", views.hypervisor_form_view, name="hypervisor-edit"),
+    path("hypervisors/<int:cluster_id>/delete/", views.hypervisor_delete_view, name="hypervisor-delete"),
+    path("virtual-machines/", views.virtual_machines_view, name="virtual-machines"),
     path("operatingsystems/", views.operatingsystems_view, name="operatingsystems"),
     path("operatingsystems/new/", views.operatingsystem_form_view, name="operatingsystem-create"),
     path(

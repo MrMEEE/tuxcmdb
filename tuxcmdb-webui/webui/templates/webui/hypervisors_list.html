@@ -1,0 +1,100 @@
+{% extends 'webui/base.html' %}
+{% block title %}Hypervisors · TuxCMDB{% endblock %}
+{% block page_title %}Hypervisors{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Hypervisor Clusters</h5>
+    <button class="btn btn-accent btn-sm" data-open-modal="createHypervisorClusterModal" {% if request.user.readonly %}disabled{% endif %}>
+      <i class="la la-plus me-1"></i>New Cluster
+    </button>
+  </div>
+  <div class="card-body">
+    <form id="hypervisors-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter clusters, e.g. name=prod-vmware type=vmware">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'hypervisors' %}">Clear</a>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="hypervisors-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="hypervisors-filters" data-sort-field="{{ sort_links.cluster_type.field }}" data-sort-dir="{{ sort_links.cluster_type.next_dir }}">Type {{ sort_links.cluster_type.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="hypervisors-filters" data-sort-field="{{ sort_links.management_hostname.field }}" data-sort-dir="{{ sort_links.management_hostname.next_dir }}">Management Host {{ sort_links.management_hostname.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="hypervisors-filters" data-sort-field="{{ sort_links.username.field }}" data-sort-dir="{{ sort_links.username.next_dir }}">Username {{ sort_links.username.indicator }}</button></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cluster in hypervisors %}
+          <tr>
+            <td><a href="{% url 'hypervisor-detail' cluster.id %}">{{ cluster.name }}</a></td>
+            <td>{{ cluster.cluster_type }}</td>
+            <td>{{ cluster.management_hostname }}</td>
+            <td>{{ cluster.username }}</td>
+            <td class="table-actions">
+              <a class="btn btn-xs btn-default" href="{% url 'hypervisor-edit' cluster.id %}">Edit</a>
+              <form method="post" action="{% url 'hypervisor-delete' cluster.id %}" class="inline-form">
+                {% csrf_token %}
+                <button class="btn btn-xs btn-danger" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5">No hypervisor clusters found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="createHypervisorClusterModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:620px">
+    <div class="tuxcmdb-modal-header">
+      <h5>New Hypervisor Cluster</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="createHypervisorClusterModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'hypervisors' %}" data-modal-id="createHypervisorClusterModal">
+      {% csrf_token %}
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          {{ create_form.name }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Cluster Type</label>
+          {{ create_form.cluster_type }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Management Hostname</label>
+          {{ create_form.management_hostname }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          {{ create_form.username }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          {{ create_form.password }}
+        </div>
+        <div class="mb-3 form-check">
+          {{ create_form.verify_ssl }}
+          <label class="form-check-label" for="{{ create_form.verify_ssl.id_for_label }}">Verify SSL certificate</label>
+        </div>
+        <p class="modal-form-error" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="createHypervisorClusterModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

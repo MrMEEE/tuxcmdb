@@ -444,6 +444,32 @@ def get_ldap_source(api_username: str, api_password: str, source_id: int) -> LDA
     )
 
 
+def list_hypervisor_clusters(api_username: str, api_password: str) -> list[dict[str, Any]]:
+    rows = api_request(api_username, api_password, "GET", "/v1/hypervisors")
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def get_hypervisor_cluster(api_username: str, api_password: str, cluster_id: int) -> dict[str, Any] | None:
+    row = api_request(api_username, api_password, "GET", f"/v1/hypervisors/{cluster_id}")
+    if not isinstance(row, dict):
+        return None
+    return row
+
+
+def create_hypervisor_cluster(api_username: str, api_password: str, payload: dict[str, Any]) -> None:
+    api_request(api_username, api_password, "POST", "/v1/hypervisors", payload=payload)
+
+
+def update_hypervisor_cluster(api_username: str, api_password: str, cluster_id: int, payload: dict[str, Any]) -> None:
+    api_request(api_username, api_password, "PATCH", f"/v1/hypervisors/{cluster_id}", payload=payload)
+
+
+def delete_hypervisor_cluster(api_username: str, api_password: str, cluster_id: int) -> None:
+    api_request(api_username, api_password, "DELETE", f"/v1/hypervisors/{cluster_id}")
+
+
 def create_ldap_source(api_username: str, api_password: str, payload: dict[str, Any]) -> None:
     api_request(api_username, api_password, "POST", "/v1/ldap/sources", payload=payload)
 

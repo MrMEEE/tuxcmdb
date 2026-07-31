@@ -86,6 +86,7 @@ class AttributeFetchMethod(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     attribute_id: Mapped[int] = mapped_column(ForeignKey("attributes.id", ondelete="CASCADE"), nullable=False)
     command: Mapped[str] = mapped_column(Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
 
     attribute: Mapped[Attribute] = relationship(back_populates="fetchmethods")
     supported_operatingsystems: Mapped[list["OperatingSystem"]] = relationship(

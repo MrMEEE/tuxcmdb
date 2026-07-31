@@ -39,11 +39,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import inspect
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tuxcmdb.db import create_db_engine
+from tuxcmdb.hypervisors import HypervisorProbeError, probe_hypervisor_connection
 from werkzeug.security import check_password_hash, generate_password_hash
 from cryptography.fernet import Fernet, InvalidToken
 import uvicorn
@@ -64,8 +66,24 @@ APPROVAL_NOT_PENDING = 0
 APPROVAL_PENDING = 1
 APPROVAL_APPROVED = 2
 APPROVAL_REJECTED = 3
+DEFAULT_FETCHMETHOD_OS = "default"
 
 metadata = MetaData()
+hypervisor_clusters = Table(
+    "hypervisor_clusters",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("name", String(255), nullable=False, unique=True),
+    Column("cluster_type", String(64), nullable=False),
+    Column("management_hostname", String(255), nullable=False),
+    Column("username", String(255), nullable=False),
+    Column("password", Text, nullable=False),
+    Column("attribute_id", Integer, ForeignKey("attributes.id", ondelete="SET NULL"), nullable=True),
+    Column("verify_ssl", Boolean, nullable=False, server_default=text("true")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
+)
+
 apiusers = Table(
     "apiusers",
     metadata,
@@ -123,6 +141,8 @@ attribute_fetchmethods = Table(
     Column("id", Integer, primary_key=True),
     Column("attribute_id", Integer, ForeignKey("attributes.id", ondelete="CASCADE"), nullable=False),
     Column("command", Text, nullable=False),
+    Column("is_default", Boolean, nullable=False, server_default=text("false")),
+    Column("needs_privilege", Boolean, nullable=False, server_default=text("false")),
 )
 
 attribute_fetchmethod_operatingsystems = Table(
@@ -396,6 +416,7 @@ class AttributeUpdate(BaseModel):
 class AttributeFetchMethodIn(BaseModel):
     command: str = Field(min_length=1)
     supported_operatingsystems: list[str] = Field(default_factory=list)
+    needs_privilege: bool = False
 
     @model_validator(mode="after")
     def validate_supported_operatingsystems(self) -> "AttributeFetchMethodIn":
@@ -407,6 +428,7 @@ class AttributeFetchMethodIn(BaseModel):
 class AttributeFetchMethodOut(BaseModel):
     command: str
     supported_operatingsystems: list[str] = Field(default_factory=list)
+    needs_privilege: bool = False
 
 
 class AttributeOut(BaseModel):
@@ -459,6 +481,16 @@ class DatatypeCreate(BaseModel):
     description: str | None = None
     regex_pattern: str | None = None
     builtin_validator: str | None = Field(default=None, max_length=32)
+
+
+class HypervisorClusterCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    cluster_type: str = Field(min_length=1, max_length=64)
+    management_hostname: str = Field(min_length=1, max_length=255)
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1)
+    attribute_id: int | None = None
+    verify_ssl: bool = True
 
 
 class AssetCreate(BaseModel):
@@ -1205,7 +1237,11 @@ def validate_attribute_value(conn: Connection, data_type: str, value: str | None
 
 
 def resolve_supported_operatingsystem_ids(conn: Connection, names: list[str]) -> list[int]:
-    normalized_names = [normalize_operatingsystem_name(name) for name in names if str(name).strip()]
+    normalized_names = [
+        normalize_operatingsystem_name(name)
+        for name in names
+        if str(name).strip() and normalize_operatingsystem_name(name) != DEFAULT_FETCHMETHOD_OS
+    ]
     if not normalized_names:
         return []
 
@@ -1223,6 +1259,7 @@ def normalize_fetchmethods(fetchmethods: list[AttributeFetchMethodIn]) -> list[A
     normalized: list[AttributeFetchMethodIn] = []
     seen: set[str] = set()
     os_to_command: dict[str, str] = {}
+    has_default = False
     for item in fetchmethods:
         command = item.command.strip()
         if not command:
@@ -1250,6 +1287,8 @@ def normalize_fetchmethods(fetchmethods: list[AttributeFetchMethodIn]) -> list[A
                     ),
                 )
             os_to_command[os_name] = command
+            if os_name == DEFAULT_FETCHMETHOD_OS:
+                has_default = True
             supported_operatingsystems.append(os_name)
 
         normalized.append(
@@ -1258,6 +1297,7 @@ def normalize_fetchmethods(fetchmethods: list[AttributeFetchMethodIn]) -> list[A
                 supported_operatingsystems=supported_operatingsystems,
             )
         )
+
     return normalized
 
 
@@ -1268,21 +1308,27 @@ def replace_attribute_fetchmethods(conn: Connection, attribute_id: int, fetchmet
 
     normalized_fetchmethods = normalize_fetchmethods(fetchmethods)
     for item in normalized_fetchmethods:
+        is_default = DEFAULT_FETCHMETHOD_OS in {
+            normalize_operatingsystem_name(name) for name in item.supported_operatingsystems
+        }
         supported_os_ids = resolve_supported_operatingsystem_ids(conn, item.supported_operatingsystems)
         insert_result = conn.execute(
             attribute_fetchmethods.insert().values(
                 attribute_id=attribute_id,
                 command=item.command,
+                is_default=is_default,
+                needs_privilege=item.needs_privilege,
             )
         )
         fetchmethod_id = insert_result.inserted_primary_key[0]
-        conn.execute(
-            attribute_fetchmethod_operatingsystems.insert(),
-            [
-                {"fetchmethod_id": fetchmethod_id, "operatingsystem_id": operatingsystem_id}
-                for operatingsystem_id in supported_os_ids
-            ],
-        )
+        if supported_os_ids:
+            conn.execute(
+                attribute_fetchmethod_operatingsystems.insert(),
+                [
+                    {"fetchmethod_id": fetchmethod_id, "operatingsystem_id": operatingsystem_id}
+                    for operatingsystem_id in supported_os_ids
+                ],
+            )
 
 
 def fetch_fetchmethods_for_attributes(conn: Connection, attribute_ids: list[int]) -> dict[int, list[AttributeFetchMethodOut]]:
@@ -1294,13 +1340,15 @@ def fetch_fetchmethods_for_attributes(conn: Connection, attribute_ids: list[int]
             attribute_fetchmethods.c.attribute_id,
             attribute_fetchmethods.c.id.label("fetchmethod_id"),
             attribute_fetchmethods.c.command,
+            attribute_fetchmethods.c.is_default,
+            attribute_fetchmethods.c.needs_privilege,
             operatingsystems.c.name,
         )
-        .join(
+        .outerjoin(
             attribute_fetchmethod_operatingsystems,
             attribute_fetchmethod_operatingsystems.c.fetchmethod_id == attribute_fetchmethods.c.id,
         )
-        .join(
+        .outerjoin(
             operatingsystems,
             operatingsystems.c.id == attribute_fetchmethod_operatingsystems.c.operatingsystem_id,
         )
@@ -1314,9 +1362,13 @@ def fetch_fetchmethods_for_attributes(conn: Connection, attribute_ids: list[int]
         if key not in grouped:
             grouped[key] = {
                 "command": row.command,
+                "needs_privilege": row.needs_privilege,
                 "supported_operatingsystems": [],
             }
-        grouped[key]["supported_operatingsystems"].append(row.name)
+        if row.name:
+            grouped[key]["supported_operatingsystems"].append(row.name)
+        if row.is_default and DEFAULT_FETCHMETHOD_OS not in grouped[key]["supported_operatingsystems"]:
+            grouped[key]["supported_operatingsystems"].append(DEFAULT_FETCHMETHOD_OS)
 
     out: dict[int, list[AttributeFetchMethodOut]] = {attribute_id: [] for attribute_id in attribute_ids}
     for (attribute_id, _fetchmethod_id), item in grouped.items():
@@ -1563,43 +1615,76 @@ def resolve_agent_operatingsystem_ids(conn: Connection, operating_system: str) -
 
 def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttributeTaskOut]:
     matched_os_ids = resolve_agent_operatingsystem_ids(conn, operating_system)
-    if not matched_os_ids:
-        return []
-
     rows = conn.execute(
         select(
+            attributes.c.id.label("attribute_id"),
             attributes.c.name,
             attributes.c.data_type,
             attributes.c.allow_multiple,
+            attribute_fetchmethods.c.id.label("fetchmethod_id"),
             attribute_fetchmethods.c.command,
+            attribute_fetchmethods.c.is_default,
+            attribute_fetchmethod_operatingsystems.c.operatingsystem_id,
         )
         .join(attribute_fetchmethods, attribute_fetchmethods.c.attribute_id == attributes.c.id)
-        .join(
+        .outerjoin(
             attribute_fetchmethod_operatingsystems,
             attribute_fetchmethod_operatingsystems.c.fetchmethod_id == attribute_fetchmethods.c.id,
         )
-        .join(
-            operatingsystems,
-            operatingsystems.c.id == attribute_fetchmethod_operatingsystems.c.operatingsystem_id,
-        )
-        .where(operatingsystems.c.id.in_(matched_os_ids))
-        .order_by(attributes.c.name, attribute_fetchmethods.c.command)
+        .order_by(attributes.c.name, attribute_fetchmethods.c.command, attribute_fetchmethods.c.id)
     ).all()
 
-    grouped: dict[str, AgentAttributeTaskOut] = {}
+    methods_by_attribute: dict[int, dict[int, dict[str, Any]]] = {}
     for row in rows:
-        key = row.name
-        if key not in grouped:
-            grouped[key] = AgentAttributeTaskOut(
-                attribute_name=row.name,
-                data_type=row.data_type,
-                allow_multiple=row.allow_multiple,
-                commands=[],
-            )
-        if row.command not in grouped[key].commands:
-            grouped[key].commands.append(row.command)
+        attr_methods = methods_by_attribute.setdefault(row.attribute_id, {})
+        method = attr_methods.get(row.fetchmethod_id)
+        if method is None:
+            method = {
+                "attribute_name": row.name,
+                "data_type": row.data_type,
+                "allow_multiple": row.allow_multiple,
+                "command": row.command,
+                "is_default": bool(row.is_default),
+                "os_ids": set(),
+            }
+            attr_methods[row.fetchmethod_id] = method
+        if row.operatingsystem_id is not None:
+            method["os_ids"].add(row.operatingsystem_id)
+
+    matched_os_id_set = set(matched_os_ids)
+    grouped: dict[str, AgentAttributeTaskOut] = {}
+    for attr_methods in methods_by_attribute.values():
+        if not attr_methods:
+            continue
+        method_rows = list(attr_methods.values())
+        specific_rows = [
+            item for item in method_rows if item["os_ids"] and item["os_ids"].intersection(matched_os_id_set)
+        ]
+        selected_rows = specific_rows if specific_rows else [item for item in method_rows if item["is_default"]]
+
+        for item in selected_rows:
+            key = item["attribute_name"]
+            if key not in grouped:
+                grouped[key] = AgentAttributeTaskOut(
+                    attribute_name=item["attribute_name"],
+                    data_type=item["data_type"],
+                    allow_multiple=item["allow_multiple"],
+                    commands=[],
+                )
+            if item["command"] not in grouped[key].commands:
+                grouped[key].commands.append(item["command"])
 
     return list(grouped.values())
+
+
+def ensure_hypervisor_cluster_columns(engine) -> None:
+    inspector = inspect(engine)
+    if "hypervisor_clusters" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("hypervisor_clusters")}
+    if "attribute_id" not in columns:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE hypervisor_clusters ADD COLUMN attribute_id INTEGER"))
 
 
 def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
@@ -1611,9 +1696,11 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         or resolve_database_url(config_path)
     )
 
+    ensure_hypervisor_cluster_columns(engine)
     metadata.create_all(
         engine,
         tables=[
+            hypervisor_clusters,
             apiusers,
             datatypes,
             audit_log,
@@ -2429,6 +2516,258 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             log_audit_entry(conn, _.username, "ldap_group_mapping", f"{row.source_name}:{row.group_name}", "delete")
         return MessageResponse(status="ok", message="LDAP group mapping deleted")
 
+    @app.get("/v1/hypervisors", response_model=list[dict[str, Any]])
+    def list_hypervisor_clusters(_: AuthenticatedUser = Depends(authenticate)) -> list[dict[str, Any]]:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                select(
+                    hypervisor_clusters.c.id,
+                    hypervisor_clusters.c.name,
+                    hypervisor_clusters.c.cluster_type,
+                    hypervisor_clusters.c.management_hostname,
+                    hypervisor_clusters.c.username,
+                    hypervisor_clusters.c.attribute_id,
+                    hypervisor_clusters.c.verify_ssl,
+                    hypervisor_clusters.c.created_at,
+                    hypervisor_clusters.c.changed_at,
+                ).order_by(hypervisor_clusters.c.name)
+            ).all()
+        return [
+            {
+                "id": row.id,
+                "name": row.name,
+                "cluster_type": row.cluster_type,
+                "management_hostname": row.management_hostname,
+                "username": row.username,
+                "attribute_id": row.attribute_id,
+                "verify_ssl": row.verify_ssl,
+                "created_at": row.created_at,
+                "changed_at": row.changed_at,
+            }
+            for row in rows
+        ]
+
+    @app.get("/v1/hypervisors/{cluster_id}", response_model=dict[str, Any])
+    def get_hypervisor_cluster(cluster_id: int, _: AuthenticatedUser = Depends(authenticate)) -> dict[str, Any]:
+        with engine.connect() as conn:
+            row = conn.execute(
+                select(
+                    hypervisor_clusters.c.id,
+                    hypervisor_clusters.c.name,
+                    hypervisor_clusters.c.cluster_type,
+                    hypervisor_clusters.c.management_hostname,
+                    hypervisor_clusters.c.username,
+                    hypervisor_clusters.c.password,
+                    hypervisor_clusters.c.attribute_id,
+                    hypervisor_clusters.c.verify_ssl,
+                    hypervisor_clusters.c.created_at,
+                    hypervisor_clusters.c.changed_at,
+                ).where(hypervisor_clusters.c.id == cluster_id)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Hypervisor cluster not found")
+
+            attribute_name = None
+            if row.attribute_id is not None:
+                attribute_row = conn.execute(select(attributes.c.name).where(attributes.c.id == row.attribute_id)).scalar_one_or_none()
+                attribute_name = attribute_row
+
+            payload = {
+                "id": row.id,
+                "name": row.name,
+                "cluster_type": row.cluster_type,
+                "management_hostname": row.management_hostname,
+                "username": row.username,
+                "attribute_id": row.attribute_id,
+                "attribute_name": attribute_name,
+                "verify_ssl": row.verify_ssl,
+                "created_at": row.created_at,
+                "changed_at": row.changed_at,
+            }
+
+        try:
+            probe_result = probe_hypervisor_connection(
+                cluster_type=payload["cluster_type"],
+                hostname=payload["management_hostname"],
+                username=payload["username"],
+                password=row.password or "",
+                verify_ssl=payload["verify_ssl"],
+            )
+        except HypervisorProbeError:
+            probe_result = {"status": "unreachable", "vm_count": 0, "cluster_cpus": 0, "cluster_memory_gb": 0, "vms": []}
+
+        payload["stats"] = probe_result
+        return payload
+
+    @app.post("/v1/hypervisors", response_model=dict[str, Any], status_code=status.HTTP_201_CREATED)
+    def create_hypervisor_cluster(payload: HypervisorClusterCreate, _: AuthenticatedUser = Depends(require_write_access)) -> dict[str, Any]:
+        cluster_name = payload.name.strip()
+        cluster_type = payload.cluster_type.strip().lower()
+        hostname = payload.management_hostname.strip()
+        username = payload.username.strip()
+        password = payload.password
+
+        try:
+            probe_hypervisor_connection(
+                cluster_type=cluster_type,
+                hostname=hostname,
+                username=username,
+                password=password,
+                verify_ssl=payload.verify_ssl,
+            )
+        except HypervisorProbeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        with engine.begin() as conn:
+            existing = conn.execute(select(hypervisor_clusters.c.id).where(hypervisor_clusters.c.name == cluster_name)).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail=f"Hypervisor cluster '{cluster_name}' already exists")
+            insert_result = conn.execute(
+                hypervisor_clusters.insert().values(
+                    name=cluster_name,
+                    cluster_type=cluster_type,
+                    management_hostname=hostname,
+                    username=username,
+                    password=password,
+                    attribute_id=payload.attribute_id or None,
+                    verify_ssl=payload.verify_ssl,
+                )
+            )
+            row = conn.execute(
+                select(
+                    hypervisor_clusters.c.id,
+                    hypervisor_clusters.c.name,
+                    hypervisor_clusters.c.cluster_type,
+                    hypervisor_clusters.c.management_hostname,
+                    hypervisor_clusters.c.username,
+                    hypervisor_clusters.c.attribute_id,
+                    hypervisor_clusters.c.verify_ssl,
+                    hypervisor_clusters.c.created_at,
+                    hypervisor_clusters.c.changed_at,
+                ).where(hypervisor_clusters.c.id == insert_result.inserted_primary_key[0])
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "hypervisor_cluster",
+                cluster_name,
+                "create",
+                {
+                    "cluster_type": cluster_type,
+                    "management_hostname": hostname,
+                    "username": username,
+                    "verify_ssl": payload.verify_ssl,
+                },
+            )
+
+        return {
+            "id": row.id,
+            "name": row.name,
+            "cluster_type": row.cluster_type,
+            "management_hostname": row.management_hostname,
+            "username": row.username,
+            "attribute_id": row.attribute_id,
+            "verify_ssl": row.verify_ssl,
+            "created_at": row.created_at,
+            "changed_at": row.changed_at,
+        }
+
+    @app.patch("/v1/hypervisors/{cluster_id}", response_model=dict[str, Any])
+    def update_hypervisor_cluster(
+        cluster_id: int,
+        payload: HypervisorClusterCreate,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> dict[str, Any]:
+        cluster_name = payload.name.strip()
+        cluster_type = payload.cluster_type.strip().lower()
+        hostname = payload.management_hostname.strip()
+        username = payload.username.strip()
+        password = payload.password
+
+        try:
+            probe_hypervisor_connection(
+                cluster_type=cluster_type,
+                hostname=hostname,
+                username=username,
+                password=password,
+                verify_ssl=payload.verify_ssl,
+            )
+        except HypervisorProbeError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        with engine.begin() as conn:
+            existing = conn.execute(
+                select(hypervisor_clusters.c.id).where(
+                    hypervisor_clusters.c.name == cluster_name,
+                    hypervisor_clusters.c.id != cluster_id,
+                )
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail=f"Hypervisor cluster '{cluster_name}' already exists")
+            update_result = conn.execute(
+                hypervisor_clusters.update()
+                .where(hypervisor_clusters.c.id == cluster_id)
+                .values(
+                    name=cluster_name,
+                    cluster_type=cluster_type,
+                    management_hostname=hostname,
+                    username=username,
+                    password=password,
+                    attribute_id=payload.attribute_id or None,
+                    verify_ssl=payload.verify_ssl,
+                )
+            )
+            if update_result.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Hypervisor cluster not found")
+            row = conn.execute(
+                select(
+                    hypervisor_clusters.c.id,
+                    hypervisor_clusters.c.name,
+                    hypervisor_clusters.c.cluster_type,
+                    hypervisor_clusters.c.management_hostname,
+                    hypervisor_clusters.c.username,
+                    hypervisor_clusters.c.attribute_id,
+                    hypervisor_clusters.c.verify_ssl,
+                    hypervisor_clusters.c.created_at,
+                    hypervisor_clusters.c.changed_at,
+                ).where(hypervisor_clusters.c.id == cluster_id)
+            ).one()
+            log_audit_entry(
+                conn,
+                _.username,
+                "hypervisor_cluster",
+                cluster_name,
+                "update",
+                {
+                    "cluster_type": cluster_type,
+                    "management_hostname": hostname,
+                    "username": username,
+                    "verify_ssl": payload.verify_ssl,
+                },
+            )
+
+        return {
+            "id": row.id,
+            "name": row.name,
+            "cluster_type": row.cluster_type,
+            "management_hostname": row.management_hostname,
+            "username": row.username,
+            "attribute_id": row.attribute_id,
+            "verify_ssl": row.verify_ssl,
+            "created_at": row.created_at,
+            "changed_at": row.changed_at,
+        }
+
+    @app.delete("/v1/hypervisors/{cluster_id}", response_model=MessageResponse)
+    def delete_hypervisor_cluster(cluster_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        with engine.begin() as conn:
+            row = conn.execute(select(hypervisor_clusters.c.id, hypervisor_clusters.c.name).where(hypervisor_clusters.c.id == cluster_id)).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Hypervisor cluster not found")
+            conn.execute(hypervisor_clusters.delete().where(hypervisor_clusters.c.id == cluster_id))
+            log_audit_entry(conn, _.username, "hypervisor_cluster", row.name, "delete")
+        return MessageResponse(status="ok", message="Hypervisor cluster deleted")
+
     @app.get("/v1/datatypes", response_model=list[DatatypeOut])
     def list_datatypes(_: AuthenticatedUser = Depends(authenticate)) -> list[DatatypeOut]:
         with engine.connect() as conn:
@@ -2516,6 +2855,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.post("/v1/operatingsystems", response_model=OperatingSystemOut, status_code=status.HTTP_201_CREATED)
     def create_operatingsystem(payload: OperatingSystemCreate, _: AuthenticatedUser = Depends(require_write_access)) -> OperatingSystemOut:
         name = normalize_operatingsystem_name(payload.name)
+        if name == DEFAULT_FETCHMETHOD_OS:
+            raise HTTPException(status_code=400, detail=f"Operating system name '{DEFAULT_FETCHMETHOD_OS}' is reserved")
         aliases = normalize_aliases(payload.aliases)
         with engine.begin() as conn:
             existing = conn.execute(
@@ -2562,7 +2903,10 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     ) -> OperatingSystemOut:
         updates: dict[str, Any] = {}
         if payload.name is not None:
-            updates["name"] = normalize_operatingsystem_name(payload.name)
+            normalized_name = normalize_operatingsystem_name(payload.name)
+            if normalized_name == DEFAULT_FETCHMETHOD_OS:
+                raise HTTPException(status_code=400, detail=f"Operating system name '{DEFAULT_FETCHMETHOD_OS}' is reserved")
+            updates["name"] = normalized_name
         if payload.description is not None:
             updates["description"] = payload.description
         if payload.aliases is not None:

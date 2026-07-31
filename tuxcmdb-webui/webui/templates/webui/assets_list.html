@@ -56,6 +56,7 @@
           <th>Approved</th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.active.field }}" data-sort-dir="{{ sort_links.active.next_dir }}">Active {{ sort_links.active.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.attributes_count.field }}" data-sort-dir="{{ sort_links.attributes_count.next_dir }}">Attributes {{ sort_links.attributes_count.indicator }}</button></th>
+          <th>VM Mapped</th>
           <th></th>
         </tr>
       </thead>
@@ -81,6 +82,11 @@
           </td>
           <td>{% if asset.active %}Yes{% else %}No{% endif %}</td>
           <td>{{ asset.attributes|length }}</td>
+          <td>
+            {% if asset.vm_info %}
+            <span class="badge bg-info-subtle text-info-emphasis">Mapped to VM</span>
+            {% endif %}
+          </td>
           <td class="d-flex gap-2 align-items-center">
             <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a>
             {% if asset.os_mismatch %}
@@ -98,7 +104,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No assets found.</td></tr>
+        <tr><td colspan="6">No assets found.</td></tr>
         {% endfor %}
       </tbody>
     </table>

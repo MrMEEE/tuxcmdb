@@ -75,8 +75,10 @@ $values = @(
 foreach ($task in $bootstrap.tasks) {
     foreach ($command in $task.commands) {
         try {
-            $result = powershell -NoProfile -NonInteractive -Command $command 2>&1 | Out-String
-            if ($result) {
+            $result = powershell -NoProfile -NonInteractive -Command "& { $command; exit `$LASTEXITCODE }" 2>&1
+            $exitCode = $LASTEXITCODE
+            # Only process output if command succeeded (exit code 0)
+            if ($exitCode -eq 0) {
                 $lines = $result -split "`r?`n"
                 foreach ($line in $lines) {
                     $lineValue = $line.Trim()

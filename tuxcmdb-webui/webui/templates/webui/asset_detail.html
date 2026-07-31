@@ -28,6 +28,14 @@
             {% endif %}
           </div>
         </div>
+        {% if vm_info %}
+        <div class="form-group">
+          <label>VM Mapped</label>
+          <div>
+            <span class="badge bg-info-subtle text-info-emphasis">Mapped to VM</span>
+          </div>
+        </div>
+        {% endif %}
         <button class="btn btn-accent btn-block" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
       </form>
       {% if asset_os_mismatch %}
@@ -55,6 +63,17 @@
       </form>
       </div>
     </div>
+    {% if vm_info %}
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">Virtual Machine</h5></div>
+      <div class="card-body">
+      <dl class="row">
+        <dt class="col-sm-4">Cluster</dt>
+        <dd class="col-sm-8"><a href="{% url 'hypervisor-detail' vm_info.1 %}">{{ vm_info.0 }}</a></dd>
+      </dl>
+      </div>
+    </div>
+    {% endif %}
     <div class="card shadow-sm">
       <div class="card-header py-2"><h5 class="mb-0">Add Assignment</h5></div>
       <div class="card-body">

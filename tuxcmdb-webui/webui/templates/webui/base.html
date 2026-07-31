@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TuxCMDB WebUI{% endblock %}</title>
   <link rel="stylesheet" href="{% static 'webui/vendor/vvveb/admin.css' %}">
-  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}?v=20260714-3">
+  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}?v=20260722-1">
 </head>
 <body class="home" data-bs-theme="dark">
   <div id="container">
@@ -28,6 +28,7 @@
         </button>
         <div class="collapse navbar-collapse show" id="sidebarNav">
           <ul class="nav navbar-nav flex-column">
+            <li class="nav-divider"></li>
             <li class="nav-item">
               <a href="{% url 'assets' %}" class="nav-link d-none d-md-block" title="Assets">
                 <i class="la la-server"></i>
@@ -68,6 +69,28 @@
                 <span class="title">Operating Systems</span>
               </a>
             </li>
+            <li class="nav-divider"></li>
+            <li class="nav-item">
+              <a href="{% url 'hypervisors' %}" class="nav-link d-none d-md-block" title="Hypervisors">
+                <i class="la la-cloud"></i>
+                <span class="title">Hypervisors</span>
+              </a>
+              <a href="{% url 'hypervisors' %}" class="nav-link mobile d-block d-md-none" title="Hypervisors">
+                <i class="la la-cloud"></i>
+                <span class="title">Hypervisors</span>
+              </a>
+            </li>
+            <li class="nav-item">
+              <a href="{% url 'virtual-machines' %}" class="nav-link d-none d-md-block" title="Virtual Machines">
+                <i class="la la-cube"></i>
+                <span class="title">Virtual Machines</span>
+              </a>
+              <a href="{% url 'virtual-machines' %}" class="nav-link mobile d-block d-md-none" title="Virtual Machines">
+                <i class="la la-cube"></i>
+                <span class="title">Virtual Machines</span>
+              </a>
+            </li>
+            <li class="nav-divider"></li>
             <li class="nav-item">
               <a href="{% url 'apiusers' %}" class="nav-link d-none d-md-block" title="Apiusers">
                 <i class="la la-users"></i>
@@ -111,6 +134,9 @@
             </a>
             <a class="dropdown-item d-flex" href="{% url 'attributes' %}">
               <div class="flex-grow-1"><i class="icon-code-slash-outline me-2 text-body-tertiary"></i><span>Attributes</span></div>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'hypervisors' %}">
+              <div class="flex-grow-1"><i class="icon-cloud-outline me-2 text-body-tertiary"></i><span>Hypervisors</span></div>
             </a>
             <a class="dropdown-item d-flex" href="{% url 'apiusers' %}">
               <div class="flex-grow-1"><i class="icon-server-outline me-2 text-body-tertiary"></i><span>Apiusers</span></div>

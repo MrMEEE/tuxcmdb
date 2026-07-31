@@ -44,7 +44,7 @@
           <td>
             {% if attribute.fetchmethods %}
               {% for item in attribute.fetchmethods %}
-                <div><code>{{ item.command }}</code> =&gt; {{ item.supported_operatingsystems|join:', ' }}</div>
+                <div class="mb-1"><code class="text-break" style="word-wrap: break-word; word-break: break-word; display: block;">{{ item.command }}</code><small class="text-muted">{{ item.supported_operatingsystems|join:', ' }}</small></div>
               {% endfor %}
             {% else %}
               -
@@ -105,6 +105,7 @@
             </div>
             <div class="col-6">
               <select class="form-control" name="fetchmethod_os_0" multiple size="4">
+                <option value="default">Default</option>
                 {% for os in operating_systems %}
                 <option value="{{ os.name }}">{{ os.name }}</option>
                 {% endfor %}
@@ -122,6 +123,7 @@
             </div>
             <div class="col-6">
               <select class="form-control" name="fetchmethod_os___ROW__" multiple size="4">
+                <option value="default">Default</option>
                 {% for os in operating_systems %}
                 <option value="{{ os.name }}">{{ os.name }}</option>
                 {% endfor %}
@@ -132,7 +134,7 @@
             </div>
           </div>
         </template>
-        <small class="text-muted d-block mt-1">Each row maps one fetch command to one or more operating systems. Hold Ctrl/Cmd to select multiple.</small>
+        <small class="text-muted d-block mt-1">Each row maps one fetch command to one or more operating systems. Default is optional, but can only be selected on one row. Hold Ctrl/Cmd to select multiple.</small>
         <div class="mb-3">
           <label class="form-label">Description</label>
           {{ create_form.description }}

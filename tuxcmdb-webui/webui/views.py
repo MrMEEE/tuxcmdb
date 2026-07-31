@@ -20,6 +20,7 @@ from .forms import (
     AssignmentForm,
     AttributeForm,
     DatatypeForm,
+    HypervisorClusterForm,
     LDAPGroupRoleMappingForm,
     LDAPSourceForm,
     LDAPUserAccessForm,
@@ -31,16 +32,21 @@ from .services import (
     api_request,
     authenticate_apiuser,
     create_apiuser,
+    create_hypervisor_cluster,
     create_ldap_group_role_mapping,
+    delete_hypervisor_cluster,
     create_ldap_source,
     delete_apiuser,
     delete_ldap_group_role_mapping,
     delete_ldap_source,
     delete_ldap_user_access,
     get_apiuser,
+    get_hypervisor_cluster,
     get_ldap_source,
     list_audit_logs,
     list_apiusers,
+    list_hypervisor_clusters,
+    update_hypervisor_cluster,
     list_ldap_group_role_mappings,
     list_ldap_sources,
     list_ldap_user_access,
@@ -200,6 +206,7 @@ def _append_alias(existing_aliases: list[Any], new_alias: str) -> list[str]:
 
 
 _FETCHMETHOD_ROW_PATTERN = re.compile(r"^fetchmethod_command_(\d+)$")
+_DEFAULT_FETCHMETHOD_OS = "default"
 
 
 def _parse_fetchmethod_rows(post: Any) -> list[dict[str, Any]]:
@@ -212,6 +219,7 @@ def _parse_fetchmethod_rows(post: Any) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
     os_to_command: dict[str, str] = {}
+    has_default = False
     for index in sorted(row_indices):
         command = (post.get(f"fetchmethod_command_{index}") or "").strip()
         if not command:
@@ -239,18 +247,30 @@ def _parse_fetchmethod_rows(post: Any) -> list[dict[str, Any]]:
             os_to_command[name] = command
             seen_os.add(name)
             supported_operatingsystems.append(name)
+            if name == _DEFAULT_FETCHMETHOD_OS:
+                has_default = True
 
         if not supported_operatingsystems:
             raise ValueError(f"Fetch method '{command}' must include at least one operating system")
+
+        needs_privilege = f"fetchmethod_needs_privilege_{index}" in post
 
         entries.append(
             {
                 "command": command,
                 "supported_operatingsystems": supported_operatingsystems,
+                "needs_privilege": needs_privilege,
             }
         )
 
     return entries
+
+def _fetchmethod_operatingsystem_options(operating_systems: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in operating_systems
+        if _normalize_os_text(item.get("name")) != _DEFAULT_FETCHMETHOD_OS
+    ]
 
 
 def _asset_matches_logic_query(item: dict[str, Any], query: str) -> bool:
@@ -450,6 +470,44 @@ def _operatingsystem_matches_logic_query(item: dict[str, Any], query: str) -> bo
             continue
         if key in {"alias", "aliases"}:
             if not any(_contains_text(alias, value) for alias in aliases):
+                return False
+            continue
+        return False
+
+    return True
+
+
+def _hypervisor_matches_logic_query(item: dict[str, Any], query: str) -> bool:
+    terms = _asset_filter_terms(query)
+    if not terms:
+        return True
+
+    name = str(item.get("name") or "")
+    cluster_type = str(item.get("cluster_type") or "")
+    management_hostname = str(item.get("management_hostname") or "")
+    username = str(item.get("username") or "")
+    searchable = [name, cluster_type, management_hostname, username]
+
+    for key, value in terms:
+        if value is None:
+            if not _matches_logic_text_fields(searchable, key):
+                return False
+            continue
+
+        if key in {"name", "cluster", "hypervisor"}:
+            if not _contains_text(name, value):
+                return False
+            continue
+        if key in {"type", "cluster_type"}:
+            if not _contains_text(cluster_type, value):
+                return False
+            continue
+        if key in {"management", "hostname", "management_hostname"}:
+            if not _contains_text(management_hostname, value):
+                return False
+            continue
+        if key in {"user", "username"}:
+            if not _contains_text(username, value):
                 return False
             continue
         return False
@@ -792,6 +850,58 @@ def logout_view(request: HttpRequest) -> HttpResponse:
     return redirect("login")
 
 
+def _get_vm_mappings(api_username: str, api_password: str) -> dict[str, tuple[str, int]]:
+    """Build UUID→(asset_name, cluster_id) mapping for all VMs from all hypervisors."""
+    vm_mapping: dict[str, tuple[str, int]] = {}
+    try:
+        clusters = api_request(api_username, api_password, "GET", "/v1/hypervisors")
+        if isinstance(clusters, list):
+            for cluster in clusters:
+                if not isinstance(cluster, dict):
+                    continue
+                cluster_id = cluster.get("id")
+                if not cluster_id:
+                    continue
+                try:
+                    # Fetch full cluster data with attribute_name and VMs
+                    full_cluster = get_hypervisor_cluster(api_username, api_password, cluster_id)
+                    if full_cluster is None:
+                        continue
+                    
+                    attribute_name = full_cluster.get("attribute_name")
+                    if not attribute_name:
+                        continue
+                    
+                    # Get VMs and build mapping
+                    stats = full_cluster.get("stats") or {}
+                    vms = stats.get("vms") or []
+                    
+                    # Build UUID→asset mapping for this cluster
+                    try:
+                        assets = api_request(api_username, api_password, "GET", "/v1/assets")
+                        if isinstance(assets, list):
+                            for asset in assets:
+                                if not isinstance(asset, dict):
+                                    continue
+                                attributes = asset.get("attributes") or []
+                                for attr in attributes:
+                                    if isinstance(attr, dict) and attr.get("name") == attribute_name:
+                                        attr_value = attr.get("value", "").strip()
+                                        if attr_value:
+                                            asset_name = asset.get("assetname")
+                                            if asset_name:
+                                                # Only add to mapping if this UUID matches a VM in the cluster
+                                                if any(vm.get("uuid") == attr_value for vm in vms if isinstance(vm, dict)):
+                                                    vm_mapping[attr_value] = (asset_name, cluster_id)
+                    except ServiceError:
+                        pass
+                except ServiceError:
+                    pass
+    except ServiceError:
+        pass
+    return vm_mapping
+
+
 @login_required
 def assets_view(request: HttpRequest) -> HttpResponse:
     filter_query = _raw_param(request, "q") or _param(request, "assetname") or _param(request, "attribute_name")
@@ -930,6 +1040,16 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "attributes_count": lambda item: len(item.get("attributes", [])),
         },
     )
+
+    # Get VM mappings for reverse linking
+    vm_mapping = _get_vm_mappings(*_creds(request))
+    for asset in assets:
+        for attr in asset.get("attributes") or []:
+            if isinstance(attr, dict):
+                attr_value = attr.get("value", "").strip()
+                if attr_value in vm_mapping:
+                    asset["vm_info"] = vm_mapping[attr_value]
+                    break
 
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
@@ -1077,6 +1197,16 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     asset_os_value = _asset_os_value(asset)
     asset_os_mismatch = bool(asset_os_value) and _find_matching_operatingsystem(operating_systems, asset_os_value) is None
 
+    # Get VM info for this asset
+    vm_info = None
+    vm_mapping = _get_vm_mappings(*_creds(request))
+    for attr in asset.get("attributes") or []:
+        if isinstance(attr, dict):
+            attr_value = attr.get("value", "").strip()
+            if attr_value in vm_mapping:
+                vm_info = vm_mapping[attr_value]
+                break
+
     return render(
         request,
         "webui/asset_detail.html",
@@ -1088,6 +1218,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             "operating_systems": operating_systems,
             "asset_os_value": asset_os_value,
             "asset_os_mismatch": asset_os_mismatch,
+            "vm_info": vm_info,
         },
     )
 
@@ -1166,6 +1297,7 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
         pass
     try:
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+        operating_systems = _fetchmethod_operatingsystem_options(operating_systems)
     except ServiceError:
         pass
 
@@ -1243,6 +1375,7 @@ def attribute_form_view(request: HttpRequest, attribute_id: int | None = None) -
         pass
     try:
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+        operating_systems = _fetchmethod_operatingsystem_options(operating_systems)
     except ServiceError:
         pass
     datatype_choices = [(item["name"], item["name"]) for item in datatypes if item.get("name")]
@@ -1389,6 +1522,322 @@ def datatypes_view(request: HttpRequest) -> HttpResponse:
                 "sort_dir": sort_dir,
             },
             "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "builtin_validator", "regex_pattern", "description"]),
+        },
+    )
+
+
+@login_required
+def hypervisors_view(request: HttpRequest) -> HttpResponse:
+    search = _raw_param(request, "q") or _param(request, "name")
+    sort_by = _param(request, "sort_by") or "name"
+    sort_dir = _sort_direction(request)
+    create_form = HypervisorClusterForm(request.POST if request.method == "POST" else None)
+
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("hypervisors")
+        if create_form.is_valid():
+            payload = {
+                "name": create_form.cleaned_data["name"],
+                "cluster_type": create_form.cleaned_data["cluster_type"],
+                "management_hostname": create_form.cleaned_data["management_hostname"],
+                "username": create_form.cleaned_data["username"],
+                "password": create_form.cleaned_data["password"],
+                "verify_ssl": create_form.cleaned_data["verify_ssl"],
+            }
+            try:
+                create_hypervisor_cluster(*_creds(request), payload)
+                messages.success(request, "Hypervisor cluster created")
+                notify_ui_update("hypervisors", "created", payload["name"])
+                return redirect("hypervisors")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    items: list[dict[str, Any]] = []
+    try:
+        items = list_hypervisor_clusters(*_creds(request))
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+
+    filtered_items = [item for item in items if _hypervisor_matches_logic_query(item, search)]
+    filtered_items = _sort_items(
+        filtered_items,
+        sort_by,
+        sort_dir,
+        {
+            "name": lambda item: str(item.get("name") or "").lower(),
+            "cluster_type": lambda item: str(item.get("cluster_type") or "").lower(),
+            "management_hostname": lambda item: str(item.get("management_hostname") or "").lower(),
+            "username": lambda item: str(item.get("username") or "").lower(),
+        },
+    )
+
+    return render(
+        request,
+        "webui/hypervisors_list.html",
+        {
+            "hypervisors": filtered_items,
+            "create_form": create_form,
+            "filters": {
+                "q": search,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "cluster_type", "management_hostname", "username"]),
+        },
+    )
+
+
+@login_required
+def hypervisor_detail_view(request: HttpRequest, cluster_id: int) -> HttpResponse:
+    refresh = request.GET.get("refresh") == "1"
+    try:
+        cluster = get_hypervisor_cluster(*_creds(request), cluster_id)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("hypervisors")
+
+    if cluster is None:
+        messages.error(request, "Hypervisor cluster not found")
+        return redirect("hypervisors")
+
+    stats = cluster.get("stats") or {}
+    if refresh:
+        messages.success(request, "Cluster details refreshed")
+    
+    # Build UUID to asset mapping if attribute is assigned (uuid → {id, name})
+    uuid_to_asset = {}
+    attribute_name = cluster.get("attribute_name")
+    if attribute_name:
+        try:
+            assets = api_request(*_creds(request), "GET", "/v1/assets")
+            if isinstance(assets, list):
+                for asset in assets:
+                    if not isinstance(asset, dict):
+                        continue
+                    attributes = asset.get("attributes") or []
+                    for attr in attributes:
+                        if isinstance(attr, dict) and attr.get("name") == attribute_name:
+                            attr_value = attr.get("value", "").strip()
+                            if attr_value:
+                                asset_id = asset.get("id")
+                                asset_name = asset.get("assetname")
+                                if asset_id and asset_name:
+                                    uuid_to_asset[attr_value] = {"id": asset_id, "name": asset_name}
+        except ServiceError:
+            pass
+    
+    # Enrich VMs with asset links
+    vms = stats.get("vms") or []
+    for vm in vms:
+        if isinstance(vm, dict):
+            vm_uuid = vm.get("uuid")
+            if vm_uuid in uuid_to_asset:
+                asset_info = uuid_to_asset[vm_uuid]
+                vm["asset_id"] = asset_info["id"]
+                vm["asset_name"] = asset_info["name"]
+    
+    return render(
+        request,
+        "webui/hypervisor_detail.html",
+        {
+            "cluster": cluster,
+            "stats": stats,
+            "vm_count": stats.get("vm_count", 0),
+            "cluster_cpus": stats.get("cluster_cpus", 0),
+            "cluster_memory_gb": stats.get("cluster_memory_gb", 0),
+            "vms": vms,
+            "refresh": refresh,
+        },
+    )
+
+
+@login_required
+def hypervisor_form_view(request: HttpRequest, cluster_id: int | None = None) -> HttpResponse:
+    attributes = []
+    try:
+        attributes = api_request(*_creds(request), "GET", "/v1/attributes")
+    except ServiceError:
+        attributes = []
+
+    attribute_choices = [(str(item["id"]), item.get("name") or str(item["id"])) for item in attributes if isinstance(item, dict) and item.get("id") is not None]
+
+    initial = {}
+    if cluster_id is not None:
+        try:
+            cluster = get_hypervisor_cluster(*_creds(request), cluster_id)
+        except ServiceError as exc:
+            messages.error(request, str(exc))
+            return redirect("hypervisors")
+        if cluster is None:
+            messages.error(request, "Hypervisor cluster not found")
+            return redirect("hypervisors")
+        initial = {
+            "name": cluster.get("name", ""),
+            "cluster_type": cluster.get("cluster_type", "vmware"),
+            "management_hostname": cluster.get("management_hostname", ""),
+            "username": cluster.get("username", ""),
+            "attribute_id": str(cluster.get("attribute_id") or ""),
+            "verify_ssl": cluster.get("verify_ssl", True),
+        }
+
+    form = HypervisorClusterForm(request.POST or None, initial=initial, attribute_choices=attribute_choices)
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("hypervisors")
+        if form.is_valid():
+            payload = {
+                "name": form.cleaned_data["name"],
+                "cluster_type": form.cleaned_data["cluster_type"],
+                "management_hostname": form.cleaned_data["management_hostname"],
+                "username": form.cleaned_data["username"],
+                "password": form.cleaned_data["password"],
+                "attribute_id": int(form.cleaned_data["attribute_id"]) if form.cleaned_data.get("attribute_id") else None,
+                "verify_ssl": form.cleaned_data["verify_ssl"],
+            }
+            try:
+                if cluster_id is None:
+                    create_hypervisor_cluster(*_creds(request), payload)
+                    messages.success(request, "Hypervisor cluster created")
+                else:
+                    update_hypervisor_cluster(*_creds(request), cluster_id, payload)
+                    messages.success(request, "Hypervisor cluster updated")
+                return redirect("hypervisors")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    return render(
+        request,
+        "webui/hypervisor_form.html",
+        {"form": form, "cluster_id": cluster_id, "attribute_choices": attribute_choices},
+    )
+
+
+@login_required
+def hypervisor_delete_view(request: HttpRequest, cluster_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("hypervisors")
+    if request.user.readonly:
+        messages.error(request, "This user has readonly access.")
+        return redirect("hypervisors")
+    try:
+        delete_hypervisor_cluster(*_creds(request), cluster_id)
+        messages.success(request, "Hypervisor cluster deleted")
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    return redirect("hypervisors")
+
+
+@login_required
+def virtual_machines_view(request: HttpRequest) -> HttpResponse:
+    """Display all virtual machines from all hypervisors in a unified list."""
+    search_query = _raw_param(request, "q") or ""
+    sort_by = _param(request, "sort_by") or "cluster_name"
+    sort_dir = _sort_direction(request)
+    
+    all_vms: list[dict[str, Any]] = []
+    
+    try:
+        clusters = api_request(*_creds(request), "GET", "/v1/hypervisors")
+        if isinstance(clusters, list):
+            for cluster in clusters:
+                if not isinstance(cluster, dict):
+                    continue
+                cluster_id = cluster.get("id")
+                if not cluster_id:
+                    continue
+                
+                # Fetch full cluster data with stats (includes VMs)
+                try:
+                    full_cluster = get_hypervisor_cluster(*_creds(request), cluster_id)
+                except ServiceError:
+                    continue
+                
+                if full_cluster is None:
+                    continue
+                    
+                cluster_name = full_cluster.get("name")
+                attribute_name = full_cluster.get("attribute_name")
+                if not cluster_name:
+                    continue
+                    
+                stats = full_cluster.get("stats") or {}
+                vms = stats.get("vms") or []
+                
+                # Build VM→asset mapping for this cluster (uuid → {id, name})
+                uuid_to_asset = {}
+                if attribute_name:
+                    try:
+                        assets = api_request(*_creds(request), "GET", "/v1/assets")
+                        if isinstance(assets, list):
+                            for asset in assets:
+                                if not isinstance(asset, dict):
+                                    continue
+                                attributes = asset.get("attributes") or []
+                                for attr in attributes:
+                                    if isinstance(attr, dict) and attr.get("name") == attribute_name:
+                                        attr_value = attr.get("value", "").strip()
+                                        if attr_value:
+                                            asset_id = asset.get("id")
+                                            asset_name = asset.get("assetname")
+                                            if asset_id and asset_name:
+                                                uuid_to_asset[attr_value] = {"id": asset_id, "name": asset_name}
+                    except ServiceError:
+                        pass
+                
+                # Add VMs with cluster info
+                for vm in vms:
+                    if isinstance(vm, dict):
+                        vm_dict = dict(vm)
+                        vm_dict["cluster_id"] = cluster_id
+                        vm_dict["cluster_name"] = cluster_name
+                        vm_uuid = vm.get("uuid")
+                        if vm_uuid in uuid_to_asset:
+                            asset_info = uuid_to_asset[vm_uuid]
+                            vm_dict["asset_id"] = asset_info["id"]
+                            vm_dict["asset_name"] = asset_info["name"]
+                        all_vms.append(vm_dict)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    
+    # Filter VMs by search query
+    filtered_vms: list[dict[str, Any]] = []
+    search_lower = search_query.lower()
+    for vm in all_vms:
+        cluster_name = str(vm.get("cluster_name", "")).lower()
+        vm_name = str(vm.get("name", "")).lower()
+        if search_lower in cluster_name or search_lower in vm_name:
+            filtered_vms.append(vm)
+    
+    all_vms = filtered_vms if search_query else all_vms
+    
+    # Sort VMs
+    all_vms = _sort_items(
+        all_vms,
+        sort_by,
+        sort_dir,
+        {
+            "cluster_name": lambda item: str(item.get("cluster_name", "")).lower(),
+            "name": lambda item: str(item.get("name", "")).lower(),
+            "vcpus": lambda item: int(item.get("vcpus", 0)),
+            "memory_gb": lambda item: float(item.get("memory_gb", 0)),
+        },
+    )
+    
+    base_params = {"q": search_query}
+    return render(
+        request,
+        "webui/virtual_machines_list.html",
+        {
+            "vms": all_vms,
+            "filters": {
+                "q": search_query,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "sort_links": _sort_link_data(base_params, sort_by, sort_dir, ["cluster_name", "name", "vcpus", "memory_gb"]),
         },
     )
 

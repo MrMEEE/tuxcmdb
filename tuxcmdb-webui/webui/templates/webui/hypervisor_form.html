@@ -1,0 +1,50 @@
+{% extends 'webui/base.html' %}
+{% block title %}Hypervisor Cluster · TuxCMDB{% endblock %}
+{% block page_title %}{% if cluster_id %}Edit Cluster{% else %}New Cluster{% endif %}{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header py-2">
+    <h5 class="mb-0">{% if cluster_id %}Edit Hypervisor Cluster{% else %}Create Hypervisor Cluster{% endif %}</h5>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      {% csrf_token %}
+      <div class="col-md-6">
+        <label class="form-label">Name</label>
+        {{ form.name }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Cluster Type</label>
+        {{ form.cluster_type }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Management Hostname</label>
+        {{ form.management_hostname }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Username</label>
+        {{ form.username }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Password</label>
+        {{ form.password }}
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Asset Attribute Mapping</label>
+        {{ form.attribute_id }}
+        <div class="form-text">Choose an existing attribute whose value will be matched to the UUID reported by the hypervisor.</div>
+      </div>
+      <div class="col-12">
+        <div class="form-check">
+          {{ form.verify_ssl }}
+          <label class="form-check-label" for="{{ form.verify_ssl.id_for_label }}">Verify SSL certificate</label>
+        </div>
+      </div>
+      <div class="col-12 d-flex gap-2">
+        <button class="btn btn-accent" type="submit">Save</button>
+        <a class="btn btn-default" href="{% url 'hypervisors' %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

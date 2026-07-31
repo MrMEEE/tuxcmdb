@@ -1,0 +1,145 @@
+{% extends 'webui/base.html' %}
+{% block title %}Hypervisor Cluster · TuxCMDB{% endblock %}
+{% block page_title %}{{ cluster.name }}{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Cluster Details</h5>
+    <div class="d-flex gap-2">
+      <a class="btn btn-default btn-sm" href="{% url 'hypervisor-detail' cluster.id %}?refresh=1">Refresh</a>
+      <a class="btn btn-default btn-sm" href="{% url 'hypervisor-edit' cluster.id %}">Edit</a>
+      <form method="post" action="{% url 'hypervisor-delete' cluster.id %}" class="inline-form">
+        {% csrf_token %}
+        <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+      </form>
+    </div>
+  </div>
+  <div class="card-body">
+    <dl class="row mb-0">
+      <dt class="col-sm-3">Name</dt>
+      <dd class="col-sm-9">{{ cluster.name }}</dd>
+      <dt class="col-sm-3">Type</dt>
+      <dd class="col-sm-9">{{ cluster.cluster_type }}</dd>
+      <dt class="col-sm-3">Management Host</dt>
+      <dd class="col-sm-9">{{ cluster.management_hostname }}</dd>
+      <dt class="col-sm-3">Username</dt>
+      <dd class="col-sm-9">{{ cluster.username }}</dd>
+      <dt class="col-sm-3">Attribute Mapping</dt>
+      <dd class="col-sm-9">{% if cluster.attribute_name %}{{ cluster.attribute_name }}{% else %}<span class="text-muted">No attribute mapping assigned</span>{% endif %}</dd>
+    </dl>
+
+    <hr>
+    <h6 class="mb-3">Basic statistics</h6>
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="border rounded p-3">
+          <div class="text-muted small">VMs</div>
+          <div class="fs-4">{{ vm_count }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3">
+          <div class="text-muted small">CPUs</div>
+          <div class="fs-4">{{ cluster_cpus }}</div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="border rounded p-3">
+          <div class="text-muted small">Memory (GB)</div>
+          <div class="fs-4">{{ cluster_memory_gb }}</div>
+        </div>
+      </div>
+    </div>
+
+    <hr>
+    <h6 class="mb-3">VMs</h6>
+    {% if vms %}
+      {% if vms.0.name %}
+      <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="vms-table">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-vm-sort" type="button" data-field="name">Name</button></th>
+            <th><button class="btn btn-link p-0 js-vm-sort" type="button" data-field="vcpus">vCPUs</button></th>
+            <th><button class="btn btn-link p-0 js-vm-sort" type="button" data-field="memory_gb">Memory (GB)</button></th>
+            <th><button class="btn btn-link p-0 js-vm-sort" type="button" data-field="uuid">UUID</button></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vm in vms %}
+          <tr>
+            <td>
+              {% if vm.asset_id %}
+              <a href="{% url 'asset-detail' vm.asset_name %}">{{ vm.name }}</a>
+              {% else %}
+              {{ vm.name }}
+              {% endif %}
+            </td>
+            <td>{{ vm.vcpus }}</td>
+            <td>{{ vm.memory_gb }}</td>
+            <td><code class="text-break">{{ vm.uuid }}</code></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <script>
+      (function() {
+        let sortState = { field: null, ascending: true };
+        
+        document.querySelectorAll('.js-vm-sort').forEach(btn => {
+          btn.addEventListener('click', function() {
+            const field = this.dataset.field;
+            const table = document.getElementById('vms-table');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            if (sortState.field === field) {
+              sortState.ascending = !sortState.ascending;
+            } else {
+              sortState.field = field;
+              sortState.ascending = true;
+            }
+            
+            const colIndex = Array.from(this.closest('tr').querySelectorAll('th')).indexOf(this.closest('th'));
+            
+            rows.sort((a, b) => {
+              let aVal = a.cells[colIndex].textContent.trim();
+              let bVal = b.cells[colIndex].textContent.trim();
+              
+              const aNum = parseFloat(aVal);
+              const bNum = parseFloat(bVal);
+              if (!isNaN(aNum) && !isNaN(bNum)) {
+                return sortState.ascending ? aNum - bNum : bNum - aNum;
+              }
+              
+              return sortState.ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+            
+            document.querySelectorAll('.js-vm-sort').forEach(b => {
+              b.textContent = b.dataset.field.charAt(0).toUpperCase() + b.dataset.field.slice(1);
+              if (b.dataset.field === 'memory_gb') b.textContent = 'Memory (GB)';
+              if (b.dataset.field === 'vcpus') b.textContent = 'vCPUs';
+            });
+            
+            const indicator = sortState.ascending ? '▲' : '▼';
+            this.textContent += ' ' + indicator;
+          });
+        });
+      })();
+      </script>
+      {% else %}
+      <ul class="mb-0">
+        {% for vm in vms %}
+        <li><code>{{ vm }}</code></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    {% else %}
+    <p class="text-muted mb-0">No VMs reported by the cluster endpoint.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

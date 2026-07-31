@@ -1,5 +1,7 @@
 from django import forms
 
+from tuxcmdb.hypervisors import list_supported_hypervisor_types
+
 
 TEXT_INPUT = {"class": "form-control"}
 PASSWORD_INPUT = {"class": "form-control"}
@@ -87,6 +89,26 @@ class OperatingSystemForm(forms.Form):
     name = forms.CharField(max_length=120, widget=forms.TextInput(attrs=TEXT_INPUT))
     description = forms.CharField(widget=forms.Textarea(attrs=TEXTAREA_INPUT), required=False)
     aliases = forms.CharField(widget=forms.Textarea(attrs={**TEXTAREA_INPUT, "rows": 2}), required=False)
+
+
+class HypervisorClusterForm(forms.Form):
+    name = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    cluster_type = forms.ChoiceField(choices=(), widget=forms.Select(attrs=TEXT_INPUT), initial="vmware")
+    management_hostname = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    username = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    password = forms.CharField(widget=forms.PasswordInput(render_value=True, attrs=PASSWORD_INPUT))
+    attribute_id = forms.ChoiceField(choices=(), required=False, widget=forms.Select(attrs=TEXT_INPUT))
+    verify_ssl = forms.BooleanField(required=False, initial=True)
+
+    def __init__(self, *args, attribute_choices: list[tuple[str, str]] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [(item["key"], item["label"]) for item in list_supported_hypervisor_types()]
+        if not choices:
+            choices = [("vmware", "VMware"), ("xenserver", "XenServer/XCP-ng")]
+        self.fields["cluster_type"].choices = choices
+        self.fields["attribute_id"].choices = [("", "Select an attribute")] + (attribute_choices or [])
+        if not self.initial.get("cluster_type"):
+            self.initial["cluster_type"] = choices[0][0] if choices else "vmware"
 
 
 class LDAPSourceForm(forms.Form):

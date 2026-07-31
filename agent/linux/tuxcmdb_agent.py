@@ -97,6 +97,10 @@ def run_command(command: str) -> str | None:
     except Exception:
         return None
 
+    # Only return output if command succeeded (exit code 0)
+    if result.returncode != 0:
+        return None
+
     output = (result.stdout or "").strip()
     if not output:
         output = (result.stderr or "").strip()
