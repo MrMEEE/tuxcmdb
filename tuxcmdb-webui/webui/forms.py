@@ -143,6 +143,11 @@ class LDAPSourceForm(forms.Form):
     is_active = forms.BooleanField(required=False, initial=True)
 
 
+class LDAPUserTestForm(forms.Form):
+    username = forms.CharField(max_length=255, widget=forms.TextInput(attrs=TEXT_INPUT))
+    password = forms.CharField(required=True, widget=forms.PasswordInput(render_value=False, attrs=PASSWORD_INPUT))
+
+
 class LDAPUserAccessForm(forms.Form):
     readonly = forms.TypedChoiceField(
         choices=[("1", "Readonly"), ("0", "Read/Write")],

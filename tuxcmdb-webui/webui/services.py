@@ -232,14 +232,17 @@ def authenticate_apiuser(username: str, password: str) -> dict[str, Any] | None:
 
 def api_request(username: str, password: str, method: str, path: str, *, params: dict[str, Any] | None = None, payload: Any = None) -> Any:
     url = f"{api_base_url()}{path}"
-    response = requests.request(
-        method=method,
-        url=url,
-        auth=(username, password),
-        params=params,
-        json=payload,
-        timeout=20,
-    )
+    try:
+        response = requests.request(
+            method=method,
+            url=url,
+            auth=(username, password),
+            params=params,
+            json=payload,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        raise ServiceError(f"API request failed: {exc}") from exc
     if response.status_code >= 400:
         try:
             detail = response.json().get("detail")
@@ -480,6 +483,28 @@ def update_ldap_source(api_username: str, api_password: str, source_id: int, pay
 
 def delete_ldap_source(api_username: str, api_password: str, source_id: int) -> None:
     api_request(api_username, api_password, "DELETE", f"/v1/ldap/sources/{source_id}")
+
+
+def test_ldap_source_connection(api_username: str, api_password: str, source_id: int) -> dict[str, Any]:
+    result = api_request(api_username, api_password, "POST", f"/v1/ldap/sources/{source_id}/test-connection")
+    return result if isinstance(result, dict) else {}
+
+
+def test_ldap_source_user(
+    api_username: str,
+    api_password: str,
+    source_id: int,
+    username: str,
+    password: str,
+) -> dict[str, Any]:
+    result = api_request(
+        api_username,
+        api_password,
+        "POST",
+        f"/v1/ldap/sources/{source_id}/test-user",
+        payload={"username": username, "password": password},
+    )
+    return result if isinstance(result, dict) else {}
 
 
 def list_ldap_user_access(api_username: str, api_password: str) -> list[LDAPUserAccessRecord]:

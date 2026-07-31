@@ -8,6 +8,7 @@ import base64
 from datetime import datetime
 import getpass
 import hashlib
+import logging
 import ipaddress
 import json
 import os
@@ -54,6 +55,7 @@ import yaml
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_API_CONFIG = BASE_DIR / "conf" / "api.yaml"
+logger = logging.getLogger(__name__)
 
 # Candidate paths for the tuxcmdb core database config (written by 'tuxcmdb setup').
 # The first existing file that contains a valid URL wins.
@@ -351,6 +353,39 @@ class LDAPSourceUpdate(BaseModel):
     attr_last_name: str | None = Field(default=None, min_length=1, max_length=64)
     attr_email: str | None = Field(default=None, min_length=1, max_length=64)
     is_active: bool | None = None
+
+
+class LDAPTestStepOut(BaseModel):
+    name: str
+    ok: bool
+    message: str
+    details: list[str] = Field(default_factory=list)
+
+
+class LDAPConnectionTestOut(BaseModel):
+    ok: bool
+    source_id: int
+    source_name: str
+    summary: str
+    steps: list[LDAPTestStepOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LDAPUserTestIn(BaseModel):
+    username: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1, max_length=255)
+
+
+class LDAPUserTestOut(BaseModel):
+    ok: bool
+    source_id: int
+    source_name: str
+    summary: str
+    username: str
+    matched_username: str | None = None
+    readonly: bool | None = None
+    steps: list[LDAPTestStepOut] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class LDAPUserAccessOut(BaseModel):
@@ -879,6 +914,404 @@ def _to_ldap_source_out(row: Any) -> LDAPSourceOut:
         created_at=row.created_at,
         changed_at=row.changed_at,
     )
+
+
+def _ldap_result_detail(connection: Any) -> str:
+    result = getattr(connection, "result", None)
+    if not isinstance(result, dict):
+        return ""
+
+    description = str(result.get("description") or "").strip()
+    message = str(result.get("message") or "").strip()
+    if description and message:
+        return f"{description} - {message}"
+    return description or message
+
+
+def _load_ldap_source_row(conn: Connection, source_id: int) -> Any | None:
+    return conn.execute(
+        select(
+            ldap_sources.c.id,
+            ldap_sources.c.name,
+            ldap_sources.c.hostname,
+            ldap_sources.c.port,
+            ldap_sources.c.protocol,
+            ldap_sources.c.verify_certs,
+            ldap_sources.c.server_type,
+            ldap_sources.c.bind_dn,
+            ldap_sources.c.bind_password,
+            ldap_sources.c.base_dn,
+            ldap_sources.c.group_base_dn,
+            ldap_sources.c.group_membership,
+            ldap_sources.c.ldap_filter,
+            ldap_sources.c.attr_username,
+            ldap_sources.c.attr_first_name,
+            ldap_sources.c.attr_last_name,
+            ldap_sources.c.attr_email,
+            ldap_sources.c.is_active,
+            ldap_sources.c.created_at,
+            ldap_sources.c.changed_at,
+        ).where(ldap_sources.c.id == source_id)
+    ).one_or_none()
+
+
+def _ldap_test_connection(source: Any, *, ldap_secret_key: str) -> LDAPConnectionTestOut:
+    steps: list[LDAPTestStepOut] = []
+    warnings: list[str] = []
+
+    if not source.is_active:
+        warnings.append("This source is disabled, so normal login will not use it.")
+
+    try:
+        import ldap3  # type: ignore
+    except Exception as exc:
+        summary = "ldap3 is not installed in the API environment"
+        logger.warning("LDAP connection test failed for source %s: %s", source.name, summary)
+        return LDAPConnectionTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            steps=[LDAPTestStepOut(name="import", ok=False, message=summary, details=[str(exc)])],
+            warnings=warnings,
+        )
+
+    tls_ctx = ldap3.Tls(validate=ssl.CERT_REQUIRED if source.verify_certs else ssl.CERT_NONE)
+    server = ldap3.Server(
+        source.hostname,
+        port=int(source.port),
+        use_ssl=str(source.protocol).lower() == "ldaps",
+        tls=tls_ctx,
+        get_info=ldap3.NONE,
+        connect_timeout=5,
+    )
+    steps.append(
+        LDAPTestStepOut(
+            name="server",
+            ok=True,
+            message=f"Created LDAP server target {source.hostname}:{int(source.port)}",
+            details=[f"Protocol: {source.protocol}", f"Verify certs: {source.verify_certs}"],
+        )
+    )
+
+    bind_dn = str(source.bind_dn or "").strip() or None
+    bind_password = _decrypt_ldap_bind_password(source.bind_password, secret_value=ldap_secret_key)
+    try:
+        service_conn = ldap3.Connection(
+            server,
+            user=bind_dn,
+            password=bind_password,
+            authentication=ldap3.SIMPLE if bind_dn else ldap3.ANONYMOUS,
+            auto_bind=ldap3.AUTO_BIND_NO_TLS,
+        )
+    except Exception as exc:
+        summary = "Unable to bind to the LDAP server"
+        logger.warning("LDAP connection test failed for source %s: %s", source.name, summary)
+        return LDAPConnectionTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            steps=steps + [LDAPTestStepOut(name="bind", ok=False, message=summary, details=[str(exc)])],
+            warnings=warnings,
+        )
+
+    bind_detail = _ldap_result_detail(service_conn)
+    steps.append(
+        LDAPTestStepOut(
+            name="bind",
+            ok=True,
+            message="Service bind succeeded",
+            details=[detail for detail in [bind_detail, f"Bind DN: {bind_dn or '(anonymous)'}"] if detail],
+        )
+    )
+
+    search_attr = str(source.attr_username or "sAMAccountName")
+    base_filter = str(source.ldap_filter or "(objectClass=person)")
+    try:
+        search_ok = service_conn.search(
+            search_base=str(source.base_dn),
+            search_filter=base_filter,
+            search_scope=ldap3.SUBTREE,
+            attributes=[search_attr],
+        )
+    except Exception as exc:
+        service_conn.unbind()
+        summary = "LDAP bind succeeded, but the directory search failed"
+        logger.warning("LDAP connection test failed for source %s: %s", source.name, summary)
+        return LDAPConnectionTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            steps=steps + [LDAPTestStepOut(name="search", ok=False, message=summary, details=[str(exc), f"Base DN: {source.base_dn}", f"Filter: {base_filter}"])],
+            warnings=warnings,
+        )
+
+    if not search_ok or not service_conn.entries:
+        detail = _ldap_result_detail(service_conn)
+        service_conn.unbind()
+        summary = "LDAP bind succeeded, but no entries matched the configured base DN and filter"
+        logger.warning("LDAP connection test failed for source %s: %s", source.name, summary)
+        search_details = [f"Base DN: {source.base_dn}", f"Filter: {base_filter}"]
+        if detail:
+            search_details.insert(0, detail)
+        return LDAPConnectionTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            steps=steps + [LDAPTestStepOut(name="search", ok=False, message=summary, details=search_details)],
+            warnings=warnings,
+        )
+
+    entry = service_conn.entries[0]
+    sample_username = str(source.name)
+    try:
+        values = list(entry[search_attr].values)
+        if values:
+            sample_username = str(values[0])
+    except Exception:
+        pass
+    service_conn.unbind()
+
+    steps.append(
+        LDAPTestStepOut(
+            name="search",
+            ok=True,
+            message="Directory search succeeded",
+            details=[
+                f"Base DN: {source.base_dn}",
+                f"Filter: {base_filter}",
+                f"Matched DN: {entry.entry_dn}",
+                f"Sample username: {sample_username}",
+            ],
+        )
+    )
+
+    summary = "LDAP connection test succeeded"
+    logger.info("LDAP connection test succeeded for source %s", source.name)
+    return LDAPConnectionTestOut(ok=True, source_id=int(source.id), source_name=str(source.name), summary=summary, steps=steps, warnings=warnings)
+
+
+def _ldap_test_user(conn: Connection, source: Any, username: str, password: str, *, ldap_secret_key: str) -> LDAPUserTestOut:
+    steps: list[LDAPTestStepOut] = []
+
+    if not source.is_active:
+        summary = "This source is disabled, so the login path will skip it"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            steps=[LDAPTestStepOut(name="source", ok=False, message=summary, details=["Enable the source before testing user login."])],
+        )
+
+    try:
+        import ldap3  # type: ignore
+    except Exception as exc:
+        summary = "ldap3 is not installed in the API environment"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            steps=[LDAPTestStepOut(name="import", ok=False, message=summary, details=[str(exc)])],
+        )
+
+    tls_ctx = ldap3.Tls(validate=ssl.CERT_REQUIRED if source.verify_certs else ssl.CERT_NONE)
+    server = ldap3.Server(
+        source.hostname,
+        port=int(source.port),
+        use_ssl=str(source.protocol).lower() == "ldaps",
+        tls=tls_ctx,
+        get_info=ldap3.NONE,
+        connect_timeout=5,
+    )
+
+    bind_dn = str(source.bind_dn or "").strip() or None
+    bind_password = _decrypt_ldap_bind_password(source.bind_password, secret_value=ldap_secret_key)
+    try:
+        service_conn = ldap3.Connection(
+            server,
+            user=bind_dn,
+            password=bind_password,
+            authentication=ldap3.SIMPLE if bind_dn else ldap3.ANONYMOUS,
+            auto_bind=ldap3.AUTO_BIND_NO_TLS,
+        )
+    except Exception as exc:
+        summary = "Unable to bind to the LDAP server"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            steps=[LDAPTestStepOut(name="bind", ok=False, message=summary, details=[str(exc)])],
+        )
+
+    steps.append(LDAPTestStepOut(name="bind", ok=True, message="Service bind succeeded", details=[f"Bind DN: {bind_dn or '(anonymous)'}"]))
+
+    search_attr = str(source.attr_username or "sAMAccountName")
+    base_filter = str(source.ldap_filter or "(objectClass=person)")
+    escaped_username = _ldap_escape_filter(username)
+    search_filter = f"(&{base_filter}({search_attr}={escaped_username}))"
+
+    try:
+        search_ok = service_conn.search(
+            search_base=str(source.base_dn),
+            search_filter=search_filter,
+            search_scope=ldap3.SUBTREE,
+            attributes=[search_attr],
+        )
+    except Exception as exc:
+        service_conn.unbind()
+        summary = "LDAP bind succeeded, but the user lookup failed"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            steps=steps + [LDAPTestStepOut(name="search", ok=False, message=summary, details=[str(exc), f"Base DN: {source.base_dn}", f"Filter: {search_filter}"])],
+        )
+
+    if not search_ok or not service_conn.entries:
+        detail = _ldap_result_detail(service_conn)
+        service_conn.unbind()
+        summary = "User lookup failed before the password check"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        search_details = [f"Base DN: {source.base_dn}", f"Filter: {search_filter}"]
+        if detail:
+            search_details.insert(0, detail)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            steps=steps + [LDAPTestStepOut(name="search", ok=False, message=summary, details=search_details)],
+        )
+
+    entry = service_conn.entries[0]
+    user_dn = entry.entry_dn
+    matched_username = username
+    try:
+        values = list(entry[search_attr].values)
+        if values:
+            matched_username = str(values[0])
+    except Exception:
+        pass
+
+    user_groups = _ldap_user_groups(service_conn, source, user_dn, ldap3)
+    service_conn.unbind()
+
+    steps.append(
+        LDAPTestStepOut(
+            name="search",
+            ok=True,
+            message="User lookup succeeded",
+            details=[f"Base DN: {source.base_dn}", f"Filter: {search_filter}", f"Matched DN: {user_dn}", f"Matched username: {matched_username}"],
+        )
+    )
+
+    try:
+        user_conn = ldap3.Connection(
+            server,
+            user=user_dn,
+            password=password,
+            authentication=ldap3.SIMPLE,
+            auto_bind=ldap3.AUTO_BIND_NO_TLS,
+        )
+        ok = user_conn.bind()
+    except Exception as exc:
+        summary = "The user password could not be validated"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            matched_username=matched_username,
+            steps=steps + [LDAPTestStepOut(name="bind_user", ok=False, message=summary, details=[str(exc), f"User DN: {user_dn}"])],
+        )
+
+    bind_detail = _ldap_result_detail(user_conn)
+    user_conn.unbind()
+
+    if not ok:
+        summary = "The user password could not be validated"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        bind_details = [f"User DN: {user_dn}"]
+        if bind_detail:
+            bind_details.insert(0, bind_detail)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            matched_username=matched_username,
+            steps=steps + [LDAPTestStepOut(name="bind_user", ok=False, message=summary, details=bind_details)],
+        )
+
+    access_row = conn.execute(
+        select(ldap_user_access.c.id, ldap_user_access.c.readonly, ldap_user_access.c.is_active).where(ldap_user_access.c.username == matched_username)
+    ).one_or_none()
+
+    group_rule = conn.execute(
+        select(ldap_group_role_mappings.c.id, ldap_group_role_mappings.c.readonly)
+        .where(
+            and_(
+                ldap_group_role_mappings.c.source_id == source.id,
+                ldap_group_role_mappings.c.is_active.is_(True),
+                ldap_group_role_mappings.c.group_name.in_(user_groups),
+            )
+        )
+        .order_by(ldap_group_role_mappings.c.id)
+    ).one_or_none() if user_groups else None
+
+    if access_row is not None and not access_row.is_active:
+        summary = "The user exists locally, but the local LDAP access policy is disabled"
+        logger.warning("LDAP user test failed for source %s and username %s: %s", source.name, username, summary)
+        return LDAPUserTestOut(
+            ok=False,
+            source_id=int(source.id),
+            source_name=str(source.name),
+            summary=summary,
+            username=username,
+            matched_username=matched_username,
+            steps=steps + [LDAPTestStepOut(name="policy", ok=False, message=summary, details=[f"Access policy ID: {access_row.id}", f"Readonly: {access_row.readonly}"])],
+        )
+
+    readonly = bool(access_row.readonly) if access_row is not None else bool(group_rule.readonly) if group_rule is not None else True
+    warnings = []
+    if access_row is None:
+        warnings.append("No local access policy exists yet; the first successful login would create one.")
+        if group_rule is not None:
+            warnings.append(f"Matching group policy {group_rule.id} would set readonly={bool(group_rule.readonly)} on first login.")
+    elif group_rule is not None:
+        warnings.append(f"Group policy {group_rule.id} also matches this user; local policy takes precedence.")
+
+    steps.append(
+        LDAPTestStepOut(
+            name="policy",
+            ok=True,
+            message="Local access policy evaluated",
+            details=[f"Readonly: {readonly}", f"Local policy: {'present' if access_row is not None else 'absent'}", f"Matched groups: {', '.join(user_groups) if user_groups else '(none)'}"],
+        )
+    )
+
+    summary = "User login test succeeded"
+    logger.info("LDAP user test succeeded for source %s and username %s", source.name, matched_username)
+    return LDAPUserTestOut(ok=True, source_id=int(source.id), source_name=str(source.name), summary=summary, username=username, matched_username=matched_username, readonly=readonly, steps=steps, warnings=warnings)
 
 
 def _ldap_escape_filter(value: str) -> str:
@@ -2023,33 +2456,38 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.get("/v1/ldap/sources/{source_id}", response_model=LDAPSourceOut)
     def get_ldap_source(source_id: int, _: AuthenticatedUser = Depends(authenticate)) -> LDAPSourceOut:
         with engine.connect() as conn:
-            row = conn.execute(
-                select(
-                    ldap_sources.c.id,
-                    ldap_sources.c.name,
-                    ldap_sources.c.hostname,
-                    ldap_sources.c.port,
-                    ldap_sources.c.protocol,
-                    ldap_sources.c.verify_certs,
-                    ldap_sources.c.server_type,
-                    ldap_sources.c.bind_dn,
-                    ldap_sources.c.bind_password,
-                    ldap_sources.c.base_dn,
-                    ldap_sources.c.group_base_dn,
-                    ldap_sources.c.group_membership,
-                    ldap_sources.c.ldap_filter,
-                    ldap_sources.c.attr_username,
-                    ldap_sources.c.attr_first_name,
-                    ldap_sources.c.attr_last_name,
-                    ldap_sources.c.attr_email,
-                    ldap_sources.c.is_active,
-                    ldap_sources.c.created_at,
-                    ldap_sources.c.changed_at,
-                ).where(ldap_sources.c.id == source_id)
-            ).one_or_none()
+            row = _load_ldap_source_row(conn, source_id)
         if row is None:
             raise HTTPException(status_code=404, detail="LDAP source not found")
         return _to_ldap_source_out(row)
+
+    @app.post("/v1/ldap/sources/{source_id}/test-connection", response_model=LDAPConnectionTestOut)
+    def test_ldap_source_connection(source_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPConnectionTestOut:
+        with engine.connect() as conn:
+            row = _load_ldap_source_row(conn, source_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="LDAP source not found")
+
+        report = _ldap_test_connection(row, ldap_secret_key=ldap_secret_key)
+        if report.ok:
+            logger.info("LDAP connection test completed for source %s (%s)", row.name, row.id)
+        return report
+
+    @app.post("/v1/ldap/sources/{source_id}/test-user", response_model=LDAPUserTestOut)
+    def test_ldap_source_user(
+        source_id: int,
+        payload: LDAPUserTestIn,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> LDAPUserTestOut:
+        with engine.connect() as conn:
+            row = _load_ldap_source_row(conn, source_id)
+            if row is None:
+                raise HTTPException(status_code=404, detail="LDAP source not found")
+            report = _ldap_test_user(conn, row, payload.username, payload.password, ldap_secret_key=ldap_secret_key)
+
+        if report.ok:
+            logger.info("LDAP user test completed for source %s (%s) and username %s", row.name, row.id, report.username)
+        return report
 
     @app.post("/v1/ldap/sources", response_model=LDAPSourceOut, status_code=status.HTTP_201_CREATED)
     def create_ldap_source(payload: LDAPSourceCreate, _: AuthenticatedUser = Depends(require_write_access)) -> LDAPSourceOut:
@@ -3653,6 +4091,7 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "create-user":
         raise SystemExit(run_create_user_command(sys.argv[2:]))
 
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     api_cfg = load_api_config(DEFAULT_API_CONFIG)
     host = str(api_cfg.get("host", "127.0.0.1"))
     port = int(api_cfg.get("port", 8080))

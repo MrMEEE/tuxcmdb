@@ -89,6 +89,49 @@
           <a class="btn btn-default" href="{% url 'ldap-sources' %}">Cancel</a>
         </div>
       </form>
+      {% if source_record %}
+      <div class="card shadow-sm mt-4">
+        <div class="card-header py-2"><h5 class="mb-0">Tests</h5></div>
+        <div class="card-body">
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+              <div>
+                <div class="fw-semibold">Connection</div>
+                <div class="text-muted">Checks the saved server settings, bind account, and base DN search.</div>
+              </div>
+              <form method="post" class="m-0">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="test-connection">
+                <button class="btn btn-default" type="submit" {% if request.user.readonly %}disabled{% endif %}>Run connection test</button>
+              </form>
+            </div>
+          </div>
+          <div>
+            <div class="fw-semibold mb-2">User test</div>
+            <div class="text-muted mb-3">Enter a username and password to test the full login flow against this source.</div>
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="test-user">
+              <div class="row">
+                <div class="col-md-5 form-group">
+                  <label>Username</label>
+                  {{ user_test_form.username }}
+                </div>
+                <div class="col-md-5 form-group">
+                  <label>Password</label>
+                  {{ user_test_form.password }}
+                </div>
+                <div class="col-md-2 form-group d-flex align-items-end">
+                  <button class="btn btn-default w-100" type="submit" {% if request.user.readonly %}disabled{% endif %}>Run user test</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="alert alert-info mt-4 mb-0">Save the source first to enable connection and user tests.</div>
+      {% endif %}
       </div>
     </div>
   </div>

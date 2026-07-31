@@ -23,6 +23,7 @@ from .forms import (
     HypervisorClusterForm,
     LDAPGroupRoleMappingForm,
     LDAPSourceForm,
+    LDAPUserTestForm,
     LDAPUserAccessForm,
     LoginForm,
     OperatingSystemForm,
@@ -50,6 +51,8 @@ from .services import (
     list_ldap_group_role_mappings,
     list_ldap_sources,
     list_ldap_user_access,
+    test_ldap_source_connection,
+    test_ldap_source_user,
     update_ldap_group_role_mapping,
     update_ldap_source,
     update_ldap_user_access,
@@ -122,6 +125,35 @@ def _parse_bool_text(value: str) -> bool | None:
     if normalized in {"0", "false", "no", "off", "inactive", "decommissioned"}:
         return False
     return None
+
+
+def _show_ldap_test_report(request: HttpRequest, report: dict[str, Any]) -> None:
+    summary = str(report.get("summary") or "").strip()
+    if summary:
+        if report.get("ok"):
+            messages.success(request, summary)
+        else:
+            messages.error(request, summary)
+
+    for warning in report.get("warnings") or []:
+        warning_text = str(warning or "").strip()
+        if warning_text:
+            messages.warning(request, warning_text)
+
+    for step in report.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
+        step_message = str(step.get("message") or "").strip()
+        details = [str(detail).strip() for detail in (step.get("details") or []) if str(detail).strip()]
+        message = step_message
+        if details:
+            message = f"{step_message}: {'; '.join(details)}"
+        if not message:
+            continue
+        if step.get("ok"):
+            messages.info(request, message)
+        else:
+            messages.error(request, message)
 
 
 def _asset_filter_terms(query: str) -> list[tuple[str, str | None]]:
@@ -2080,10 +2112,47 @@ def ldap_source_form_view(request: HttpRequest, source_id: int | None = None) ->
         }
 
     form = LDAPSourceForm(request.POST or None, initial=initial)
+    user_test_form = LDAPUserTestForm()
     if request.method == "POST":
+        action = (request.POST.get("action") or "save").strip()
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("ldap-sources")
+
+        if action == "test-connection":
+            if source_record is None:
+                messages.error(request, "Save the source first before running the connection test.")
+                return redirect("ldap-source-create")
+
+            try:
+                report = test_ldap_source_connection(*_creds(request), source_record.id)
+                _show_ldap_test_report(request, report)
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+            return redirect("ldap-source-edit", source_id=source_record.id)
+
+        if action == "test-user":
+            if source_record is None:
+                messages.error(request, "Save the source first before running the user test.")
+                return redirect("ldap-source-create")
+
+            user_test_form = LDAPUserTestForm(request.POST)
+            if not user_test_form.is_valid():
+                messages.error(request, "Enter both a username and password for the user test.")
+                return redirect("ldap-source-edit", source_id=source_record.id)
+
+            try:
+                report = test_ldap_source_user(
+                    *_creds(request),
+                    source_record.id,
+                    user_test_form.cleaned_data["username"],
+                    user_test_form.cleaned_data["password"],
+                )
+                _show_ldap_test_report(request, report)
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+            return redirect("ldap-source-edit", source_id=source_record.id)
+
         if form.is_valid():
             payload = {
                 "name": form.cleaned_data["name"],
@@ -2119,7 +2188,11 @@ def ldap_source_form_view(request: HttpRequest, source_id: int | None = None) ->
             except ServiceError as exc:
                 messages.error(request, str(exc))
 
-    return render(request, "webui/ldap_source_form.html", {"form": form, "source_record": source_record})
+    return render(
+        request,
+        "webui/ldap_source_form.html",
+        {"form": form, "source_record": source_record, "user_test_form": user_test_form},
+    )
 
 
 @login_required
