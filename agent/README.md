@@ -12,6 +12,16 @@ Agent script: `agent/linux/tuxcmdb_agent.py`
 - Reports values via `POST /v1/agent/report`
 - Pass `--insecure` on first run to accept self-signed TLS certificates; the choice is persisted as `verify_ssl` in the config file
 
+The package creates an unprivileged `tuxcmdb-agent` system user and owns `/etc/tuxcmdb-agent` with it; the systemd unit runs the agent as this user. Running `tuxcmdb-agent` manually as root still works but prints a warning, and the config file/directory are (re)owned by `tuxcmdb-agent` automatically.
+
+Some attribute fetch commands are marked "needs privilege" in the webui. The unprivileged agent user runs these via `sudo -n`, which requires a matching NOPASSWD rule. Use the `sudo` subcommand (must be run as root) to manage these rules interactively:
+
+```
+tuxcmdb-agent sudo
+```
+
+This lists attribute commands that require privilege for the current host, shows which already have a rule installed under `/etc/sudoers.d/tuxcmdb-agent-<attribute>`, and lets you add (`a <number>`) or remove (`r <name>`) rules. Each rule is validated with `visudo -cf` before being installed. Running `sudo` as a non-root user prints an error and exits, since it cannot edit `/etc/sudoers.d`.
+
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 
 Systemd units:

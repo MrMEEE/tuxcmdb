@@ -697,7 +697,12 @@ class AgentAttributeTaskOut(BaseModel):
     attribute_name: str
     data_type: str
     allow_multiple: bool
-    commands: list[str]
+    commands: list["AgentCommandOut"]
+
+
+class AgentCommandOut(BaseModel):
+    command: str
+    needs_privilege: bool = False
 
 
 class AgentBootstrapResponse(BaseModel):
@@ -2089,6 +2094,7 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
             attribute_fetchmethods.c.id.label("fetchmethod_id"),
             attribute_fetchmethods.c.command,
             attribute_fetchmethods.c.is_default,
+            attribute_fetchmethods.c.needs_privilege,
             attribute_fetchmethod_operatingsystems.c.operatingsystem_id,
         )
         .join(attribute_fetchmethods, attribute_fetchmethods.c.attribute_id == attributes.c.id)
@@ -2110,6 +2116,7 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
                 "allow_multiple": row.allow_multiple,
                 "command": row.command,
                 "is_default": bool(row.is_default),
+                "needs_privilege": bool(row.needs_privilege),
                 "os_ids": set(),
             }
             attr_methods[row.fetchmethod_id] = method
@@ -2136,8 +2143,10 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
                     allow_multiple=item["allow_multiple"],
                     commands=[],
                 )
-            if item["command"] not in grouped[key].commands:
-                grouped[key].commands.append(item["command"])
+            if item["command"] not in [c.command for c in grouped[key].commands]:
+                grouped[key].commands.append(
+                    AgentCommandOut(command=item["command"], needs_privilege=item["needs_privilege"])
+                )
 
     return list(grouped.values())
 
