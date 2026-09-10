@@ -15,6 +15,17 @@ ALLOWED_HOSTS = ["*"]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST = True
 
+# Origins allowed to submit unsafe (POST/PUT/...) requests, e.g. the login
+# form. Required when the site is reached through a reverse proxy on a
+# hostname/port that differs from what Django sees directly. Set via
+# TUXCMDB_CSRF_TRUSTED_ORIGINS as a comma-separated list of full origins,
+# for example: https://tuxcmdb.example.com,https://localhost:4443
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get("TUXCMDB_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+
 INSTALLED_APPS = [
     "daphne",
     "django.contrib.auth",

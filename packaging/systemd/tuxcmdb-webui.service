@@ -5,6 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/tuxcmdb-webui
+EnvironmentFile=-/etc/sysconfig/tuxcmdb-webui
 ExecStart=/usr/bin/tuxcmdb-webui
 Restart=on-failure
 RestartSec=3

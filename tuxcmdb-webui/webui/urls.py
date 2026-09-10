@@ -54,4 +54,5 @@ urlpatterns = [
     path("audit/", views.audit_view, name="audit"),
     path("agents/", views.agents_view, name="agents"),
     path("agents/download/<str:filename>/", views.agents_download_view, name="agents-download"),
+    path("agents/assets/<path:filename>", views.agents_asset_view, name="agents-asset"),
 ]

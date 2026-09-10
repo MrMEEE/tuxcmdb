@@ -44,3 +44,24 @@ Then open:
 ```text
 http://127.0.0.1:8000/
 ```
+
+## Behind a reverse proxy
+
+When the WebUI is reached through nginx/apache on a hostname/port that
+differs from what Django sees directly (e.g. `https://tuxcmdb.example.com`
+or `https://host:4443`), set `TUXCMDB_CSRF_TRUSTED_ORIGINS` to a
+comma-separated list of the externally-facing origins, otherwise POST
+requests (like login) fail with "CSRF verification failed... Origin
+checking failed".
+
+For the packaged RPM install, add this to `/etc/sysconfig/tuxcmdb-webui`
+(created if missing) and restart the service:
+
+```
+TUXCMDB_CSRF_TRUSTED_ORIGINS=https://tuxcmdb.example.com,https://localhost:4443
+```
+
+```bash
+systemctl restart tuxcmdb-webui
+```
+

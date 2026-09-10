@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import shlex
 import json
+import mimetypes
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +13,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
@@ -2467,6 +2470,7 @@ def agents_view(request: HttpRequest) -> HttpResponse:
         {
             "agent_files": agent_files,
             "agents_available": settings.AGENTS_DIR.is_dir(),
+            "use_agents_static": True,
         },
     )
 
@@ -2477,6 +2481,17 @@ def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | 
     if requested.parent != agents_dir or not requested.is_file():
         raise Http404("Agent file not found")
     return FileResponse(requested.open("rb"), as_attachment=True, filename=requested.name)
+
+
+def agents_asset_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:
+    # Serves the WebUI's own bundled CSS/JS/fonts under /agents/assets/ so the
+    # public agents page still renders styled even if a reverse proxy in front
+    # of the WebUI doesn't forward STATIC_URL.
+    resolved = finders.find(filename)
+    if not resolved or not os.path.isfile(resolved):
+        raise Http404("Asset not found")
+    content_type, _encoding = mimetypes.guess_type(resolved)
+    return FileResponse(open(resolved, "rb"), content_type=content_type)
 
 
 @login_required
