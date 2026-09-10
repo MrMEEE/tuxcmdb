@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
+import urllib3
 
 DEFAULT_CONFIG = Path("/etc/tuxcmdb-agent/config.json")
 DEFAULT_TIMEOUT = 30
@@ -29,6 +30,11 @@ def ask(prompt: str) -> str:
 
 def normalize_server_url(url: str) -> str:
     return url.strip().rstrip("/")
+
+
+def _apply_verify_ssl(verify_ssl: bool) -> None:
+    if not verify_ssl:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def _agent_uid_gid() -> tuple[int, int] | None:
@@ -173,6 +179,7 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
         raise SystemExit("Missing CMDB API URL")
 
     verify_ssl = not args.insecure
+    _apply_verify_ssl(verify_ssl)
 
     payload: dict[str, Any] = {}
     if args.assetid:
@@ -264,6 +271,7 @@ def cmd_report(args: argparse.Namespace) -> int:
 
     config = ensure_config(args)
     verify_ssl = config.get("verify_ssl", True)
+    _apply_verify_ssl(verify_ssl)
 
     try:
         bootstrap, selected_match, os_info = fetch_bootstrap(config, verify_ssl)
@@ -384,6 +392,7 @@ def cmd_sudo(args: argparse.Namespace) -> int:
     with config_path.open("r", encoding="utf-8") as handle:
         config = json.load(handle)
     verify_ssl = config.get("verify_ssl", True)
+    _apply_verify_ssl(verify_ssl)
 
     try:
         bootstrap, _selected_match, _os_info = fetch_bootstrap(config, verify_ssl)
