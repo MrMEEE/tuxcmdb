@@ -180,7 +180,7 @@ jobs:
           pattern: tuxcmdb-agent-*
           path: agent-artifacts
 
-      - name: Build tuxcmdb-webui-agents packages
+      - name: Build tuxcmdb-webui-agents package
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
@@ -201,14 +201,7 @@ jobs:
             --architecture noarch \
             -C buildroot .
 
-          fpm -s dir -t deb \
-            -n tuxcmdb-webui-agents \
-            -v "$VERSION" \
-            --iteration "1" \
-            --architecture all \
-            -C buildroot .
-
-          mv ./*.rpm ./*.deb "$DIST_DIR"/
+          mv ./*.rpm "$DIST_DIR"/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
