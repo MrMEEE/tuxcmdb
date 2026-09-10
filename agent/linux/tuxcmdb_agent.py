@@ -347,8 +347,14 @@ def _existing_sudo_rules() -> dict[str, str]:
     return rules
 
 
+# Characters sudoers allows to be backslash-escaped inside an unquoted command
+# word; every other character (quotes, pipes, wildcards, etc.) must stay literal
+# or visudo rejects the rule with "illegal escape sequence".
+_SUDOERS_ESCAPE_CHARS = set(" \t\\,:=")
+
+
 def _escape_for_sudoers(command: str) -> str:
-    return command.replace("\\", "\\\\").replace('"', '\\"')
+    return "".join(("\\" + ch) if ch in _SUDOERS_ESCAPE_CHARS else ch for ch in command)
 
 
 def _validate_sudoers(rule_path: Path) -> bool:
@@ -361,7 +367,7 @@ def _validate_sudoers(rule_path: Path) -> bool:
 
 def _add_sudo_rule(attribute_name: str, command: str) -> None:
     rule_path = _sudoers_rule_path(attribute_name)
-    line = f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c "{_escape_for_sudoers(command)}"\n'
+    line = f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c {_escape_for_sudoers(command)}\n'
     rule_path.write_text(line, encoding="utf-8")
     os.chmod(rule_path, 0o440)
     if not _validate_sudoers(rule_path):
@@ -408,22 +414,29 @@ def cmd_sudo(args: argparse.Namespace) -> int:
         return 0
 
     print("Privileged attribute commands:")
+    print("-" * 60)
     known_names: set[str] = set()
     for index, item in enumerate(privileged_commands, start=1):
         safe_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
         known_names.add(safe_name)
-        configured = " (sudo rule configured)" if safe_name in existing_rules else ""
-        print(f"  [{index}] {item['attribute_name']}: {item['command']}{configured}")
+        status = "[configured]" if safe_name in existing_rules else "[not configured]"
+        print(f"  {index:>2}. {item['attribute_name']:<24} {status}")
+        print(f"      $ {item['command']}")
 
     unmatched_rules = [name for name in existing_rules if name not in known_names]
     if unmatched_rules:
-        print("\nExisting sudo rules with no matching privileged command:")
+        print()
+        print("Sudo rules with no matching privileged command:")
         for name in unmatched_rules:
             print(f"  - {name}")
 
-    print("\nCommands: 'a <number>' add rule, 'r <name>' remove rule, 'q' quit")
+    print("-" * 60)
+    print("Commands:")
+    print("  a <number>   add sudo rule for a listed command")
+    print("  r <name>     remove an existing sudo rule")
+    print("  q            quit")
     while True:
-        choice = ask("> ")
+        choice = ask("\ntuxcmdb-agent sudo> ")
         if not choice or choice.lower() in {"q", "quit", "exit"}:
             return 0
         parts = choice.split(maxsplit=1)

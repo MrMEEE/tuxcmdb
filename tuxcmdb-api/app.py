@@ -1765,6 +1765,7 @@ def normalize_fetchmethods(fetchmethods: list[AttributeFetchMethodIn]) -> list[A
             AttributeFetchMethodIn(
                 command=command,
                 supported_operatingsystems=supported_operatingsystems,
+                needs_privilege=item.needs_privilege,
             )
         )
 
