@@ -2459,7 +2459,6 @@ def _list_agent_files() -> list[dict[str, Any]]:
     return files
 
 
-@login_required
 def agents_view(request: HttpRequest) -> HttpResponse:
     agent_files = _list_agent_files()
     return render(
@@ -2472,7 +2471,6 @@ def agents_view(request: HttpRequest) -> HttpResponse:
     )
 
 
-@login_required
 def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:
     agents_dir = settings.AGENTS_DIR.resolve()
     requested = (agents_dir / Path(filename).name).resolve()
