@@ -3,13 +3,15 @@ from __future__ import annotations
 import shlex
 import json
 import re
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.conf import settings
 from django.contrib import messages
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 
 from .auth import login_required
@@ -2444,6 +2446,39 @@ def audit_view(request: HttpRequest) -> HttpResponse:
 def docs_view(request: HttpRequest) -> HttpResponse:
     api_url = request.build_absolute_uri("/api")
     return render(request, "webui/docs.html", {"api_url": api_url})
+
+
+def _list_agent_files() -> list[dict[str, Any]]:
+    agents_dir = settings.AGENTS_DIR
+    if not agents_dir.is_dir():
+        return []
+    files = []
+    for entry in sorted(agents_dir.iterdir()):
+        if entry.is_file():
+            files.append({"name": entry.name, "size": entry.stat().st_size})
+    return files
+
+
+@login_required
+def agents_view(request: HttpRequest) -> HttpResponse:
+    agent_files = _list_agent_files()
+    return render(
+        request,
+        "webui/agents_list.html",
+        {
+            "agent_files": agent_files,
+            "agents_available": settings.AGENTS_DIR.is_dir(),
+        },
+    )
+
+
+@login_required
+def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:
+    agents_dir = settings.AGENTS_DIR.resolve()
+    requested = (agents_dir / Path(filename).name).resolve()
+    if requested.parent != agents_dir or not requested.is_file():
+        raise Http404("Agent file not found")
+    return FileResponse(requested.open("rb"), as_attachment=True, filename=requested.name)
 
 
 @login_required

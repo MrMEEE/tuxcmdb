@@ -1,6 +1,11 @@
+import os
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Populated by the optional tuxcmdb-webui-agents package with installer
+# artifacts (RPM/DEB/PowerShell script) for download from /agents/.
+AGENTS_DIR = Path(os.environ.get("TUXCMDB_AGENTS_DIR", "/opt/tuxcmdb-webui-agents"))
 SECRET_KEY = "tuxcmdb-webui-dev-secret-key-change-me"
 DEBUG = True
 ALLOWED_HOSTS = ["*"]

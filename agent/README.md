@@ -37,3 +37,8 @@ Register-ScheduledTask -TaskName 'TuxCMDB Agent' -Action $action -Trigger $trigg
 ```
 
 For a hardened production rollout, move credentials to DPAPI-protected storage or the Windows Credential Manager instead of plain JSON.
+
+## Downloading agents from the WebUI
+
+The `tuxcmdb-webui-agents` package bundles the Debian/Ubuntu, RHEL 8/9/10 agent packages, and the Windows PowerShell script into `/opt/tuxcmdb-webui-agents`. When installed alongside `tuxcmdb-webui`, these files become downloadable from the **Agents** page (`/agents/`) in the web interface. If the package is not installed, the page reports that no agent downloads are available.
+

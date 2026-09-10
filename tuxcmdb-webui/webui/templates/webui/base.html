@@ -111,6 +111,16 @@
                 <span class="title">Audit</span>
               </a>
             </li>
+            <li class="nav-item">
+              <a href="{% url 'agents' %}" class="nav-link d-none d-md-block" title="Agents">
+                <i class="la la-download"></i>
+                <span class="title">Agents</span>
+              </a>
+              <a href="{% url 'agents' %}" class="nav-link mobile d-block d-md-none" title="Agents">
+                <i class="la la-download"></i>
+                <span class="title">Agents</span>
+              </a>
+            </li>
           </ul>
         </div>
       </nav>
@@ -146,6 +156,9 @@
             </a>
             <a class="dropdown-item d-flex" href="{% url 'audit' %}">
               <div class="flex-grow-1"><i class="icon-list-outline me-2 text-body-tertiary"></i><span>Audit</span></div>
+            </a>
+            <a class="dropdown-item d-flex" href="{% url 'agents' %}">
+              <div class="flex-grow-1"><i class="icon-download-outline me-2 text-body-tertiary"></i><span>Agents</span></div>
             </a>
           </div>
         </div>

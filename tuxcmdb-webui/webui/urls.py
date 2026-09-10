@@ -52,4 +52,6 @@ urlpatterns = [
     path("apiusers/ldap-group-mappings/", views.ldap_group_mappings_view, name="ldap-group-mappings"),
     path("docs/", views.docs_view, name="docs"),
     path("audit/", views.audit_view, name="audit"),
+    path("agents/", views.agents_view, name="agents"),
+    path("agents/download/<str:filename>/", views.agents_download_view, name="agents-download"),
 ]
