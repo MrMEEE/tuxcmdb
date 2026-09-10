@@ -2,10 +2,17 @@ param(
     [string]$ServerUrl,
     [string]$AssetId,
     [string]$AssetName,
-    [string]$ConfigPath = "$env:ProgramData\TuxCMDBAgent\config.json"
+    [string]$ConfigPath = "$env:ProgramData\TuxCMDBAgent\config.json",
+    [switch]$Insecure
 )
 
 $ErrorActionPreference = "Stop"
+
+function Set-CertificateValidation([bool]$VerifySsl) {
+    if (-not $VerifySsl) {
+        [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    }
+}
 
 function Ensure-Directory([string]$Path) {
     $dir = Split-Path -Parent $Path
@@ -25,6 +32,9 @@ function Read-Or-Register {
     if (Test-Path $Path) {
         $existing = Get-Content -Path $Path -Raw | ConvertFrom-Json
         if ($existing.server_url -and $existing.asset_id -and $existing.systempass) {
+            if (-not (Get-Member -InputObject $existing -Name "verify_ssl")) {
+                $existing | Add-Member -NotePropertyName verify_ssl -NotePropertyValue $true
+            }
             return $existing
         }
     }
@@ -51,12 +61,14 @@ function Read-Or-Register {
         server_url = $ServerUrl.TrimEnd('/')
         asset_id = $register.id
         systempass = $register.systempass
+        verify_ssl = -not $Insecure.IsPresent
     }
     $config | ConvertTo-Json | Set-Content -Path $Path -Encoding UTF8
     return $config
 }
 
 $config = Read-Or-Register -Path $ConfigPath
+Set-CertificateValidation -VerifySsl ([bool]$config.verify_ssl)
 $bootstrapPayload = @{
     asset_id = $config.asset_id
     systempass = $config.systempass

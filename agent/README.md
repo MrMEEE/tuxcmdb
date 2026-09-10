@@ -10,6 +10,7 @@ Agent script: `agent/linux/tuxcmdb_agent.py`
 - Registers anonymously with `POST /v1/agent/register`
 - Fetches approved task list via `POST /v1/agent/bootstrap`
 - Reports values via `POST /v1/agent/report`
+- Pass `--insecure` on first run to accept self-signed TLS certificates; the choice is persisted as `verify_ssl` in the config file
 
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 
@@ -25,7 +26,7 @@ Agent script: `agent/windows/tuxcmdb-agent.ps1`
 Suggested deployment for MVP:
 
 1. Copy script to `C:\Program Files\TuxCMDBAgent\tuxcmdb-agent.ps1`
-2. Run once interactively to register and write config to `C:\ProgramData\TuxCMDBAgent\config.json`
+2. Run once interactively to register and write config to `C:\ProgramData\TuxCMDBAgent\config.json` (pass `-Insecure` to accept self-signed TLS certificates; stored as `verify_ssl` in the config file)
 3. Create a Scheduled Task (every 15 min):
 
 ```powershell

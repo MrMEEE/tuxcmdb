@@ -124,6 +124,7 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
         with config_path.open("r", encoding="utf-8") as handle:
             data = json.load(handle)
         if "server_url" in data and "asset_id" in data and "systempass" in data:
+            data.setdefault("verify_ssl", True)
             return data
 
     server_url = normalize_server_url(args.server_url or "")
@@ -131,6 +132,8 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
         server_url = normalize_server_url(ask("CMDB API URL (e.g. http://127.0.0.1:8080): "))
     if not server_url:
         raise SystemExit("Missing CMDB API URL")
+
+    verify_ssl = not args.insecure
 
     payload: dict[str, Any] = {}
     if args.assetid:
@@ -142,6 +145,7 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
         f"{server_url}/v1/agent/register",
         json=payload,
         timeout=DEFAULT_TIMEOUT,
+        verify=verify_ssl,
     )
     if response.status_code >= 400:
         raise SystemExit(f"Agent registration failed: {response.status_code} {response.text}")
@@ -151,6 +155,7 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
         "server_url": server_url,
         "asset_id": data["id"],
         "systempass": data["systempass"],
+        "verify_ssl": verify_ssl,
     }
 
     with config_path.open("w", encoding="utf-8") as handle:
@@ -167,9 +172,15 @@ def main() -> int:
     parser.add_argument("--assetid")
     parser.add_argument("--assetname")
     parser.add_argument("--once", action="store_true", default=True)
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Do not verify the server's TLS certificate (allows self-signed certificates)",
+    )
     args = parser.parse_args()
 
     config = ensure_config(args)
+    verify_ssl = config.get("verify_ssl", True)
     os_info = detect_operating_system()
 
     bootstrap: dict[str, Any] | None = None
@@ -183,6 +194,7 @@ def main() -> int:
                 "operating_system": candidate,
             },
             timeout=DEFAULT_TIMEOUT,
+            verify=verify_ssl,
         )
         if bootstrap_response.status_code >= 400:
             print(f"Bootstrap failed: {bootstrap_response.status_code} {bootstrap_response.text}")
@@ -240,6 +252,7 @@ def main() -> int:
             "values": report_values,
         },
         timeout=DEFAULT_TIMEOUT,
+        verify=verify_ssl,
     )
     if report_response.status_code >= 400:
         print(f"Report failed: {report_response.status_code} {report_response.text}")
