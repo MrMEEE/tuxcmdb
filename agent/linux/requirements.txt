@@ -1,1 +1,3 @@
 requests>=2.32,<3.0
+# urllib3 2.x requires Python 3.10; the RHEL 8/9 agent targets Python 3.9.
+urllib3>=1.26.18,<2.0
