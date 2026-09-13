@@ -39,13 +39,21 @@
       <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
       <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
       <div class="col-md-11">
-        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter assets, e.g. cpus=4, cpus, active=false, assetname=min-pc">
+        <input
+          class="form-control"
+          type="text"
+          name="q"
+          value="{{ filters.q }}"
+          placeholder="Filter assets, e.g. cpus=4, cpus, active=false, assetname=web*"
+          autocomplete="off"
+          data-attribute-names="assetname,active,{% for attribute in attribute_catalog %}{{ attribute.name }}{% if not forloop.last %},{% endif %}{% endfor %}"
+        >
       </div>
       <div class="col-md-1 d-flex justify-content-end align-items-center gap-2">
         <a class="btn btn-default btn-sm" href="{% url 'assets' %}">Clear</a>
       </div>
       <div class="col-12">
-        <small class="text-muted">Examples: <code>cpus=4</code>, <code>cpus</code>, <code>active=false</code>, <code>assetname=server</code></small>
+        <small class="text-muted">Examples: <code>cpus=4</code>, <code>cpus</code>, <code>active=false</code>, <code>assetname=web*</code>, <code>*prod*</code></small>
       </div>
     </form>
     <div class="table-responsive">

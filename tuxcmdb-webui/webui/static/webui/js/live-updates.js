@@ -353,6 +353,114 @@
     }
   }
 
+  // ── Attribute-name autocomplete for filter inputs ──────────────────────
+  // Any input with data-attribute-names="a,b,c" gets a suggestion dropdown
+  // for the token currently being typed. Delegated on document so it keeps
+  // working after AJAX partial page swaps re-render the input.
+  const suggestSelector = "input[data-attribute-names]";
+
+  function closeSuggestMenu() {
+    const existing = document.querySelector(".tuxcmdb-suggest-menu");
+    if (existing) {
+      existing.remove();
+    }
+  }
+
+  function currentTokenBounds(input) {
+    const value = input.value;
+    const pos = typeof input.selectionStart === "number" ? input.selectionStart : value.length;
+    let start = pos;
+    while (start > 0 && !/\s/.test(value[start - 1])) {
+      start--;
+    }
+    let end = pos;
+    while (end < value.length && !/\s/.test(value[end])) {
+      end++;
+    }
+    return { start: start, end: end, token: value.slice(start, end) };
+  }
+
+  function showSuggestMenu(input) {
+    const names = (input.getAttribute("data-attribute-names") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (!names.length) {
+      closeSuggestMenu();
+      return;
+    }
+
+    const bounds = currentTokenBounds(input);
+    if (!bounds.token || bounds.token.indexOf("=") !== -1) {
+      closeSuggestMenu();
+      return;
+    }
+
+    const needle = bounds.token.toLowerCase();
+    const matches = names.filter((name) => name.toLowerCase().indexOf(needle) === 0).slice(0, 8);
+    closeSuggestMenu();
+    if (!matches.length) {
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu tuxcmdb-suggest-menu show";
+    menu.style.position = "absolute";
+    menu.style.zIndex = "1080";
+    const rect = input.getBoundingClientRect();
+    menu.style.top = rect.bottom + window.scrollY + "px";
+    menu.style.left = rect.left + window.scrollX + "px";
+    menu.style.width = rect.width + "px";
+
+    matches.forEach((name) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "dropdown-item";
+      item.textContent = name;
+      item.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        const value = input.value;
+        const insertion = name + "=";
+        input.value = value.slice(0, bounds.start) + insertion + value.slice(bounds.end);
+        const cursor = bounds.start + insertion.length;
+        input.setSelectionRange(cursor, cursor);
+        closeSuggestMenu();
+        input.focus();
+        const form = input.form;
+        if (form && form.hasAttribute("data-auto-submit")) {
+          scheduleAutoSubmit(form);
+        }
+      });
+      menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+  }
+
+  document.addEventListener("input", (event) => {
+    if (event.target.matches && event.target.matches(suggestSelector)) {
+      showSuggestMenu(event.target);
+    }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    if (event.target.matches && event.target.matches(suggestSelector)) {
+      showSuggestMenu(event.target);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && event.target.matches && event.target.matches(suggestSelector)) {
+      closeSuggestMenu();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".tuxcmdb-suggest-menu") && !(event.target.matches && event.target.matches(suggestSelector))) {
+      closeSuggestMenu();
+    }
+  });
+
   function bindLiveForms() {
     const forms = document.querySelectorAll("form:not([data-no-live])");
     forms.forEach((form) => {

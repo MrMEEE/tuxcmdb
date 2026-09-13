@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import fnmatch
 import json
 import mimetypes
 import os
@@ -104,7 +105,11 @@ def _raw_param(request: HttpRequest, name: str) -> str:
 def _contains_text(value: Any, needle: str) -> bool:
     if not needle:
         return True
-    return needle.lower() in str(value or "").lower()
+    text = str(value or "").lower()
+    pattern = needle.lower()
+    if "*" in pattern:
+        return fnmatch.fnmatchcase(text, pattern)
+    return pattern in text
 
 
 def _matches_bool_filter(value: bool, expected: str) -> bool:
@@ -120,7 +125,11 @@ def _matches_bool_filter(value: bool, expected: str) -> bool:
 def _matches_exact_text(value: Any, expected: str) -> bool:
     if not expected:
         return True
-    return str(value or "").lower() == expected.lower()
+    text = str(value or "").lower()
+    pattern = expected.lower()
+    if "*" in pattern:
+        return fnmatch.fnmatchcase(text, pattern)
+    return text == pattern
 
 
 def _parse_bool_text(value: str) -> bool | None:

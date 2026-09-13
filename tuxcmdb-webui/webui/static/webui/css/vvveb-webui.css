@@ -3,6 +3,16 @@
   margin: 1rem;
 }
 
+/* Bootstrap draws table row borders with a per-cell inset box-shadow so
+ * variants/hover colors can layer over --bs-table-bg. That box-shadow is
+ * painted independently per cell, so rows with mismatched heights (e.g. a
+ * multi-line fetch-method cell next to single-line cells) can render with
+ * visibly misaligned/broken horizontal lines. Use a real border instead. */
+.table > :not(caption) > * > * {
+  box-shadow: none;
+  border-bottom: var(--bs-border-width) solid var(--bs-table-border-color);
+}
+
 a.tuxcmdb-sidebar-logo {
   text-decoration: none;
   display: inline-flex;
