@@ -518,6 +518,13 @@ class DatatypeCreate(BaseModel):
     builtin_validator: str | None = Field(default=None, max_length=32)
 
 
+class DatatypeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=32)
+    description: str | None = None
+    regex_pattern: str | None = None
+    builtin_validator: str | None = Field(default=None, max_length=32)
+
+
 class HypervisorClusterCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     cluster_type: str = Field(min_length=1, max_length=64)
@@ -3301,6 +3308,81 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 },
             )
         return DatatypeOut(**row._mapping)
+
+    @app.patch("/v1/datatypes/{datatype_id}", response_model=DatatypeOut)
+    def update_datatype(datatype_id: int, payload: DatatypeUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> DatatypeOut:
+        with engine.begin() as conn:
+            current = conn.execute(
+                select(datatypes.c.name).where(datatypes.c.id == datatype_id)
+            ).one_or_none()
+            if current is None:
+                raise HTTPException(status_code=404, detail="Datatype not found")
+
+            updates: dict[str, Any] = {}
+            if payload.name is not None:
+                new_name = payload.name.strip().lower()
+                if new_name != current.name:
+                    existing = conn.execute(
+                        select(datatypes.c.id).where(datatypes.c.name == new_name)
+                    ).scalar_one_or_none()
+                    if existing is not None:
+                        raise HTTPException(status_code=409, detail=f"Datatype '{new_name}' already exists")
+                    in_use = conn.execute(
+                        select(attributes.c.id).where(attributes.c.data_type == current.name).limit(1)
+                    ).scalar_one_or_none()
+                    if in_use is not None:
+                        raise HTTPException(status_code=409, detail="Datatype is in use and cannot be renamed")
+                    updates["name"] = new_name
+            if payload.description is not None:
+                updates["description"] = payload.description or None
+            if payload.regex_pattern is not None:
+                updates["regex_pattern"] = payload.regex_pattern or None
+            if payload.builtin_validator is not None:
+                updates["builtin_validator"] = payload.builtin_validator or None
+
+            if not updates:
+                raise HTTPException(status_code=400, detail="No fields to update")
+
+            updates["changed_at"] = func.now()
+            try:
+                conn.execute(
+                    datatypes.update().where(datatypes.c.id == datatype_id).values(**updates)
+                )
+            except IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Datatype name already exists") from exc
+
+            row = conn.execute(
+                select(
+                    datatypes.c.id, datatypes.c.name, datatypes.c.description,
+                    datatypes.c.regex_pattern, datatypes.c.builtin_validator,
+                    datatypes.c.created_at, datatypes.c.changed_at,
+                ).where(datatypes.c.id == datatype_id)
+            ).one()
+            log_audit_entry(conn, _.username, "datatype", row.name, "update", updates)
+        return DatatypeOut(**row._mapping)
+
+    @app.delete("/v1/datatypes/{datatype_id}", response_model=MessageResponse)
+    def delete_datatype(datatype_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+        with engine.begin() as conn:
+            row = conn.execute(
+                select(datatypes.c.id, datatypes.c.name).where(datatypes.c.id == datatype_id)
+            ).one_or_none()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Datatype not found")
+
+            in_use = conn.execute(
+                select(attributes.c.id).where(attributes.c.data_type == row.name).limit(1)
+            ).scalar_one_or_none()
+            if in_use is not None:
+                raise HTTPException(status_code=409, detail="Datatype is in use and cannot be deleted")
+
+            try:
+                conn.execute(datatypes.delete().where(datatypes.c.id == datatype_id))
+            except IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="Datatype is in use and cannot be deleted") from exc
+            log_audit_entry(conn, _.username, "datatype", row.name, "delete")
+
+        return MessageResponse(status="ok", message="Datatype deleted")
 
     @app.get("/v1/operatingsystems", response_model=list[OperatingSystemOut])
     def list_operatingsystems(

@@ -1564,6 +1564,59 @@ def datatypes_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
+def datatype_form_view(request: HttpRequest, datatype_id: int) -> HttpResponse:
+    datatype: dict[str, Any] | None = None
+    try:
+        datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
+        datatype = next((item for item in datatypes if item.get("id") == datatype_id), None)
+        if datatype is None:
+            messages.error(request, "Datatype not found")
+            return redirect("datatypes")
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("datatypes")
+
+    initial = {
+        "name": datatype["name"],
+        "description": datatype.get("description") or "",
+        "builtin_validator": datatype.get("builtin_validator") or "",
+        "regex_pattern": datatype.get("regex_pattern") or "",
+    }
+    form = DatatypeForm(request.POST or None, initial=initial)
+    if request.method == "POST":
+        if request.user.readonly:
+            messages.error(request, "This user has readonly access.")
+            return redirect("datatypes")
+        if form.is_valid():
+            try:
+                payload = {k: v or None for k, v in form.cleaned_data.items()}
+                api_request(*_creds(request), "PATCH", f"/v1/datatypes/{datatype_id}", payload=payload)
+                messages.success(request, "Datatype updated")
+                notify_ui_update("datatypes", "updated", form.cleaned_data["name"])
+                return redirect("datatypes")
+            except ServiceError as exc:
+                messages.error(request, str(exc))
+
+    return render(request, "webui/datatype_form.html", {"form": form, "datatype": datatype})
+
+
+@login_required
+def datatype_delete_view(request: HttpRequest, datatype_id: int) -> HttpResponse:
+    if request.method != "POST":
+        return redirect("datatypes")
+    if request.user.readonly:
+        messages.error(request, "This user has readonly access.")
+        return redirect("datatypes")
+    try:
+        api_request(*_creds(request), "DELETE", f"/v1/datatypes/{datatype_id}")
+        messages.success(request, "Datatype deleted")
+        notify_ui_update("datatypes", "deleted", str(datatype_id))
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+    return redirect("datatypes")
+
+
+@login_required
 def hypervisors_view(request: HttpRequest) -> HttpResponse:
     search = _raw_param(request, "q") or _param(request, "name")
     sort_by = _param(request, "sort_by") or "name"
