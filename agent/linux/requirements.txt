@@ -1,3 +1,6 @@
-requests>=2.32,<3.0
-# urllib3 2.x requires Python 3.10; the RHEL 8/9 agent targets Python 3.9.
+# requests 2.32+ and urllib3 2.x use PEP 604 "X | Y" type hints evaluated at
+# import time, which raises TypeError on Python 3.9 (RHEL 8/9). Pin both
+# below the versions that introduced that syntax so one build works on
+# Python 3.9 through current releases.
+requests>=2.28,<2.32
 urllib3>=1.26.18,<2.0
