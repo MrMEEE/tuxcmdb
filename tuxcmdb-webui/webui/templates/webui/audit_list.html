@@ -1,0 +1,53 @@
+{% extends 'webui/base.html' %}
+{% block title %}Audit · TuxCMDB{% endblock %}
+{% block page_title %}Audit{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Audit Log</h5>
+  </div>
+  <div class="card-body">
+    <form id="audit-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-10">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter audit, e.g. actor=admin, action=decommission, entity=asset">
+      </div>
+      <div class="col-md-2 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'audit' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>actor=admin</code>, <code>action=decommission</code>, <code>entity=asset</code></small>
+      </div>
+    </form>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.created_at.field }}" data-sort-dir="{{ sort_links.created_at.next_dir }}">When {{ sort_links.created_at.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.actor_username.field }}" data-sort-dir="{{ sort_links.actor_username.next_dir }}">Actor {{ sort_links.actor_username.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.entity_type.field }}" data-sort-dir="{{ sort_links.entity_type.next_dir }}">Entity {{ sort_links.entity_type.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.entity_ref.field }}" data-sort-dir="{{ sort_links.entity_ref.next_dir }}">Reference {{ sort_links.entity_ref.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.action.field }}" data-sort-dir="{{ sort_links.action.next_dir }}">Action {{ sort_links.action.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="audit-filters" data-sort-field="{{ sort_links.details.field }}" data-sort-dir="{{ sort_links.details.next_dir }}">Details {{ sort_links.details.indicator }}</button></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in audit_logs %}
+        <tr>
+          <td>{{ item.created_at }}</td>
+          <td>{{ item.actor_username }}</td>
+          <td>{{ item.entity_type }}</td>
+          <td>{{ item.entity_ref }}</td>
+          <td>{{ item.action }}</td>
+          <td><code>{{ item.details|default:'-' }}</code></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="6">No audit entries found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

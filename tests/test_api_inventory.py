@@ -55,13 +55,13 @@ class InventoryApiTests(unittest.TestCase):
                 )
             )
             os_id = conn.execute(
-                api.attributes.insert().values(
-                    name="os",
-                    data_type="string",
-                    allow_multiple=True,
-                    inventory_group=True,
-                )
-            ).inserted_primary_key[0]
+                api.select(api.attributes.c.id).where(api.attributes.c.name == "os")
+            ).scalar_one()
+            conn.execute(
+                api.attributes.update()
+                .where(api.attributes.c.id == os_id)
+                .values(allow_multiple=True, inventory_group=True, immutable=False)
+            )
             ip_id = conn.execute(
                 api.attributes.insert().values(
                     name="ip_address",
@@ -79,9 +79,9 @@ class InventoryApiTests(unittest.TestCase):
                 "srv-mixed": (["RHEL8", "RHEL9"], ["192.168.1.14"], True),
                 "srv-retired": (["RHEL8"], ["192.168.1.15"], False),
             }
-            for hostname, (operating_systems, addresses, active) in fixtures.items():
+            for assetname, (operating_systems, addresses, active) in fixtures.items():
                 asset_id = conn.execute(
-                    api.assets.insert().values(hostname=hostname, active=active)
+                    api.assets.insert().values(assetname=assetname, active=active)
                 ).inserted_primary_key[0]
                 conn.execute(
                     api.assignments.insert(),
@@ -117,7 +117,7 @@ class InventoryApiTests(unittest.TestCase):
         expression = "os=RHEL AND (os NOT RHEL9) AND ip_address=192.168."
         assets_response = self.client.get(
             "/v1/assets",
-            params={"filter": expression},
+            params={"filter": expression, "active": "true"},
             auth=self.auth,
         )
         inventory_response = self.client.get(
@@ -128,7 +128,7 @@ class InventoryApiTests(unittest.TestCase):
 
         self.assertEqual(assets_response.status_code, 200)
         self.assertEqual(inventory_response.status_code, 200)
-        self.assertEqual([asset["hostname"] for asset in assets_response.json()], ["srv-rhel8"])
+        self.assertEqual([asset["assetname"] for asset in assets_response.json()], ["srv-rhel8"])
         self.assertEqual(inventory_response.json()["all"]["hosts"], ["srv-rhel8"])
 
     def test_inventory_contains_metadata_lists_and_groups(self) -> None:
@@ -151,12 +151,12 @@ class InventoryApiTests(unittest.TestCase):
     def test_prefix_is_literal_and_case_insensitive(self) -> None:
         response = self.client.get(
             "/v1/assets",
-            params={"filter": "os=rhel AND ip_address=192.168."},
+            params={"filter": "os=rhel AND ip_address=192.168.", "active": "true"},
             auth=self.auth,
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            [asset["hostname"] for asset in response.json()],
+            [asset["assetname"] for asset in response.json()],
             ["srv-mixed", "srv-rhel8", "srv-rhel9"],
         )
 
@@ -165,6 +165,15 @@ class InventoryApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("srv-retired", response.json()["all"]["hosts"])
         self.assertEqual(self.client.get("/v1/inventory").status_code, 401)
+
+    def test_assetname_and_active_filters_support_gui_queries(self) -> None:
+        response = self.client.get(
+            "/v1/assets",
+            params={"filter": "active=false AND assetname=srv-ret"},
+            auth=self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([asset["assetname"] for asset in response.json()], ["srv-retired"])
 
     def test_invalid_filter_returns_bad_request(self) -> None:
         response = self.client.get(

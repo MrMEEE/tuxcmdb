@@ -1,0 +1,734 @@
+(function () {
+  "use strict";
+
+  const rootSelector = "#live-root";
+  const pageTitleSelector = ".page-title";
+  let isRefreshing = false;
+  let autoSubmitTimer = null;
+
+  function captureFocusState(root) {
+    const active = document.activeElement;
+    if (!active || !root || !root.contains(active)) {
+      return null;
+    }
+
+    const tagName = (active.tagName || "").toLowerCase();
+    if (!["input", "textarea", "select"].includes(tagName)) {
+      return null;
+    }
+
+    return {
+      id: active.id || "",
+      name: active.getAttribute("name") || "",
+      type: active.getAttribute("type") || "",
+      value: "value" in active ? active.value : "",
+      selectionStart: typeof active.selectionStart === "number" ? active.selectionStart : null,
+      selectionEnd: typeof active.selectionEnd === "number" ? active.selectionEnd : null,
+    };
+  }
+
+  function restoreFocusState(root, focusState) {
+    if (!root || !focusState) {
+      return;
+    }
+
+    let selector = null;
+    if (focusState.id) {
+      selector = "#" + CSS.escape(focusState.id);
+    } else if (focusState.name) {
+      selector = "[name='" + CSS.escape(focusState.name) + "']";
+    }
+    if (!selector) {
+      return;
+    }
+
+    const nextField = root.querySelector(selector);
+    if (!nextField) {
+      return;
+    }
+
+    if ("value" in nextField && typeof focusState.value === "string" && nextField.value !== focusState.value) {
+      nextField.value = focusState.value;
+    }
+
+    nextField.focus();
+    if (
+      typeof nextField.setSelectionRange === "function" &&
+      focusState.selectionStart !== null &&
+      focusState.selectionEnd !== null
+    ) {
+      const nextLength = typeof nextField.value === "string" ? nextField.value.length : 0;
+      const start = Math.min(focusState.selectionStart, nextLength);
+      const end = Math.min(focusState.selectionEnd, nextLength);
+      nextField.setSelectionRange(start, end);
+    }
+  }
+
+  function parseRootFromHtml(htmlText) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlText, "text/html");
+    return {
+      doc: doc,
+      htmlText: htmlText,
+      root: doc.querySelector(rootSelector),
+      title: doc.title,
+      pageTitle: doc.querySelector(pageTitleSelector),
+    };
+  }
+
+  function replaceDocument(parsed, responseUrl, historyMode) {
+    if (responseUrl && responseUrl !== window.location.href) {
+      if (historyMode === "replace") {
+        window.history.replaceState({}, "", responseUrl);
+      } else if (historyMode === "push") {
+        window.history.pushState({}, "", responseUrl);
+      }
+    }
+
+    document.open();
+    document.write(parsed.htmlText);
+    document.close();
+  }
+
+  function updateDomFromParsed(parsed, responseUrl, historyMode) {
+    const root = document.querySelector(rootSelector);
+    if (!root || !parsed.root) {
+      replaceDocument(parsed, responseUrl, historyMode);
+      return false;
+    }
+
+    const focusState = captureFocusState(root);
+    root.innerHTML = parsed.root.innerHTML;
+    if (parsed.title) {
+      document.title = parsed.title;
+    }
+
+    const currentPageTitle = document.querySelector(pageTitleSelector);
+    if (currentPageTitle && parsed.pageTitle) {
+      currentPageTitle.innerHTML = parsed.pageTitle.innerHTML;
+    }
+
+    if (responseUrl && responseUrl !== window.location.href) {
+      if (historyMode === "replace") {
+        window.history.replaceState({}, "", responseUrl);
+      } else if (historyMode === "push") {
+        window.history.pushState({}, "", responseUrl);
+      }
+    }
+
+    restoreFocusState(root, focusState);
+
+    return true;
+  }
+
+  async function loadUrl(url, historyMode) {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    });
+
+    const htmlText = await response.text();
+    const parsed = parseRootFromHtml(htmlText);
+    const ok = updateDomFromParsed(parsed, response.url || url, historyMode);
+    if (!ok) {
+      return;
+    }
+    bindLiveForms();
+  }
+
+  async function refreshCurrentView(nextUrl) {
+    if (isRefreshing) {
+      return;
+    }
+    isRefreshing = true;
+    try {
+      await loadUrl(nextUrl || window.location.href, "replace");
+    } catch (_err) {
+      window.location.reload();
+    } finally {
+      isRefreshing = false;
+    }
+  }
+
+  async function submitFormAjax(form) {
+    const formAction = form.getAttribute("action") || window.location.href;
+    const formMethod = (form.getAttribute("method") || "POST").toUpperCase();
+
+    const response = await fetch(formAction, {
+      method: formMethod,
+      body: new FormData(form),
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "same-origin",
+    });
+
+    const htmlText = await response.text();
+    const parsed = parseRootFromHtml(htmlText);
+    const ok = updateDomFromParsed(parsed, response.url || formAction, "push");
+    if (!ok) {
+      return;
+    }
+    bindLiveForms();
+  }
+
+  function toAbsoluteUrl(url) {
+    return new URL(url, window.location.href);
+  }
+
+  function shouldHandleLink(anchor, event) {
+    if (!anchor) {
+      return false;
+    }
+    if (event.defaultPrevented) {
+      return false;
+    }
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return false;
+    }
+    if (anchor.hasAttribute("download")) {
+      return false;
+    }
+    if ((anchor.getAttribute("target") || "").toLowerCase() === "_blank") {
+      return false;
+    }
+
+    const href = anchor.getAttribute("href");
+    if (!href || href.startsWith("#")) {
+      return false;
+    }
+
+    const url = toAbsoluteUrl(href);
+    if (url.origin !== window.location.origin) {
+      return false;
+    }
+    return true;
+  }
+
+  async function submitGetFormAjax(form) {
+    const action = form.getAttribute("action") || window.location.href;
+    const methodUrl = toAbsoluteUrl(action);
+    const params = new URLSearchParams(new FormData(form));
+    methodUrl.search = params.toString();
+    await loadUrl(methodUrl.toString(), "push");
+  }
+
+  function renderHistoryRows(historyBody, rows) {
+    historyBody.innerHTML = "";
+    if (!rows.length) {
+      historyBody.innerHTML = '<tr><td colspan="4">No history entries found.</td></tr>';
+      return;
+    }
+
+    rows.forEach(function (entry) {
+      const tr = document.createElement("tr");
+
+      const whenTd = document.createElement("td");
+      whenTd.textContent = entry.assigned_at || "-";
+      tr.appendChild(whenTd);
+
+      const valueTd = document.createElement("td");
+      valueTd.textContent = entry.value === null ? "-" : String(entry.value);
+      tr.appendChild(valueTd);
+
+      const stateTd = document.createElement("td");
+      stateTd.textContent = entry.assigned ? "Assigned" : "Removed";
+      tr.appendChild(stateTd);
+
+      const actionTd = document.createElement("td");
+      if (entry.can_restore) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn btn-xs btn-accent js-history-restore-btn";
+        button.textContent = "Restore Value";
+        button.setAttribute("data-asset-ref", entry.asset_ref || "");
+        button.setAttribute("data-attribute-ref", entry.attribute_name || "");
+        button.setAttribute("data-value", entry.value === null ? "" : String(entry.value));
+        actionTd.appendChild(button);
+      }
+      tr.appendChild(actionTd);
+
+      historyBody.appendChild(tr);
+    });
+  }
+
+  function showHistoryError(historyBody, message) {
+    historyBody.innerHTML = "";
+    const tr = document.createElement("tr");
+    const td = document.createElement("td");
+    td.colSpan = 4;
+    td.textContent = message;
+    tr.appendChild(td);
+    historyBody.appendChild(tr);
+  }
+
+  function getCookie(name) {
+    const allCookies = document.cookie ? document.cookie.split(";") : [];
+    for (const part of allCookies) {
+      const cookie = part.trim();
+      if (cookie.startsWith(name + "=")) {
+        return decodeURIComponent(cookie.slice(name.length + 1));
+      }
+    }
+    return null;
+  }
+
+  async function restoreAssetAttributeValue(button) {
+    const assetRef = button.getAttribute("data-asset-ref");
+    const attributeRef = button.getAttribute("data-attribute-ref");
+    const value = button.getAttribute("data-value");
+    if (!assetRef || !attributeRef) {
+      return;
+    }
+
+    const csrfToken = getCookie("csrftoken");
+    const url =
+      "/assets/" + encodeURIComponent(assetRef) + "/attributes/" + encodeURIComponent(attributeRef) + "/restore/";
+
+    button.disabled = true;
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+        },
+        credentials: "same-origin",
+        body: JSON.stringify({ value: value }),
+      });
+      if (!response.ok) {
+        throw new Error("Restore failed");
+      }
+      await refreshCurrentView(window.location.href);
+    } catch (_err) {
+      button.disabled = false;
+    }
+  }
+
+  async function loadAssetAttributeHistory(button) {
+    const card = document.getElementById("historyCard");
+    const title = document.getElementById("historyTitle");
+    const body = document.getElementById("historyBody");
+    if (!card || !title || !body) {
+      return;
+    }
+
+    const assetRef = button.getAttribute("data-asset-ref");
+    const attributeRef = button.getAttribute("data-attribute-ref");
+    if (!assetRef || !attributeRef) {
+      return;
+    }
+
+    const url = "/assets/" + encodeURIComponent(assetRef) + "/attributes/" + encodeURIComponent(attributeRef) + "/history/";
+    card.hidden = false;
+    title.textContent = "History · " + attributeRef;
+    body.innerHTML = '<tr><td colspan="3">Loading history...</td></tr>';
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load history");
+      }
+      const payload = await response.json();
+      const rows = Array.isArray(payload.history) ? payload.history : [];
+      const enriched = rows.map(function (entry) {
+        return {
+          ...entry,
+          asset_ref: payload.asset_ref || assetRef,
+        };
+      });
+      renderHistoryRows(body, enriched);
+    } catch (_err) {
+      showHistoryError(body, "Unable to load history");
+    }
+  }
+
+  // ── Attribute-name autocomplete for filter inputs ──────────────────────
+  // Any input with data-attribute-names="a,b,c" gets a suggestion dropdown
+  // for the token currently being typed. Delegated on document so it keeps
+  // working after AJAX partial page swaps re-render the input.
+  const suggestSelector = "input[data-attribute-names]";
+
+  function closeSuggestMenu() {
+    const existing = document.querySelector(".tuxcmdb-suggest-menu");
+    if (existing) {
+      existing.remove();
+    }
+  }
+
+  function currentTokenBounds(input) {
+    const value = input.value;
+    const pos = typeof input.selectionStart === "number" ? input.selectionStart : value.length;
+    let start = pos;
+    while (start > 0 && !/\s/.test(value[start - 1])) {
+      start--;
+    }
+    let end = pos;
+    while (end < value.length && !/\s/.test(value[end])) {
+      end++;
+    }
+    return { start: start, end: end, token: value.slice(start, end) };
+  }
+
+  function showSuggestMenu(input) {
+    const names = (input.getAttribute("data-attribute-names") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    if (!names.length) {
+      closeSuggestMenu();
+      return;
+    }
+
+    const bounds = currentTokenBounds(input);
+    if (!bounds.token || bounds.token.indexOf("=") !== -1) {
+      closeSuggestMenu();
+      return;
+    }
+
+    const needle = bounds.token.toLowerCase();
+    const matches = names.filter((name) => name.toLowerCase().indexOf(needle) === 0).slice(0, 8);
+    closeSuggestMenu();
+    if (!matches.length) {
+      return;
+    }
+
+    const menu = document.createElement("div");
+    menu.className = "dropdown-menu tuxcmdb-suggest-menu show";
+    menu.style.position = "absolute";
+    menu.style.zIndex = "1080";
+    const rect = input.getBoundingClientRect();
+    menu.style.top = rect.bottom + window.scrollY + "px";
+    menu.style.left = rect.left + window.scrollX + "px";
+    menu.style.width = rect.width + "px";
+
+    matches.forEach((name) => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "dropdown-item";
+      item.textContent = name;
+      item.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        const value = input.value;
+        const insertion = name + "=";
+        input.value = value.slice(0, bounds.start) + insertion + value.slice(bounds.end);
+        const cursor = bounds.start + insertion.length;
+        input.setSelectionRange(cursor, cursor);
+        closeSuggestMenu();
+        input.focus();
+        const form = input.form;
+        if (form && form.hasAttribute("data-auto-submit")) {
+          scheduleAutoSubmit(form);
+        }
+      });
+      menu.appendChild(item);
+    });
+
+    document.body.appendChild(menu);
+  }
+
+  document.addEventListener("input", (event) => {
+    if (event.target.matches && event.target.matches(suggestSelector)) {
+      showSuggestMenu(event.target);
+    }
+  });
+
+  document.addEventListener("focusin", (event) => {
+    if (event.target.matches && event.target.matches(suggestSelector)) {
+      showSuggestMenu(event.target);
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && event.target.matches && event.target.matches(suggestSelector)) {
+      closeSuggestMenu();
+    }
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".tuxcmdb-suggest-menu") && !(event.target.matches && event.target.matches(suggestSelector))) {
+      closeSuggestMenu();
+    }
+  });
+
+  function bindLiveForms() {
+    const forms = document.querySelectorAll("form:not([data-no-live])");
+    forms.forEach((form) => {
+      if (form.dataset.liveBound === "1") {
+        return;
+      }
+      form.dataset.liveBound = "1";
+      form.addEventListener("submit", async (event) => {
+        if (form.dataset.modalId) {
+          return;
+        }
+
+        const method = (form.getAttribute("method") || "GET").toUpperCase();
+        event.preventDefault();
+        if (method === "GET") {
+          await submitGetFormAjax(form);
+          return;
+        }
+        await submitFormAjax(form);
+      });
+    });
+  }
+
+  function scheduleAutoSubmit(form) {
+    if (!form) {
+      return;
+    }
+    window.clearTimeout(autoSubmitTimer);
+    autoSubmitTimer = window.setTimeout(function () {
+      if (!form.isConnected) {
+        return;
+      }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+      }
+    }, 250);
+  }
+
+  function connectWebSocket() {
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+    const wsUrl = `${protocol}://${window.location.host}/ws/updates/`;
+    let socket;
+
+    function establish() {
+      socket = new WebSocket(wsUrl);
+      socket.onmessage = function () {
+        refreshCurrentView();
+      };
+      socket.onclose = function () {
+        window.setTimeout(establish, 1200);
+      };
+    }
+
+    establish();
+  }
+
+  document.addEventListener("click", async function (event) {
+    const sortButton = event.target.closest(".js-sort-trigger");
+    if (sortButton) {
+      event.preventDefault();
+      const formId = sortButton.getAttribute("data-sort-form");
+      const sortField = sortButton.getAttribute("data-sort-field");
+      const sortDir = sortButton.getAttribute("data-sort-dir");
+      const form = formId ? document.getElementById(formId) : null;
+      if (!form) {
+        return;
+      }
+      const sortByInput = form.querySelector("input[name='sort_by']");
+      const sortDirInput = form.querySelector("input[name='sort_dir']");
+      if (sortByInput) {
+        sortByInput.value = sortField || "";
+      }
+      if (sortDirInput) {
+        sortDirInput.value = sortDir || "desc";
+      }
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+      }
+      return;
+    }
+
+    const historyButton = event.target.closest(".js-history-btn");
+    if (historyButton) {
+      event.preventDefault();
+      await loadAssetAttributeHistory(historyButton);
+      return;
+    }
+
+    const historyClose = event.target.closest("#historyClose");
+    if (historyClose) {
+      const card = document.getElementById("historyCard");
+      const body = document.getElementById("historyBody");
+      if (card) {
+        card.hidden = true;
+      }
+      if (body) {
+        body.innerHTML = "";
+      }
+      return;
+    }
+
+    const addAssetAttrButton = event.target.closest(".js-add-asset-attr-row");
+    if (addAssetAttrButton) {
+      event.preventDefault();
+      const container = document.getElementById("createAssetAttributes");
+      const template = document.getElementById("assetAttributeRowTemplate");
+      if (!container || !template || !template.content) {
+        return;
+      }
+      container.appendChild(template.content.cloneNode(true));
+      return;
+    }
+
+    const removeAssetAttrButton = event.target.closest(".js-remove-asset-attr-row");
+    if (removeAssetAttrButton) {
+      event.preventDefault();
+      const container = document.getElementById("createAssetAttributes");
+      const row = removeAssetAttrButton.closest(".js-asset-attr-row");
+      if (!container || !row) {
+        return;
+      }
+      const rows = container.querySelectorAll(".js-asset-attr-row");
+      if (rows.length <= 1) {
+        const nameInput = row.querySelector("select[name='new_attribute_name']");
+        const valueInput = row.querySelector("input[name='new_attribute_value']");
+        if (nameInput) {
+          nameInput.value = "";
+        }
+        if (valueInput) {
+          valueInput.value = "";
+        }
+      } else {
+        row.remove();
+      }
+      return;
+    }
+
+    const addFetchMethodButton = event.target.closest(".js-add-fetchmethod-row");
+    if (addFetchMethodButton) {
+      event.preventDefault();
+      const containerId = addFetchMethodButton.getAttribute("data-container");
+      const templateId = addFetchMethodButton.getAttribute("data-template");
+      const container = containerId ? document.getElementById(containerId) : null;
+      const template = templateId ? document.getElementById(templateId) : null;
+      if (!container || !template || !template.content) {
+        return;
+      }
+      const nextIndex = parseInt(container.getAttribute("data-next-index") || "0", 10);
+      const fragment = template.content.cloneNode(true);
+      fragment.querySelectorAll("[name]").forEach((el) => {
+        el.setAttribute("name", el.getAttribute("name").replace("__ROW__", String(nextIndex)));
+      });
+      container.appendChild(fragment);
+      container.setAttribute("data-next-index", String(nextIndex + 1));
+      return;
+    }
+
+    const removeFetchMethodButton = event.target.closest(".js-remove-fetchmethod-row");
+    if (removeFetchMethodButton) {
+      event.preventDefault();
+      const row = removeFetchMethodButton.closest(".js-fetchmethod-row");
+      const container = row ? row.parentElement : null;
+      if (!container || !row) {
+        return;
+      }
+      const rows = container.querySelectorAll(".js-fetchmethod-row");
+      if (rows.length <= 1) {
+        row.querySelectorAll("input").forEach((input) => {
+          input.value = "";
+        });
+        row.querySelectorAll("select").forEach((select) => {
+          Array.from(select.options).forEach((option) => {
+            option.selected = false;
+          });
+        });
+      } else {
+        row.remove();
+      }
+      return;
+    }
+
+    const restoreButton = event.target.closest(".js-history-restore-btn");
+    if (restoreButton) {
+      event.preventDefault();
+      await restoreAssetAttributeValue(restoreButton);      return;
+    }
+
+    const editAssignmentButton = event.target.closest(".js-edit-assignment-btn");
+    if (editAssignmentButton) {
+      event.preventDefault();
+      const modal = document.getElementById("editAssignmentModal");
+      const nameInput = document.getElementById("editAssignmentAttributeName");
+      const nameLabel = document.getElementById("editAssignmentAttributeLabel");
+      const valueInput = document.getElementById("editAssignmentValue");
+      if (!modal || !nameInput || !nameLabel || !valueInput) {
+        return;
+      }
+
+      const attributeName = editAssignmentButton.getAttribute("data-attribute-name") || "";
+      const assignmentValue = editAssignmentButton.getAttribute("data-assignment-value") || "";
+      nameInput.value = attributeName;
+      nameLabel.value = attributeName;
+      valueInput.value = assignmentValue;
+      modal.removeAttribute("hidden");
+      valueInput.focus();
+      return;
+    }
+
+    const matchOsButton = event.target.closest(".js-match-os-btn");
+    if (matchOsButton) {
+      const sourceOsValue = matchOsButton.getAttribute("data-source-os-value") || "";
+      const assetId = matchOsButton.getAttribute("data-asset-id") || "";
+      const sourceInput = document.getElementById("matchOsSourceValue");
+      const assetInput = document.getElementById("matchOsAssetId");
+      const detectedLabel = document.getElementById("matchOsDetectedLabel");
+      if (sourceInput) {
+        sourceInput.value = sourceOsValue;
+      }
+      if (assetInput) {
+        assetInput.value = assetId;
+      }
+      if (detectedLabel) {
+        detectedLabel.value = sourceOsValue;
+      }
+      return;
+    }
+
+    const anchor = event.target.closest("a[href]");
+    if (!shouldHandleLink(anchor, event)) {
+      return;
+    }
+
+    event.preventDefault();
+    try {
+      await loadUrl(toAbsoluteUrl(anchor.getAttribute("href")).toString(), "push");
+    } catch (_err) {
+      window.location.href = anchor.href;
+    }
+  });
+
+  document.addEventListener("input", function (event) {
+    const target = event.target;
+    const form = target && target.form;
+    if (!form || !form.hasAttribute("data-auto-submit")) {
+      return;
+    }
+    if (target.matches("input[type='text'], input[type='search'], input[type='number'], textarea")) {
+      scheduleAutoSubmit(form);
+    }
+  });
+
+  document.addEventListener("change", function (event) {
+    const target = event.target;
+    const form = target && target.form;
+    if (!form || !form.hasAttribute("data-auto-submit")) {
+      return;
+    }
+    scheduleAutoSubmit(form);
+  });
+
+  window.addEventListener("popstate", function () {
+    refreshCurrentView(window.location.href);
+  });
+
+  bindLiveForms();
+  connectWebSocket();
+})();

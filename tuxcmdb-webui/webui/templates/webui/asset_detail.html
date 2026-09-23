@@ -1,0 +1,241 @@
+{% extends 'webui/base.html' %}
+{% block title %}{{ asset.assetname }} · TuxCMDB{% endblock %}
+{% block page_title %}Asset · {{ asset.assetname }}{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-4">
+    <div class="card shadow-sm mb-3">
+      <div class="card-header py-2"><h5 class="mb-0">Asset Settings</h5></div>
+      <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update-asset">
+        <div class="form-group">
+          <label>Assetname</label>
+          {{ update_form.assetname }}
+        </div>
+        <div class="form-group">
+          <label>Approval</label>
+          <div>
+            {% if asset.approved == 2 %}
+            <span class="badge bg-success-subtle text-success-emphasis">Approved</span>
+            {% elif asset.approved == 1 %}
+            <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
+            {% elif asset.approved == 3 %}
+            <span class="badge bg-danger-subtle text-danger-emphasis">Rejected</span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-body">Not pending</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if vm_info %}
+        <div class="form-group">
+          <label>VM Mapped</label>
+          <div>
+            <span class="badge bg-info-subtle text-info-emphasis">Mapped to VM</span>
+          </div>
+        </div>
+        {% endif %}
+        <button class="btn btn-accent btn-block" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+      </form>
+      {% if asset_os_mismatch %}
+      <hr>
+      <div class="form-group">
+        <label>Unmatched OS Value</label>
+        <input class="form-control" type="text" value="{{ asset_os_value }}" readonly>
+      </div>
+      <button
+        class="btn btn-warning btn-block js-match-os-btn"
+        type="button"
+        data-open-modal="matchOsModal"
+        data-asset-id="{{ asset.id }}"
+        data-source-os-value="{{ asset_os_value }}"
+        {% if request.user.readonly %}disabled{% endif %}
+      >
+        Match OS
+      </button>
+      {% endif %}
+      <hr>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="decommission">
+        <button class="btn btn-danger btn-block" type="submit" {% if request.user.readonly or not asset.active %}disabled{% endif %}>Decommission</button>
+      </form>
+      </div>
+    </div>
+    {% if vm_info %}
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">Virtual Machine</h5></div>
+      <div class="card-body">
+      <dl class="row">
+        <dt class="col-sm-4">Cluster</dt>
+        <dd class="col-sm-8"><a href="{% url 'hypervisor-detail' vm_info.1 %}">{{ vm_info.0 }}</a></dd>
+      </dl>
+      </div>
+    </div>
+    {% endif %}
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">Add Assignment</h5></div>
+      <div class="card-body">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="assign">
+        <div class="form-group">
+          <label>Attribute name</label>
+          {{ assignment_form.attribute_name }}
+        </div>
+        <div class="form-group">
+          <label>Value</label>
+          {{ assignment_form.value }}
+        </div>
+        <button class="btn btn-accent btn-block" type="submit" {% if request.user.readonly %}disabled{% endif %}>Assign</button>
+      </form>
+      <p class="form-help">Available attributes: {% for item in attributes %}<span class="pill">{{ item.name }}</span>{% endfor %}</p>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 class="mb-0">Current Assignments</h5>
+        <span class="badge bg-primary-subtle text-body">{{ asset.attributes|length }} active</span>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Attribute</th>
+              <th>Value</th>
+              <th>Assigned at</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for assignment in asset.attributes %}
+            <tr>
+              <td>{{ assignment.name }}</td>
+              <td>{{ assignment.value|default:'-' }}</td>
+              <td>{{ assignment.assigned_at }}</td>
+              <td>
+                <button
+                  class="btn btn-xs btn-default js-edit-assignment-btn"
+                  type="button"
+                  data-attribute-name="{{ assignment.name }}"
+                  data-assignment-value="{{ assignment.value|default:'' }}"
+                  {% if request.user.readonly %}disabled{% endif %}
+                >
+                  Edit
+                </button>
+                {% if assignment.history_count > 1 %}
+                <button
+                  class="btn btn-xs btn-default js-history-btn"
+                  type="button"
+                  data-asset-ref="{{ asset.id }}"
+                  data-attribute-ref="{{ assignment.name }}"
+                >
+                  History
+                </button>
+                {% endif %}
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="remove">
+                  <input type="hidden" name="attribute_name" value="{{ assignment.name }}">
+                  <input type="hidden" name="value" value="{{ assignment.value|default:'' }}">
+                  <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4">No active assignments.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+    <div id="historyCard" class="card shadow-sm mt-3" hidden>
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <h5 id="historyTitle" class="mb-0">History</h5>
+        <button id="historyClose" class="btn btn-xs btn-default" type="button">Close</button>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Value</th>
+              <th>State</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="matchOsModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Match OS</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="matchOsModal" type="button">&times;</button>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="match-os">
+      <input type="hidden" id="matchOsAssetId" name="asset_id" value="{{ asset.id }}">
+      <input type="hidden" id="matchOsSourceValue" name="source_os_value" value="{{ asset_os_value }}">
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Detected OS</label>
+          <input class="form-control" id="matchOsDetectedLabel" type="text" value="{{ asset_os_value }}" readonly>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Match to Operating System</label>
+          <select class="form-control" name="operatingsystem_id">
+            {% for os in operating_systems %}
+            <option value="{{ os.id }}">{{ os.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="matchOsModal">Cancel</button>
+        <button class="btn btn-warning btn-sm" type="submit" {% if request.user.readonly %}disabled{% endif %}>Match OS</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="editAssignmentModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Edit Assignment</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="editAssignmentModal" type="button">&times;</button>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="edit-assignment">
+      <input type="hidden" id="editAssignmentAttributeName" name="attribute_name" value="">
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Attribute</label>
+          <input class="form-control" type="text" id="editAssignmentAttributeLabel" value="" readonly>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Value</label>
+          <input class="form-control" type="text" id="editAssignmentValue" name="value" value="">
+        </div>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="editAssignmentModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

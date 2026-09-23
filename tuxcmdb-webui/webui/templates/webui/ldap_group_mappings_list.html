@@ -1,0 +1,99 @@
+{% extends 'webui/base.html' %}
+{% block title %}Group Role Mapping · TuxCMDB{% endblock %}
+{% block page_title %}Group Role Mapping{% endblock %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">LDAP Group To Role</h5>
+    <div class="d-flex gap-2">
+      <a class="btn btn-default" href="{% url 'ldap-users' %}">AD User Access</a>
+      <a class="btn btn-default" href="{% url 'ldap-sources' %}">Authentication Sources</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="post" class="row g-2 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="create">
+      <div class="col-md-3">
+        <label class="form-label">Source</label>
+        {{ create_form.source_id }}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Group (DN or CN)</label>
+        {{ create_form.group_name }}
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Role</label>
+        {{ create_form.readonly }}
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Status</label>
+        {{ create_form.is_active }}
+      </div>
+      <div class="col-md-1 d-grid">
+        <button class="btn btn-accent" type="submit" {% if request.user.readonly %}disabled{% endif %}>Add</button>
+      </div>
+    </form>
+    <hr>
+    <form id="ldap-group-mappings-filters" method="get" class="row g-2 mb-2" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter mappings, e.g. source=corp-ad, group=cn=linux-admins, readonly=false">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'ldap-group-mappings' %}">Clear</a>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-group-mappings-filters" data-sort-field="{{ sort_links.source_name.field }}" data-sort-dir="{{ sort_links.source_name.next_dir }}">Source {{ sort_links.source_name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-group-mappings-filters" data-sort-field="{{ sort_links.group_name.field }}" data-sort-dir="{{ sort_links.group_name.next_dir }}">Group {{ sort_links.group_name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-group-mappings-filters" data-sort-field="{{ sort_links.readonly.field }}" data-sort-dir="{{ sort_links.readonly.next_dir }}">Role {{ sort_links.readonly.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-group-mappings-filters" data-sort-field="{{ sort_links.is_active.field }}" data-sort-dir="{{ sort_links.is_active.next_dir }}">Status {{ sort_links.is_active.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-group-mappings-filters" data-sort-field="{{ sort_links.changed_at.field }}" data-sort-dir="{{ sort_links.changed_at.next_dir }}">Changed {{ sort_links.changed_at.indicator }}</button></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in mappings %}
+          <tr>
+              <td>{{ item.source_name|default:'-' }}</td>
+              <td>{{ item.group_name }}</td>
+              <td>{% if item.readonly %}Readonly{% else %}Read/Write{% endif %}</td>
+              <td>{% if item.is_active %}Active{% else %}Disabled{% endif %}</td>
+              <td>{{ item.changed_at }}</td>
+              <td class="table-actions">
+                <form method="post" class="d-flex align-items-center gap-2 mb-1">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="update">
+                  <input type="hidden" name="mapping_id" value="{{ item.id }}">
+                  <select name="readonly" class="form-select form-select-sm">
+                    <option value="1" {% if item.readonly %}selected{% endif %}>Readonly</option>
+                    <option value="0" {% if not item.readonly %}selected{% endif %}>Read/Write</option>
+                  </select>
+                  <select name="is_active" class="form-select form-select-sm">
+                    <option value="1" {% if item.is_active %}selected{% endif %}>Active</option>
+                    <option value="0" {% if not item.is_active %}selected{% endif %}>Disabled</option>
+                  </select>
+                  <button class="btn btn-xs btn-default" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+                </form>
+                <form method="post" class="inline-form">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="mapping_id" value="{{ item.id }}">
+                  <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+                </form>
+              </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6">No group mappings configured.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

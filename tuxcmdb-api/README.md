@@ -18,10 +18,28 @@ pip install -r requirements.txt
 python ../tuxcmdb-api.py --create-user admin
 ```
 
-To install and immediately start the API:
+Create a readonly API user:
 
 ```bash
-python ../tuxcmdb-api.py --create-user admin --run
+python ../tuxcmdb-api.py --create-user readonly-user --readonly
+```
+
+To configure and immediately start the API in the background:
+
+```bash
+python ../tuxcmdb-api.py start --create-user admin
+```
+
+Stop the API background process:
+
+```bash
+python ../tuxcmdb-api.py stop
+```
+
+Restart the API (re-applies config with optional `--host/--port` overrides):
+
+```bash
+python ../tuxcmdb-api.py restart --host 127.0.0.1 --port 8080
 ```
 
 The `tuxcmdb-api.py` installer will also auto-create `../.venv` and install missing dependencies from `requirements.txt` when needed.
@@ -34,6 +52,22 @@ By default, `tuxcmdb-api.py` reads DB URL from `conf/database.yaml`, creates `ap
 cd tuxcmdb-api
 python app.py
 ```
+
+Create an API user directly via the API service module (no SQL needed):
+
+```bash
+cd tuxcmdb-api
+python app.py create-user --username admin
+```
+
+Optional flags:
+
+- `--readonly`
+- `--inactive`
+- `--name "Display Name"`
+- `--description "text"`
+- `--password "..."` (omit to get a secure prompt)
+- `--config /path/to/api.yaml`
 
 ## Quick Test
 
@@ -52,6 +86,7 @@ curl -u admin:your-password http://127.0.0.1:8080/ok
 ## Endpoints
 
 All endpoints except `/health` require HTTP Basic auth.
+Users with `readonly=true` can access read endpoints but cannot perform POST, PATCH, or DELETE operations.
 
 Attributes:
 
@@ -68,7 +103,7 @@ Assets:
 - `GET /v1/inventory?filter=...&active=true|false`
 - `GET /v1/assets/{asset_id}`
 - `PATCH /v1/assets/{asset_id}`
-- `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or hostname)
+- `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or assetname)
 - `DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}?value=...` (`asset_ref` and `attribute_ref` can be asset/attribute id or name)
 - `POST /v1/assets/{asset_id}/decommission`
 
@@ -76,7 +111,7 @@ Assets:
 
 ### Asset filters
 
-Both `GET /v1/assets` and `GET /v1/inventory` accept the same `filter` expression. Comparisons are case-insensitive literal prefix matches for `hostname` and every attribute. For example, `os=RHEL` matches `RHEL`, `RHEL9`, and `RHEL OS`, but not `Linux RHEL`.
+Both `GET /v1/assets` and `GET /v1/inventory` accept the same `filter` expression. Comparisons are case-insensitive literal prefix matches for `assetname` and every attribute. For example, `os=RHEL` matches `RHEL`, `RHEL9`, and `RHEL OS`, but not `Linux RHEL`.
 
 Supported operators are `NOT`, `AND`, and `OR`, with precedence `NOT`, then `AND`, then `OR`. Parentheses override precedence. Both `os NOT RHEL9` and `NOT os=RHEL9` are valid. Quote values containing spaces or operator words, for example `os="RHEL OS"`.
 
@@ -90,7 +125,7 @@ The former `q` parameter and `/v1/assets/by-attribute` endpoint have been replac
 
 ### Ansible/AWX inventory
 
-`GET /v1/inventory` returns all matching assets without pagination and defaults to active assets. It uses the standard Ansible dynamic inventory structure with `all.hosts` and `_meta.hostvars`. Host variables contain all current attributes plus `tuxcmdb_id`, `tuxcmdb_active`, `tuxcmdb_created_at`, and `tuxcmdb_changed_at`. Multi-valued attributes are JSON lists.
+`GET /v1/inventory` returns all matching assets without pagination and defaults to active assets. It uses the standard Ansible dynamic inventory structure with `all.hosts` and `_meta.hostvars`. Host variables contain all current attributes plus `tuxcmdb_id`, `tuxcmdb_active`, `tuxcmdb_approved`, `tuxcmdb_created_at`, and `tuxcmdb_changed_at`. Multi-valued attributes are JSON lists.
 
 Attributes have an `inventory_group` option, which defaults to `false`. When enabled, each current attribute value creates an inventory group while remaining available in hostvars. Group names are lowercase, non-alphanumeric runs become underscores, leading digits are prefixed with an underscore, and equal sanitized values merge into one group.
 

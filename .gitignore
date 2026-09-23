@@ -13,6 +13,8 @@ htmlcov/
 
 # Local data
 *.db
+.runtime/
+tuxcmdb-webui/.sessions/
 
 # Local configuration with secrets
 tuxcmdb-api/conf/api.yaml

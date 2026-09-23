@@ -1,0 +1,77 @@
+{% extends 'webui/base.html' %}
+{% block title %}AD User Access · TuxCMDB{% endblock %}
+{% block page_title %}AD User Access{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">AD Users Logged In</h5>
+    <div class="d-flex gap-2">
+      <a class="btn btn-default" href="{% url 'ldap-group-mappings' %}">Group Role Mapping</a>
+      <a class="btn btn-default" href="{% url 'ldap-sources' %}">Authentication Sources</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form id="ldap-users-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter users, e.g. readonly=true, active=true, source=corp-ad">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'ldap-users' %}">Clear</a>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.username.field }}" data-sort-dir="{{ sort_links.username.next_dir }}">Username {{ sort_links.username.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.source_name.field }}" data-sort-dir="{{ sort_links.source_name.next_dir }}">Source {{ sort_links.source_name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.readonly.field }}" data-sort-dir="{{ sort_links.readonly.next_dir }}">Readonly {{ sort_links.readonly.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.is_active.field }}" data-sort-dir="{{ sort_links.is_active.next_dir }}">Active {{ sort_links.is_active.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.last_login_at.field }}" data-sort-dir="{{ sort_links.last_login_at.next_dir }}">Last login {{ sort_links.last_login_at.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-users-filters" data-sort-field="{{ sort_links.changed_at.field }}" data-sort-dir="{{ sort_links.changed_at.next_dir }}">Changed {{ sort_links.changed_at.indicator }}</button></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in ldap_users %}
+          <tr>
+            <td>{{ item.username }}</td>
+            <td>{{ item.source_name|default:'-' }}</td>
+            <td>{% if item.readonly %}Yes{% else %}No{% endif %}</td>
+            <td>{% if item.is_active %}Yes{% else %}No{% endif %}</td>
+            <td>{{ item.last_login_at|default:'-' }}</td>
+            <td>{{ item.changed_at }}</td>
+            <td class="table-actions">
+              <form method="post" class="d-flex align-items-center gap-2 mb-1">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update">
+                <input type="hidden" name="username" value="{{ item.username }}">
+                <select name="readonly" class="form-select form-select-sm">
+                  <option value="1" {% if item.readonly %}selected{% endif %}>Readonly</option>
+                  <option value="0" {% if not item.readonly %}selected{% endif %}>Read/Write</option>
+                </select>
+                <select name="is_active" class="form-select form-select-sm">
+                  <option value="1" {% if item.is_active %}selected{% endif %}>Active</option>
+                  <option value="0" {% if not item.is_active %}selected{% endif %}>Disabled</option>
+                </select>
+                <button class="btn btn-xs btn-default" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+              </form>
+              <form method="post" class="inline-form">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete">
+                <input type="hidden" name="username" value="{{ item.username }}">
+                <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="7">No AD users have logged in yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,4 @@
+api:
+  # Optional static secret used to encrypt LDAP bind passwords at rest.
+  # Keep this stable across restarts/deployments so existing encrypted values remain readable.
+  ldap_bind_password_key: change-this-strong-secret

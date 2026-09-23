@@ -1,0 +1,96 @@
+{% extends 'webui/base.html' %}
+{% block title %}Datatypes · TuxCMDB{% endblock %}
+{% block page_title %}Datatypes{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Registered Datatypes</h5>
+    <button class="btn btn-accent btn-sm" data-open-modal="createDatatypeModal" {% if request.user.readonly %}disabled{% endif %}>
+      <i class="la la-plus me-1"></i>New Datatype
+    </button>
+  </div>
+  <div class="card-body">
+    <form id="datatypes-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter datatypes, e.g. validator=ipv4, regex=^[0-9], name=string">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'datatypes' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>validator=ipv4</code>, <code>regex=^10\.</code>, <code>description=address</code></small>
+      </div>
+    </form>
+    <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead>
+        <tr>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.builtin_validator.field }}" data-sort-dir="{{ sort_links.builtin_validator.next_dir }}">Builtin validator {{ sort_links.builtin_validator.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.regex_pattern.field }}" data-sort-dir="{{ sort_links.regex_pattern.next_dir }}">Regex {{ sort_links.regex_pattern.indicator }}</button></th>
+          <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for datatype in datatypes %}
+        <tr>
+          <td>{{ datatype.name }}</td>
+          <td>{{ datatype.builtin_validator|default:'-' }}</td>
+          <td><code>{{ datatype.regex_pattern|default:'-' }}</code></td>
+          <td>{{ datatype.description|default:'-' }}</td>
+          <td class="table-actions">
+            <a class="btn btn-xs btn-default" href="{% url 'datatype-edit' datatype.id %}">Edit</a>
+            <form method="post" action="{% url 'datatype-delete' datatype.id %}" class="inline-form">
+              {% csrf_token %}
+              <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5">No datatypes found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<!-- Create Datatype Modal -->
+<div id="createDatatypeModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:520px">
+    <div class="tuxcmdb-modal-header">
+      <h5>New Datatype</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="createDatatypeModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'datatypes' %}" data-modal-id="createDatatypeModal">
+      {% csrf_token %}
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          {{ create_form.name }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Builtin validator <small class="text-muted">(e.g. ipv4, ipv6)</small></label>
+          {{ create_form.builtin_validator }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Regex pattern</label>
+          {{ create_form.regex_pattern }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          {{ create_form.description }}
+        </div>
+        <p class="modal-form-error" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="createDatatypeModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

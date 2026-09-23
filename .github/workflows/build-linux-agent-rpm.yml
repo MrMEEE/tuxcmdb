@@ -1,0 +1,216 @@
+name: Build Linux Agent Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux-packages:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - el: 8
+            container: registry.access.redhat.com/ubi8/python-39:latest
+          - el: 9
+            container: registry.access.redhat.com/ubi9/python-311:latest
+          - el: 10
+            container: registry.access.redhat.com/ubi10/ubi:latest
+
+    container:
+      image: ${{ matrix.container }}
+      options: --user 0
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install fpm
+        run: |
+          set -euo pipefail
+          dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
+          gem install --no-document fpm -v 1.15.1
+
+      - name: Prepare build root
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ITERATION="1.el${{ matrix.el }}"
+          mkdir -p buildroot/opt/tuxcmdb-agent
+          mkdir -p buildroot/opt/tuxcmdb-agent/lib
+          mkdir -p buildroot/usr/bin
+          mkdir -p buildroot/usr/lib/systemd/system
+
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
+
+          cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+
+          cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
+          #!/usr/bin/env bash
+          export PYTHONPATH="/opt/tuxcmdb-agent/lib${PYTHONPATH:+:$PYTHONPATH}"
+          exec /usr/bin/python3 /opt/tuxcmdb-agent/tuxcmdb_agent.py "$@"
+          EOF
+          chmod +x buildroot/usr/bin/tuxcmdb-agent
+
+          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/usr/lib/systemd/system/tuxcmdb-agent.service
+          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/usr/lib/systemd/system/tuxcmdb-agent.timer
+
+          chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-agent \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture noarch \
+            --depends python3 \
+            --after-install packaging/scripts/postinstall.sh \
+            --before-remove packaging/scripts/preuninstall.sh \
+            -C buildroot .
+
+          mkdir -p dist/el${{ matrix.el }}
+          mv ./*.rpm dist/el${{ matrix.el }}/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuxcmdb-agent-rpm-el${{ matrix.el }}
+          path: dist/el${{ matrix.el }}/*.rpm
+
+      - name: Attach RPM to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/el${{ matrix.el }}/*.rpm
+
+  build-linux-deb:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates ruby ruby-dev
+          sudo gem install --no-document fpm -v 1.15.1
+
+      - name: Prepare build root
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          ITERATION="1.debian"
+          DIST_DIR="dist/deb"
+
+          rm -rf buildroot "$DIST_DIR"
+          mkdir -p "$DIST_DIR"
+          mkdir -p buildroot/opt/tuxcmdb-agent/lib
+          mkdir -p buildroot/usr/bin
+          mkdir -p buildroot/lib/systemd/system
+
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
+
+          cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+
+          cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
+          #!/usr/bin/env bash
+          export PYTHONPATH="/opt/tuxcmdb-agent/lib${PYTHONPATH:+:$PYTHONPATH}"
+          exec /usr/bin/python3 /opt/tuxcmdb-agent/tuxcmdb_agent.py "$@"
+          EOF
+          chmod +x buildroot/usr/bin/tuxcmdb-agent
+
+          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/lib/systemd/system/tuxcmdb-agent.service
+          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/lib/systemd/system/tuxcmdb-agent.timer
+
+          chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
+
+          fpm -s dir -t deb \
+            -n tuxcmdb-agent \
+            -v "$VERSION" \
+            --iteration "$ITERATION" \
+            --architecture all \
+            --depends python3 \
+            --after-install packaging/scripts/postinstall.sh \
+            --before-remove packaging/scripts/preuninstall.sh \
+            -C buildroot .
+
+          mv ./*.deb "$DIST_DIR"/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuxcmdb-agent-deb
+          path: dist/deb/*.deb
+
+      - name: Attach DEB to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/deb/*.deb
+
+  build-webui-agents-package:
+    needs: [build-linux-packages, build-linux-deb]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates ruby ruby-dev
+          sudo gem install --no-document fpm -v 1.15.1
+
+      - name: Download agent artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tuxcmdb-agent-*
+          path: agent-artifacts
+
+      - name: Build tuxcmdb-webui-agents package
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          DIST_DIR="dist/webui-agents"
+
+          rm -rf buildroot "$DIST_DIR"
+          mkdir -p "$DIST_DIR"
+          mkdir -p buildroot/opt/tuxcmdb-webui-agents
+
+          find agent-artifacts -type f \( -name '*.rpm' -o -name '*.deb' \) -exec cp {} buildroot/opt/tuxcmdb-webui-agents/ \;
+          cp agent/windows/tuxcmdb-agent.ps1 buildroot/opt/tuxcmdb-webui-agents/tuxcmdb-agent.ps1
+          chmod 0644 buildroot/opt/tuxcmdb-webui-agents/*
+
+          fpm -s dir -t rpm \
+            -n tuxcmdb-webui-agents \
+            -v "$VERSION" \
+            --iteration "1" \
+            --architecture noarch \
+            -C buildroot .
+
+          mv ./*.rpm "$DIST_DIR"/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuxcmdb-webui-agents
+          path: dist/webui-agents/*
+
+      - name: Attach packages to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/webui-agents/*
+

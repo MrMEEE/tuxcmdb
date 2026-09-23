@@ -1,0 +1,90 @@
+{% extends 'webui/base.html' %}
+{% block title %}Operating Systems · TuxCMDB{% endblock %}
+{% block page_title %}Operating Systems{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">Operating System Catalog</h5>
+    <button class="btn btn-accent btn-sm" data-open-modal="createOperatingSystemModal" {% if request.user.readonly %}disabled{% endif %}>
+      <i class="la la-plus me-1"></i>New Operating System
+    </button>
+  </div>
+  <div class="card-body">
+    <form id="operatingsystems-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter OS, e.g. name=rhel, alias=red hat 10, description=linux">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'operatingsystems' %}">Clear</a>
+      </div>
+      <div class="col-12">
+        <small class="text-muted">Examples: <code>name=ubuntu</code>, <code>alias=rhel10</code>, <code>description=server</code></small>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="operatingsystems-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="operatingsystems-filters" data-sort-field="{{ sort_links.aliases.field }}" data-sort-dir="{{ sort_links.aliases.next_dir }}">Aliases {{ sort_links.aliases.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="operatingsystems-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for os in operatingsystems %}
+          <tr>
+            <td>{{ os.name }}</td>
+            <td>{% if os.aliases %}{{ os.aliases|join:', ' }}{% else %}-{% endif %}</td>
+            <td>{{ os.description|default:'-' }}</td>
+            <td class="table-actions">
+              <a class="btn btn-xs btn-default" href="{% url 'operatingsystem-edit' os.id %}">Edit</a>
+              <form method="post" action="{% url 'operatingsystem-delete' os.id %}" class="inline-form">
+                {% csrf_token %}
+                <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4">No operating systems found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="createOperatingSystemModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:560px">
+    <div class="tuxcmdb-modal-header">
+      <h5>New Operating System</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="createOperatingSystemModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'operatingsystems' %}" data-modal-id="createOperatingSystemModal">
+      {% csrf_token %}
+      <div class="tuxcmdb-modal-body">
+        <div class="mb-3">
+          <label class="form-label">Name</label>
+          {{ create_form.name }}
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Aliases</label>
+          {{ create_form.aliases }}
+          <small class="text-muted d-block mt-1">Comma or newline separated, e.g. Red Hat 10, RHEL10, RHEL 10</small>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Description</label>
+          {{ create_form.description }}
+        </div>
+        <p class="modal-form-error" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="createOperatingSystemModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Create</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

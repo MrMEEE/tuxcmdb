@@ -1,0 +1,34 @@
+{% extends 'webui/base.html' %}
+{% block title %}{% if operatingsystem %}Edit{% else %}New{% endif %} Operating System · TuxCMDB{% endblock %}
+{% block page_title %}{% if operatingsystem %}Edit Operating System{% else %}Create Operating System{% endif %}{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-lg-7">
+    <div class="card shadow-sm">
+      <div class="card-header py-2"><h5 class="mb-0">Operating System Form</h5></div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <div class="form-group">
+            <label>Name</label>
+            {{ form.name }}
+          </div>
+          <div class="form-group">
+            <label>Aliases</label>
+            {{ form.aliases }}
+            <small class="text-muted d-block mt-1">Comma or newline separated aliases.</small>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            {{ form.description }}
+          </div>
+          <div class="button-row">
+            <button class="btn btn-accent" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
+            <a class="btn btn-default" href="{% url 'operatingsystems' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

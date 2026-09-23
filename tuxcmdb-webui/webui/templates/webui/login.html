@@ -1,0 +1,45 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · TuxCMDB</title>
+  <link rel="stylesheet" href="{% static 'webui/vendor/vvveb/admin.css' %}">
+  <link rel="stylesheet" href="{% static 'webui/css/vvveb-webui.css' %}">
+</head>
+<body class="login" data-bs-theme="dark">
+  <div class="header"></div>
+  <div class="align-items-center h-100 mx-auto d-flex">
+    <div class="login-container">
+      <div class="logo-content">
+        <div class="tuxcmdb-login-logo">TuxCMDB</div>
+      </div>
+      <div id="login" class="login-form fade-in-effect">
+        <form method="post">
+          {% csrf_token %}
+          <div class="login-form-content">
+            {% if messages %}
+              {% for message in messages %}
+                <div class="alert alert-danger d-flex alert-dismissable" role="alert">{{ message }}</div>
+              {% endfor %}
+            {% endif %}
+            <div class="mb-4">
+              <label class="form-label">Username</label>
+              {{ form.username }}
+            </div>
+            <div class="mb-4">
+              <label class="form-label">Password</label>
+              {{ form.password }}
+            </div>
+            <button class="btn btn-primary w-100" type="submit">
+              Log In <i class="icon-chevron-forward-outline float-end ms-2"></i>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

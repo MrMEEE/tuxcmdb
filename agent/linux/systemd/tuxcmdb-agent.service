@@ -1,0 +1,13 @@
+[Unit]
+Description=TuxCMDB Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=tuxcmdb-agent
+Group=tuxcmdb-agent
+ExecStart=/usr/bin/tuxcmdb-agent --once
+
+[Install]
+WantedBy=multi-user.target

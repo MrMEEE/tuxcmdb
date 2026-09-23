@@ -1,0 +1,67 @@
+{% extends 'webui/base.html' %}
+{% block title %}Virtual Machines · TuxCMDB{% endblock %}
+{% block page_title %}Virtual Machines{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header py-2">
+    <h5 class="mb-0">All Virtual Machines</h5>
+  </div>
+  <div class="card-body">
+    <form id="vms-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="" placeholder="Filter virtual machines by cluster or VM name">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center gap-2">
+        <a class="btn btn-default btn-sm" href="{% url 'virtual-machines' %}">Clear</a>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="vms-filters" data-sort-field="{{ sort_links.cluster_name.field }}" data-sort-dir="{{ sort_links.cluster_name.next_dir }}">Cluster {{ sort_links.cluster_name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="vms-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">VM Name {{ sort_links.name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="vms-filters" data-sort-field="{{ sort_links.vcpus.field }}" data-sort-dir="{{ sort_links.vcpus.next_dir }}">vCPUs {{ sort_links.vcpus.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="vms-filters" data-sort-field="{{ sort_links.memory_gb.field }}" data-sort-dir="{{ sort_links.memory_gb.next_dir }}">Memory (GB) {{ sort_links.memory_gb.indicator }}</button></th>
+            <th>UUID</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for vm in vms %}
+          <tr>
+            <td><a href="{% url 'hypervisor-detail' vm.cluster_id %}">{{ vm.cluster_name }}</a></td>
+            <td>
+              {% if vm.asset_id %}
+              <a href="{% url 'asset-detail' vm.asset_name %}">{{ vm.name }}</a>
+              {% else %}
+              {{ vm.name }}
+              {% endif %}
+            </td>
+            <td>{{ vm.vcpus }}</td>
+            <td>{{ vm.memory_gb }}</td>
+            <td><code class="text-break">{{ vm.uuid }}</code></td>
+            <td></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="6">No virtual machines found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.js-sort-trigger').forEach(button => {
+  button.addEventListener('click', function() {
+    const form = document.getElementById(this.dataset.sortForm);
+    form.querySelector('input[name="sort_by"]').value = this.dataset.sortField;
+    form.querySelector('input[name="sort_dir"]').value = this.dataset.sortDir;
+    form.submit();
+  });
+});
+</script>
+{% endblock %}

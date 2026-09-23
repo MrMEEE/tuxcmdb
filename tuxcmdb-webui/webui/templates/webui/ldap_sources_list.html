@@ -1,0 +1,65 @@
+{% extends 'webui/base.html' %}
+{% block title %}Authentication Sources · TuxCMDB{% endblock %}
+{% block page_title %}Authentication Sources{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center py-2">
+    <h5 class="mb-0">LDAP/AD Sources</h5>
+    <div class="d-flex gap-2">
+      <a class="btn btn-default" href="{% url 'ldap-users' %}">AD User Access</a>
+      <a class="btn btn-default" href="{% url 'ldap-group-mappings' %}">Group Role Mapping</a>
+      <a class="btn btn-accent" href="{% url 'ldap-source-create' %}">New Source</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <form id="ldap-sources-filters" method="get" class="row g-2 mb-3" data-auto-submit>
+      <input type="hidden" name="sort_by" value="{{ filters.sort_by }}">
+      <input type="hidden" name="sort_dir" value="{{ filters.sort_dir }}">
+      <div class="col-md-11">
+        <input class="form-control" type="text" name="q" value="{{ filters.q }}" placeholder="Filter sources, e.g. active=true, protocol=ldaps, host=dc01">
+      </div>
+      <div class="col-md-1 d-flex justify-content-end align-items-center">
+        <a class="btn btn-default btn-sm" href="{% url 'ldap-sources' %}">Clear</a>
+      </div>
+    </form>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-sources-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-sources-filters" data-sort-field="{{ sort_links.hostname.field }}" data-sort-dir="{{ sort_links.hostname.next_dir }}">Host {{ sort_links.hostname.indicator }}</button></th>
+            <th>Port</th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-sources-filters" data-sort-field="{{ sort_links.protocol.field }}" data-sort-dir="{{ sort_links.protocol.next_dir }}">Protocol {{ sort_links.protocol.indicator }}</button></th>
+            <th>Base DN</th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-sources-filters" data-sort-field="{{ sort_links.is_active.field }}" data-sort-dir="{{ sort_links.is_active.next_dir }}">Active {{ sort_links.is_active.indicator }}</button></th>
+            <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="ldap-sources-filters" data-sort-field="{{ sort_links.changed_at.field }}" data-sort-dir="{{ sort_links.changed_at.next_dir }}">Changed {{ sort_links.changed_at.indicator }}</button></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in sources %}
+          <tr>
+            <td>{{ item.name }}</td>
+            <td>{{ item.hostname }}</td>
+            <td>{{ item.port }}</td>
+            <td>{{ item.protocol }}</td>
+            <td>{{ item.base_dn }}</td>
+            <td>{% if item.is_active %}Yes{% else %}No{% endif %}</td>
+            <td>{{ item.changed_at }}</td>
+            <td class="table-actions">
+              <a class="btn btn-xs btn-default" href="{% url 'ldap-source-edit' item.id %}">Edit</a>
+              <form method="post" action="{% url 'ldap-source-delete' item.id %}" class="inline-form">
+                {% csrf_token %}
+                <button class="btn btn-xs btn-danger" type="submit" {% if request.user.readonly %}disabled{% endif %}>Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8">No authentication sources found.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends 'webui/base.html' %}
+{% block title %}Agents · TuxCMDB{% endblock %}
+{% block page_title %}Agents{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-header py-2"><h5 class="mb-0">Agent Downloads</h5></div>
+  <div class="card-body">
+    {% if agents_available and agent_files %}
+    <p class="mb-3">Download the appropriate agent package or script for the target host below.</p>
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Size</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in agent_files %}
+        <tr>
+          <td>{{ file.name }}</td>
+          <td>{{ file.size|filesizeformat }}</td>
+          <td class="text-end">
+            <a class="btn btn-sm btn-primary" href="{% url 'agents-download' file.name %}">
+              <i class="la la-download"></i> Download
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="mb-0">No agent packages are currently available. Install the <code>tuxcmdb-webui-agents</code> package on this server to make agent downloads available here.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

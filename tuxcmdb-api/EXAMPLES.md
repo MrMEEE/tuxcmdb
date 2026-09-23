@@ -51,6 +51,8 @@ curl -s -u "$AUTH" "$API/v1/datatypes" | jq '.[] | select(.builtin_validator != 
 
 ## 1) Create attributes
 
+Note: Attributes can be marked immutable internally (for example `os`). Immutable attribute definitions cannot be updated or deleted via API/WebUI; only assignments are allowed.
+
 Create a `location` attribute:
 
 ```bash
@@ -59,6 +61,7 @@ curl -u "$AUTH" -X POST "$API/v1/attributes" \
   -d '{
     "name": "location",
     "data_type": "string",
+    "inventory_group": true,
     "description": "Rack location"
   }'
 ```
@@ -72,19 +75,6 @@ curl -u "$AUTH" -X POST "$API/v1/attributes" \
     "name": "owner",
     "data_type": "string",
     "description": "Team or person responsible"
-  }'
-```
-
-Create an `os` attribute whose values also generate Ansible inventory groups:
-
-```bash
-curl -u "$AUTH" -X POST "$API/v1/attributes" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "os",
-    "data_type": "string",
-    "inventory_group": true,
-    "description": "Operating system"
   }'
 ```
 
@@ -120,13 +110,13 @@ echo "LOCATION_ATTR_ID=$LOCATION_ATTR_ID OWNER_ATTR_ID=$OWNER_ATTR_ID MGMT_IP_AT
 
 ## 2) Create an asset
 
-Create an asset with hostname `srv-web-01`:
+Create an asset with assetname `srv-web-01`:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets" \
   -H "Content-Type: application/json" \
   -d '{
-    "hostname": "srv-web-01"
+    "assetname": "srv-web-01"
   }'
 ```
 
@@ -136,22 +126,15 @@ List assets:
 curl -u "$AUTH" "$API/v1/assets"
 ```
 
-Filter assets using case-insensitive prefix matching and boolean expressions:
-
-```bash
-curl -u "$AUTH" --get "$API/v1/assets" \
-  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
-```
-
 Tip: extract asset ID:
 
 ```bash
 ASSET_ID=$(curl -s -u "$AUTH" --get "$API/v1/assets" \
-  --data-urlencode 'filter=hostname=srv-web-01' | jq '.[0].id')
+  --data-urlencode 'filter=assetname=srv-web-01' | jq '.[0].id')
 echo "ASSET_ID=$ASSET_ID"
 ```
 
-You can also use hostname directly in the URL for attribute assignment routes:
+You can also use assetname directly in the URL for attribute assignment routes:
 
 ```bash
 ASSET_NAME="srv-web-01"
@@ -171,7 +154,7 @@ curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/attributes" \
   -d '{"attribute_name": "location", "value": "dc1-rack22"}'
 ```
 
-Same assignment using hostname in URL:
+Same assignment using assetname in URL:
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_NAME/attributes" \
@@ -239,24 +222,7 @@ Show the asset with currently assigned attributes:
 curl -u "$AUTH" "$API/v1/assets/$ASSET_ID"
 ```
 
-## 4) Ansible/AWX dynamic inventory
-
-Return the complete active inventory:
-
-```bash
-curl -u "$AUTH" "$API/v1/inventory"
-```
-
-Apply the same filter used by the asset list:
-
-```bash
-curl -u "$AUTH" --get "$API/v1/inventory" \
-  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
-```
-
-The response contains `all.hosts`, `_meta.hostvars`, and groups generated from attributes where `inventory_group=true`. Configure AWX to retrieve this authenticated endpoint through an inventory source plugin or a small inventory script that prints the returned JSON.
-
-## 5) Remove an assignment
+## 4) Remove an assignment
 
 Remove the `owner` assignment from the asset:
 
@@ -264,7 +230,7 @@ Remove the `owner` assignment from the asset:
 curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_ID/attributes/owner"
 ```
 
-Same removal using hostname in URL:
+Same removal using assetname in URL:
 
 ```bash
 curl -u "$AUTH" -X DELETE "$API/v1/assets/$ASSET_NAME/attributes/owner"
@@ -282,11 +248,103 @@ Verify current assignments:
 curl -u "$AUTH" "$API/v1/assets/$ASSET_ID"
 ```
 
+## 5) Filter assets and build an Ansible inventory
+
+Filter with case-insensitive prefix matching, boolean operators, and parentheses:
+
+```bash
+curl -u "$AUTH" --get "$API/v1/assets" \
+  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
+```
+
+Return the same active hosts as an Ansible/AWX dynamic inventory:
+
+```bash
+curl -u "$AUTH" --get "$API/v1/inventory" \
+  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
+```
+
+The response includes `all.hosts`, `_meta.hostvars`, and groups generated from attributes where `inventory_group=true`.
+
+## 6) Approval workflow for agent onboarding
+
+Approval state values:
+
+- `0` = not pending
+- `1` = pending
+- `2` = approved
+- `3` = rejected
+
+List assets and inspect `approved` state:
+
+```bash
+curl -u "$AUTH" "$API/v1/assets"
+```
+
+Approve one asset:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/approve"
+```
+
+Approve all pending assets:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/approve-all"
+```
+
+## 7) Agent registration/bootstrap/report flow
+
+Register a new asset without API user credentials:
+
+```bash
+curl -X POST "$API/v1/agent/register" \
+  -H "Content-Type: application/json" \
+  -d '{"assetname":"srv-new-01"}'
+```
+
+Register against an existing asset id:
+
+```bash
+curl -X POST "$API/v1/agent/register" \
+  -H "Content-Type: application/json" \
+  -d '{"asset_id": 123}'
+```
+
+The response contains a one-time `systempass`. Keep it safe on the agent host.
+
+Bootstrap tasks for a specific OS (example: `linux`):
+
+```bash
+curl -X POST "$API/v1/agent/bootstrap" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asset_id": 123,
+    "systempass": "paste-systempass-here",
+    "operating_system": "linux"
+  }'
+```
+
+Report fetched values:
+
+```bash
+curl -X POST "$API/v1/agent/report" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "asset_id": 123,
+    "systempass": "paste-systempass-here",
+    "values": [
+      {"attribute_name": "hostname", "value": "srv-new-01"},
+      {"attribute_name": "kernel", "value": "6.8.0-57-generic"}
+    ]
+  }'
+```
+
 ## Common errors
 
 - `401 Invalid credentials`: wrong username/password
 - `404 Asset not found`: wrong `ASSET_ID`
 - `404 Attribute not found`: wrong `attribute_id`
 - `409 Attribute already exists`: duplicate attribute name
-- `409 Asset hostname already exists`: duplicate hostname
+- `409 Asset assetname already exists`: duplicate assetname
 - `409 Asset is decommissioned`: cannot assign/remove attributes on decommissioned asset
