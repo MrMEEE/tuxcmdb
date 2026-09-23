@@ -45,8 +45,7 @@ def ensure_venv_and_dependencies(requirements_file: Path, modules: tuple[str, ..
             [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file)]
         )
 
-    current_python = Path(sys.executable).resolve()
-    if current_python != venv_python.resolve():
+    if Path(sys.prefix).resolve() != VENV_DIR.resolve():
         os.execv(
             str(venv_python),
             [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
@@ -214,6 +213,26 @@ def ensure_assets_active_column(database_url: str) -> None:
         conn.execute(text("UPDATE assets SET active = true WHERE active IS NULL"))
 
 
+def ensure_attributes_inventory_group_column(database_url: str) -> None:
+    engine = create_db_engine(database_url)
+    inspector = inspect(engine)
+    if "attributes" not in inspector.get_table_names():
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("attributes")}
+    if "inventory_group" in columns:
+        return
+
+    default = "0" if engine.dialect.name == "sqlite" else "false"
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "ALTER TABLE attributes ADD COLUMN "
+                f"inventory_group BOOLEAN NOT NULL DEFAULT {default}"
+            )
+        )
+
+
 def upsert_api_user(database_url: str, username: str, password: str) -> None:
     engine = create_db_engine(database_url)
     password_hash = generate_password_hash(password)
@@ -296,6 +315,7 @@ def main() -> int:
 
     ensure_apiusers_table(database_url)
     ensure_assets_active_column(database_url)
+    ensure_attributes_inventory_group_column(database_url)
     ensure_datatypes_table(database_url)
     print("Ensured apiusers and datatypes tables exist")
 

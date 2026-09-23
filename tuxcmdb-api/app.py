@@ -24,7 +24,9 @@ from sqlalchemy import (
     Table,
     Text,
     and_,
+    exists,
     func,
+    not_,
     or_,
     select,
     text,
@@ -36,6 +38,8 @@ if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from tuxcmdb.db import create_db_engine
+from filtering import And as FilterAnd
+from filtering import FilterSyntaxError, Not as FilterNot, Or as FilterOr, Predicate, parse_filter
 from werkzeug.security import check_password_hash
 import uvicorn
 import yaml
@@ -74,6 +78,7 @@ attributes = Table(
     Column("description", Text, nullable=True),
     Column("data_type", String(32), ForeignKey("datatypes.name"), nullable=False),
     Column("allow_multiple", Boolean, nullable=False, server_default=text("false")),
+    Column("inventory_group", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -124,6 +129,7 @@ class AttributeCreate(BaseModel):
     data_type: str = Field(default="string", min_length=1, max_length=32)
     description: str | None = None
     allow_multiple: bool = False
+    inventory_group: bool = False
 
 
 class AttributeUpdate(BaseModel):
@@ -131,6 +137,7 @@ class AttributeUpdate(BaseModel):
     data_type: str | None = Field(default=None, min_length=1, max_length=32)
     description: str | None = None
     allow_multiple: bool | None = None
+    inventory_group: bool | None = None
 
 
 class AttributeOut(BaseModel):
@@ -140,6 +147,7 @@ class AttributeOut(BaseModel):
     name: str
     data_type: str
     allow_multiple: bool
+    inventory_group: bool
     description: str | None
     created_at: datetime
     changed_at: datetime
@@ -361,21 +369,10 @@ def to_attribute_out(row: Any) -> AttributeOut:
         name=row.name,
         data_type=row.data_type,
         allow_multiple=row.allow_multiple,
+        inventory_group=row.inventory_group,
         description=row.description,
         created_at=row.created_at,
         changed_at=row.changed_at,
-    )
-
-
-def latest_assignment_subquery():
-    return (
-        select(
-            assignments.c.asset_id,
-            assignments.c.attribute_id,
-            func.max(assignments.c.id).label("latest_id"),
-        )
-        .group_by(assignments.c.asset_id, assignments.c.attribute_id)
-        .subquery()
     )
 
 
@@ -458,6 +455,143 @@ def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
         )
         for row in rows
     ]
+
+
+def escape_like_prefix(value: str) -> str:
+    return value.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def compile_filter(expression: Predicate | FilterNot | FilterAnd | FilterOr):
+    if isinstance(expression, Predicate):
+        pattern = escape_like_prefix(expression.value)
+        if expression.name == "hostname":
+            return func.lower(assets.c.hostname).like(pattern, escape="\\")
+
+        assignment_matches = (
+            select(1)
+            .select_from(
+                assignments.join(attributes, attributes.c.id == assignments.c.attribute_id)
+            )
+            .where(
+                assignments.c.asset_id == assets.c.id,
+                assignments.c.assigned.is_(True),
+                attributes.c.name == expression.name,
+                func.lower(func.coalesce(assignments.c.value, "")).like(
+                    pattern,
+                    escape="\\",
+                ),
+            )
+            .correlate(assets)
+        )
+        return exists(assignment_matches)
+    if isinstance(expression, FilterNot):
+        return not_(compile_filter(expression.operand))
+    if isinstance(expression, FilterAnd):
+        return and_(compile_filter(expression.left), compile_filter(expression.right))
+    return or_(compile_filter(expression.left), compile_filter(expression.right))
+
+
+def build_asset_select(filter_source: str | None, active: bool | None):
+    stmt = select(
+        assets.c.id,
+        assets.c.hostname,
+        assets.c.active,
+        assets.c.created_at,
+        assets.c.changed_at,
+    )
+    if active is not None:
+        stmt = stmt.where(assets.c.active.is_(active))
+    if filter_source is not None:
+        try:
+            expression = parse_filter(filter_source)
+        except FilterSyntaxError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        stmt = stmt.where(compile_filter(expression))
+    return stmt
+
+
+def sanitize_inventory_group(value: str) -> str | None:
+    group_name = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    if not group_name:
+        return None
+    if group_name[0].isdigit() or group_name in {"all", "ungrouped", "_meta"}:
+        group_name = f"_{group_name}"
+    return group_name
+
+
+def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
+    hostnames = {row.id: row.hostname for row in rows}
+    current: dict[int, dict[str, tuple[Any, bool]]] = {row.id: {} for row in rows}
+    if hostnames:
+        assignment_rows = conn.execute(
+            select(
+                assignments.c.asset_id,
+                assignments.c.value,
+                assignments.c.assigned_at,
+                assignments.c.id,
+                attributes.c.name,
+                attributes.c.allow_multiple,
+                attributes.c.inventory_group,
+            )
+            .join(attributes, attributes.c.id == assignments.c.attribute_id)
+            .where(
+                assignments.c.asset_id.in_(hostnames),
+                assignments.c.assigned.is_(True),
+            )
+            .order_by(assignments.c.asset_id, attributes.c.name, assignments.c.assigned_at, assignments.c.id)
+        ).all()
+
+        for assignment in assignment_rows:
+            asset_values = current[assignment.asset_id]
+            if assignment.allow_multiple:
+                existing = asset_values.get(assignment.name)
+                values = existing[0] if existing is not None else []
+                values.append(assignment.value)
+                asset_values[assignment.name] = (values, assignment.inventory_group)
+            else:
+                asset_values[assignment.name] = (
+                    assignment.value,
+                    assignment.inventory_group,
+                )
+
+    hostvars: dict[str, dict[str, Any]] = {}
+    groups: dict[str, set[str]] = {}
+    for row in rows:
+        values = current[row.id]
+        variables = {name: value for name, (value, _) in values.items()}
+        variables.update(
+            {
+                "tuxcmdb_id": row.id,
+                "tuxcmdb_active": row.active,
+                "tuxcmdb_created_at": row.created_at,
+                "tuxcmdb_changed_at": row.changed_at,
+            }
+        )
+        hostvars[row.hostname] = variables
+
+        for value, inventory_group in values.values():
+            if not inventory_group:
+                continue
+            group_values = value if isinstance(value, list) else [value]
+            for group_value in group_values:
+                if group_value is None:
+                    continue
+                group_name = sanitize_inventory_group(str(group_value))
+                if group_name is not None:
+                    groups.setdefault(group_name, set()).add(row.hostname)
+
+    inventory: dict[str, Any] = {
+        "_meta": {"hostvars": hostvars},
+        "all": {
+            "hosts": sorted(hostvars),
+            "vars": {},
+            "children": sorted(groups),
+        },
+    }
+    inventory.update(
+        {group_name: {"hosts": sorted(group_hosts)} for group_name, group_hosts in sorted(groups.items())}
+    )
+    return inventory
 
 
 def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
@@ -587,6 +721,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     name=name,
                     data_type=data_type,
                     allow_multiple=payload.allow_multiple,
+                    inventory_group=payload.inventory_group,
                     description=payload.description,
                 )
             )
@@ -597,6 +732,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     attributes.c.name,
                     attributes.c.data_type,
                     attributes.c.allow_multiple,
+                    attributes.c.inventory_group,
                     attributes.c.description,
                     attributes.c.created_at,
                     attributes.c.changed_at,
@@ -617,6 +753,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             attributes.c.name,
             attributes.c.data_type,
             attributes.c.allow_multiple,
+            attributes.c.inventory_group,
             attributes.c.description,
             attributes.c.created_at,
             attributes.c.changed_at,
@@ -646,6 +783,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             updates["description"] = payload.description
         if payload.allow_multiple is not None:
             updates["allow_multiple"] = payload.allow_multiple
+        if payload.inventory_group is not None:
+            updates["inventory_group"] = payload.inventory_group
 
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -674,6 +813,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         attributes.c.name,
                         attributes.c.data_type,
                         attributes.c.allow_multiple,
+                        attributes.c.inventory_group,
                         attributes.c.description,
                         attributes.c.created_at,
                         attributes.c.changed_at,
@@ -727,69 +867,27 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
     @app.get("/v1/assets", response_model=list[AssetOut])
     def list_assets(
-        q: str | None = None,
+        filter: str | None = None,
         active: bool | None = True,
         limit: int = 100,
         offset: int = 0,
         _: str = Depends(authenticate),
     ) -> list[AssetOut]:
-        stmt = select(
-            assets.c.id,
-            assets.c.hostname,
-            assets.c.active,
-            assets.c.created_at,
-            assets.c.changed_at,
-        )
-        if active is not None:
-            stmt = stmt.where(assets.c.active.is_(active))
-        if q:
-            pattern = f"%{q.strip().lower()}%"
-            stmt = stmt.where(func.lower(assets.c.hostname).like(pattern))
-
-        stmt = stmt.order_by(assets.c.hostname).limit(limit).offset(offset)
+        stmt = build_asset_select(filter, active).order_by(assets.c.hostname).limit(limit).offset(offset)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
             return build_asset_out(rows, conn)
 
-    @app.get("/v1/assets/by-attribute", response_model=list[AssetOut])
-    def list_assets_by_attribute(
-        attribute_name: str | None = None,
-        attribute_id: int | None = None,
-        value: str | None = None,
+    @app.get("/v1/inventory", response_model=dict[str, Any])
+    def get_inventory(
+        filter: str | None = None,
         active: bool | None = True,
         _: str = Depends(authenticate),
-    ) -> list[AssetOut]:
-        if attribute_name is None and attribute_id is None:
-            raise HTTPException(status_code=400, detail="Provide attribute_name or attribute_id")
-
-        latest = latest_assignment_subquery()
-        stmt = (
-            select(
-                assets.c.id,
-                assets.c.hostname,
-                assets.c.active,
-                assets.c.created_at,
-                assets.c.changed_at,
-            )
-            .join(latest, latest.c.asset_id == assets.c.id)
-            .join(assignments, assignments.c.id == latest.c.latest_id)
-            .join(attributes, attributes.c.id == assignments.c.attribute_id)
-            .where(assignments.c.assigned.is_(True))
-        )
-
-        if active is not None:
-            stmt = stmt.where(assets.c.active.is_(active))
-        if attribute_id is not None:
-            stmt = stmt.where(attributes.c.id == attribute_id)
-        if attribute_name is not None:
-            stmt = stmt.where(attributes.c.name == attribute_name.strip().lower())
-        if value is not None:
-            stmt = stmt.where(func.lower(func.coalesce(assignments.c.value, "")).like(f"%{value.strip().lower()}%"))
-
-        stmt = stmt.distinct().order_by(assets.c.hostname)
+    ) -> dict[str, Any]:
+        stmt = build_asset_select(filter, active).order_by(assets.c.hostname)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
-            return build_asset_out(rows, conn)
+            return build_inventory(rows, conn)
 
     @app.get("/v1/assets/{asset_id}", response_model=AssetOut)
     def get_asset(asset_id: int, _: str = Depends(authenticate)) -> AssetOut:

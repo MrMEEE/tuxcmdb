@@ -49,6 +49,7 @@ class Attribute(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     data_type: Mapped[str] = mapped_column(String(32), ForeignKey("datatypes.name"), nullable=False, default="string")
     allow_multiple: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
+    inventory_group: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

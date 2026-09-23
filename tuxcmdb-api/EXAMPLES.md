@@ -75,6 +75,19 @@ curl -u "$AUTH" -X POST "$API/v1/attributes" \
   }'
 ```
 
+Create an `os` attribute whose values also generate Ansible inventory groups:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/attributes" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "os",
+    "data_type": "string",
+    "inventory_group": true,
+    "description": "Operating system"
+  }'
+```
+
 Create a `management_ip` attribute with `ipv4` datatype:
 
 ```bash
@@ -123,10 +136,18 @@ List assets:
 curl -u "$AUTH" "$API/v1/assets"
 ```
 
+Filter assets using case-insensitive prefix matching and boolean expressions:
+
+```bash
+curl -u "$AUTH" --get "$API/v1/assets" \
+  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
+```
+
 Tip: extract asset ID:
 
 ```bash
-ASSET_ID=$(curl -s -u "$AUTH" "$API/v1/assets?q=srv-web-01" | jq '.[0].id')
+ASSET_ID=$(curl -s -u "$AUTH" --get "$API/v1/assets" \
+  --data-urlencode 'filter=hostname=srv-web-01' | jq '.[0].id')
 echo "ASSET_ID=$ASSET_ID"
 ```
 
@@ -218,7 +239,24 @@ Show the asset with currently assigned attributes:
 curl -u "$AUTH" "$API/v1/assets/$ASSET_ID"
 ```
 
-## 4) Remove an assignment
+## 4) Ansible/AWX dynamic inventory
+
+Return the complete active inventory:
+
+```bash
+curl -u "$AUTH" "$API/v1/inventory"
+```
+
+Apply the same filter used by the asset list:
+
+```bash
+curl -u "$AUTH" --get "$API/v1/inventory" \
+  --data-urlencode 'filter=os=RHEL AND (os NOT RHEL9) AND ip_address=192.168.'
+```
+
+The response contains `all.hosts`, `_meta.hostvars`, and groups generated from attributes where `inventory_group=true`. Configure AWX to retrieve this authenticated endpoint through an inventory source plugin or a small inventory script that prints the returned JSON.
+
+## 5) Remove an assignment
 
 Remove the `owner` assignment from the asset:
 
@@ -242,20 +280,6 @@ Verify current assignments:
 
 ```bash
 curl -u "$AUTH" "$API/v1/assets/$ASSET_ID"
-```
-
-## 5) Find assets by attribute
-
-Find assets with attribute name `location` containing `rack22`:
-
-```bash
-curl -u "$AUTH" "$API/v1/assets/by-attribute?attribute_name=location&value=rack22"
-```
-
-Find assets by attribute ID instead of name:
-
-```bash
-curl -u "$AUTH" "$API/v1/assets/by-attribute?attribute_id=$LOCATION_ATTR_ID&value=dc1"
 ```
 
 ## Common errors

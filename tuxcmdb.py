@@ -50,8 +50,7 @@ def ensure_venv_and_dependencies(requirements_file: Path, modules: tuple[str, ..
             [str(venv_python), "-m", "pip", "install", "-r", str(requirements_file)]
         )
 
-    current_python = Path(sys.executable).resolve()
-    if current_python != venv_python.resolve():
+    if Path(sys.prefix).resolve() != VENV_DIR.resolve():
         os.execv(
             str(venv_python),
             [str(venv_python), str(Path(__file__).resolve()), *sys.argv[1:]],
@@ -82,12 +81,12 @@ from tuxcmdb.db import create_db_engine
 
 
 DEFAULT_CONFIG_FILE = BASE_DIR / "conf" / "database.yaml"
-DEFAULT_ATTRIBUTES: tuple[tuple[str, str, str], ...] = (
-    ("ip_address", "string", "Primary IP address for the asset"),
-    ("vmware_uuid", "string", "VMware UUID for virtual machine identification"),
-    ("environment", "string", "Environment tag such as production, test, or development"),
-    ("cpus", "integer", "Number of CPU cores assigned to the asset"),
-    ("memory_gb", "numeric", "Amount of memory assigned to the asset in gigabytes"),
+DEFAULT_ATTRIBUTES: tuple[tuple[str, str, str, bool], ...] = (
+    ("ip_address", "string", "Primary IP address for the asset", True),
+    ("vmware_uuid", "string", "VMware UUID for virtual machine identification", False),
+    ("environment", "string", "Environment tag such as production, test, or development", False),
+    ("cpus", "integer", "Number of CPU cores assigned to the asset", False),
+    ("memory_gb", "numeric", "Amount of memory assigned to the asset in gigabytes", False),
 )
 
 
@@ -204,28 +203,42 @@ def ensure_connection(database_url: str) -> None:
 def seed_default_attributes(database_url: str) -> None:
     engine = create_db_engine(database_url)
     with engine.begin() as conn:
-        for name, data_type, description in DEFAULT_ATTRIBUTES:
+        for name, data_type, description, allow_multiple in DEFAULT_ATTRIBUTES:
             existing_row = conn.execute(
-                text("SELECT id, description FROM attributes WHERE name = :name"),
+                text("SELECT id, description, allow_multiple FROM attributes WHERE name = :name"),
                 {"name": name},
             ).one_or_none()
             if existing_row is None:
                 conn.execute(
                     text(
-                        "INSERT INTO attributes (name, data_type, description) "
-                        "VALUES (:name, :data_type, :description)"
+                        "INSERT INTO attributes (name, data_type, description, allow_multiple) "
+                        "VALUES (:name, :data_type, :description, :allow_multiple)"
                     ),
-                    {"name": name, "data_type": data_type, "description": description},
+                    {
+                        "name": name,
+                        "data_type": data_type,
+                        "description": description,
+                        "allow_multiple": allow_multiple,
+                    },
                 )
                 continue
-            if existing_row.description is None or existing_row.description == "":
+            if (
+                existing_row.description is None
+                or existing_row.description == ""
+                or bool(existing_row.allow_multiple) != allow_multiple
+            ):
                 conn.execute(
                     text(
                         "UPDATE attributes "
-                        "SET description = :description "
+                        "SET description = COALESCE(NULLIF(description, ''), :description), "
+                        "allow_multiple = :allow_multiple "
                         "WHERE name = :name"
                     ),
-                    {"name": name, "description": description},
+                    {
+                        "name": name,
+                        "description": description,
+                        "allow_multiple": allow_multiple,
+                    },
                 )
 
 
