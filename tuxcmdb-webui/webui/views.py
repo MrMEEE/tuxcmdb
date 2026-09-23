@@ -971,6 +971,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
 
     attribute_catalog: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
+    approval_candidates: list[dict[str, Any]] = []
     try:
         attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
     except ServiceError:
@@ -979,6 +980,15 @@ def assets_view(request: HttpRequest) -> HttpResponse:
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
     except ServiceError:
         operating_systems = []
+    try:
+        approval_candidates = api_request(
+            *_creds(request),
+            "GET",
+            "/v1/assets/merge-candidates",
+            params={"mode": "approval"},
+        )
+    except ServiceError:
+        approval_candidates = []
 
     if request.method == "POST":
         if request.user.readonly:
@@ -990,8 +1000,21 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             if not asset_id.isdigit():
                 messages.error(request, "Invalid asset id")
                 return redirect("assets")
+            approval_mode = (request.POST.get("approval_mode") or "approve_new").strip()
+            payload: dict[str, Any] = {"mode": approval_mode}
+            if approval_mode == "map_existing":
+                source_asset_id = (request.POST.get("source_asset_id") or "").strip()
+                if not source_asset_id.isdigit():
+                    messages.error(request, "Select an existing manual asset to map")
+                    return redirect("assets")
+                payload["source_asset_id"] = int(source_asset_id)
             try:
-                approved_asset = api_request(*_creds(request), "POST", f"/v1/assets/{asset_id}/approve")
+                approved_asset = api_request(
+                    *_creds(request),
+                    "POST",
+                    f"/v1/assets/{asset_id}/approve",
+                    payload=payload,
+                )
                 messages.success(request, f"Asset approved: {approved_asset.get('assetname')}")
                 notify_ui_update("assets", "approved", approved_asset.get("assetname", ""))
             except ServiceError as exc:
@@ -999,9 +1022,32 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             return redirect("assets")
 
         if action == "approve-all":
+            pending_asset_ids = request.POST.getlist("pending_asset_id")
+            items: list[dict[str, Any]] = []
+            for pending_asset_id in pending_asset_ids:
+                if not pending_asset_id.isdigit():
+                    messages.error(request, "Invalid pending asset id")
+                    return redirect("assets")
+                selection = (request.POST.get(f"bulk_action_{pending_asset_id}") or "approve_new").strip()
+                item: dict[str, Any] = {
+                    "pending_asset_id": int(pending_asset_id),
+                    "action": selection,
+                }
+                if selection == "map_existing":
+                    source_asset_id = (request.POST.get(f"bulk_source_{pending_asset_id}") or "").strip()
+                    if not source_asset_id.isdigit():
+                        messages.error(request, "Every mapped asset must select a manual source")
+                        return redirect("assets")
+                    item["source_asset_id"] = int(source_asset_id)
+                items.append(item)
             try:
-                api_request(*_creds(request), "POST", "/v1/assets/approve-all")
-                messages.success(request, "All assets approved")
+                result = api_request(
+                    *_creds(request),
+                    "POST",
+                    "/v1/assets/approve-all",
+                    payload={"items": items},
+                )
+                messages.success(request, str(result.get("message") or "Approval review completed"))
                 notify_ui_update("assets", "approve-all", "*")
             except ServiceError as exc:
                 messages.error(request, str(exc))
@@ -1112,6 +1158,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
     pending_approval_count = sum(1 for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING)
+    pending_assets = [item for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING]
     base_params = {
         "q": filter_query,
     }
@@ -1126,6 +1173,8 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "active_count": active_count,
             "decommissioned_count": decommissioned_count,
             "pending_approval_count": pending_approval_count,
+            "pending_assets": pending_assets,
+            "approval_candidates": approval_candidates,
             "filters": {
                 "q": filter_query,
                 "sort_by": sort_by,
@@ -1143,9 +1192,19 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     asset: dict[str, Any] | None = None
     attributes: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
+    merge_candidates: list[dict[str, Any]] = []
+    asset_is_manual = False
 
     try:
-        assets = api_request(*_creds(request), "GET", "/v1/assets", params={"active": "true", "q": asset_ref})
+        if asset_ref.isdigit():
+            assets = [api_request(*_creds(request), "GET", f"/v1/assets/{asset_ref}")]
+        else:
+            assets = api_request(
+                *_creds(request),
+                "GET",
+                "/v1/assets",
+                params={"active": "true", "filter": f"assetname={json.dumps(asset_ref)}"},
+            )
         exact = next((item for item in assets if item["assetname"] == asset_ref or str(item["id"]) == asset_ref), None)
         asset = exact or (assets[0] if assets else None)
         if asset is None:
@@ -1153,6 +1212,20 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         update_form = AssetUpdateForm(initial={"assetname": asset["assetname"]})
         attributes = api_request(*_creds(request), "GET", "/v1/attributes")
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
+        manual_assets = api_request(
+            *_creds(request),
+            "GET",
+            "/v1/assets/merge-candidates",
+            params={"mode": "approval"},
+        )
+        asset_is_manual = any(item["id"] == asset["id"] for item in manual_assets)
+        if asset_is_manual:
+            merge_candidates = api_request(
+                *_creds(request),
+                "GET",
+                "/v1/assets/merge-candidates",
+                params={"mode": "merge", "exclude_asset_id": asset["id"]},
+            )
         attribute_choices = [(item["name"], item["name"]) for item in attributes if item.get("name")]
         assignment_form = AssignmentForm(attribute_choices=attribute_choices)
     except ServiceError as exc:
@@ -1217,6 +1290,20 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 messages.success(request, "Asset decommissioned")
                 notify_ui_update("assets", "decommissioned", asset["assetname"])
                 return redirect("assets")
+            elif action == "merge-asset":
+                target_asset_id = (request.POST.get("target_asset_id") or "").strip()
+                if not target_asset_id.isdigit():
+                    messages.error(request, "Select an asset to merge into")
+                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                merged_asset = api_request(
+                    *_creds(request),
+                    "POST",
+                    f"/v1/assets/{asset['id']}/merge",
+                    payload={"target_asset_id": int(target_asset_id)},
+                )
+                messages.success(request, f"Asset merged into {merged_asset.get('assetname')}")
+                notify_ui_update("assets", "merged", asset["assetname"])
+                return redirect("asset-detail", asset_ref=merged_asset["assetname"])
             elif action == "match-os":
                 source_os_value = (request.POST.get("source_os_value") or "").strip()
                 operating_system_id = request.POST.get("operatingsystem_id", "").strip()
@@ -1277,6 +1364,8 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             "asset_os_value": asset_os_value,
             "asset_os_mismatch": asset_os_mismatch,
             "vm_info": vm_info,
+            "asset_is_manual": asset_is_manual,
+            "merge_candidates": merge_candidates,
         },
     )
 

@@ -287,11 +287,41 @@ Approve one asset:
 curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/approve"
 ```
 
-Approve all pending assets:
+Approve a pending agent asset while mapping data from an existing manual asset:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/$ASSET_ID/approve" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"map_existing","source_asset_id":42}'
+```
+
+Approve all pending assets as new (backward-compatible):
 
 ```bash
 curl -u "$AUTH" -X POST "$API/v1/assets/approve-all"
 ```
+
+Submit a reviewed bulk approval atomically:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/approve-all" \
+  -H "Content-Type: application/json" \
+  -d '{"items":[
+    {"pending_asset_id":101,"action":"approve_new"},
+    {"pending_asset_id":102,"action":"map_existing","source_asset_id":42},
+    {"pending_asset_id":103,"action":"leave_pending"}
+  ]}'
+```
+
+Merge an active manual asset into another active asset:
+
+```bash
+curl -u "$AUTH" -X POST "$API/v1/assets/42/merge" \
+  -H "Content-Type: application/json" \
+  -d '{"target_asset_id":101}'
+```
+
+Merge operations copy missing singleton attributes, merge distinct repeated values, copy the structured operating system only when absent, and deactivate the source asset.
 
 ## 7) Agent registration/bootstrap/report flow
 

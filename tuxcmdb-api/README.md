@@ -101,13 +101,33 @@ Assets:
 - `POST /v1/assets`
 - `GET /v1/assets?filter=...&active=true|false`
 - `GET /v1/inventory?filter=...&active=true|false`
+- `GET /v1/assets/merge-candidates?mode=approval|merge&exclude_asset_id=...`
 - `GET /v1/assets/{asset_id}`
 - `PATCH /v1/assets/{asset_id}`
+- `POST /v1/assets/{asset_id}/approve`
+- `POST /v1/assets/approve-all`
+- `POST /v1/assets/{source_asset_id}/merge`
 - `POST /v1/assets/{asset_ref}/attributes` (`asset_ref` can be asset id or assetname)
 - `DELETE /v1/assets/{asset_ref}/attributes/{attribute_ref}?value=...` (`asset_ref` and `attribute_ref` can be asset/attribute id or name)
 - `POST /v1/assets/{asset_id}/decommission`
 
 `GET /v1/assets` and `GET /v1/assets/{asset_id}` include each asset's current assigned attributes (latest assignment state where `assigned=true`).
+
+### Approval mapping and asset merge
+
+A manually created asset is an asset without an agent update secret. Pending agent assets can be approved as new, or mapped from an active manual asset:
+
+```json
+{"mode": "map_existing", "source_asset_id": 42}
+```
+
+Mapping copies data from the manual source into the pending agent asset, approves the agent asset, and deactivates the manual source in one transaction. `POST /v1/assets/{asset_id}/approve` with no body remains equivalent to `{"mode":"approve_new"}`.
+
+`POST /v1/assets/approve-all` accepts an optional review matrix. Each active pending asset must appear exactly once with `approve_new`, `map_existing`, or `leave_pending`. A manual source can be used only once, and any invalid row rolls back the entire review.
+
+Manual assets can also be merged into any other active asset with `POST /v1/assets/{source_asset_id}/merge` and `{"target_asset_id": 123}`. The source is then deactivated and the target survives.
+
+For singleton attributes, values copy only when the target has no active value for that attribute. For multi-valued attributes, source values not already active on the target are copied. The structured operating system copies only when the target has none. Source assignment history and all asset identities/update secrets remain unchanged.
 
 ### Asset filters
 

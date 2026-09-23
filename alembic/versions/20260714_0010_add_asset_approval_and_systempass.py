@@ -23,6 +23,19 @@ def upgrade() -> None:
     bind = op.get_bind()
     columns = {col["name"] for col in inspect(bind).get_columns("assets")}
 
+    if "hostname" in columns and "assetname" not in columns:
+        if bind.dialect.name == "sqlite":
+            op.execute("ALTER TABLE assets RENAME COLUMN hostname TO assetname")
+        else:
+            op.alter_column(
+                "assets",
+                "hostname",
+                new_column_name="assetname",
+                existing_type=sa.String(length=255),
+                existing_nullable=False,
+            )
+        columns = {col["name"] for col in inspect(bind).get_columns("assets")}
+
     with op.batch_alter_table("assets") as batch_op:
         if "approved" not in columns:
             batch_op.add_column(sa.Column("approved", sa.Integer(), nullable=False, server_default=sa.text("0")))

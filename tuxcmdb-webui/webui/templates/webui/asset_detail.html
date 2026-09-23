@@ -56,6 +56,9 @@
       </button>
       {% endif %}
       <hr>
+      {% if asset_is_manual and asset.active %}
+      <button class="btn btn-warning btn-block mb-2" type="button" data-open-modal="mergeAssetModal" {% if request.user.readonly or not merge_candidates %}disabled{% endif %}>Merge to asset</button>
+      {% endif %}
       <form method="post">
         {% csrf_token %}
         <input type="hidden" name="action" value="decommission">
@@ -177,6 +180,35 @@
     </div>
   </div>
 </div>
+
+{% if asset_is_manual and asset.active %}
+<div id="mergeAssetModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:560px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Merge {{ asset.assetname }}</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="mergeAssetModal" type="button">&times;</button>
+    </div>
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="merge-asset">
+      <div class="tuxcmdb-modal-body">
+        <p>Missing attributes will be copied to the selected asset. <strong>{{ asset.assetname }}</strong> will then be deactivated.</p>
+        <label class="form-label" for="mergeTargetAsset">Target asset</label>
+        <select class="form-control" id="mergeTargetAsset" name="target_asset_id" required>
+          <option value="">Select target asset</option>
+          {% for candidate in merge_candidates %}
+          <option value="{{ candidate.id }}">{{ candidate.assetname }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="mergeAssetModal">Cancel</button>
+        <button class="btn btn-warning btn-sm" type="submit" {% if request.user.readonly or not merge_candidates %}disabled{% endif %}>Confirm Merge</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div id="matchOsModal" class="tuxcmdb-modal-overlay" hidden>
   <div class="tuxcmdb-modal" style="max-width:520px">

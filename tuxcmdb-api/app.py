@@ -17,7 +17,7 @@ import re
 import secrets
 import ssl
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -688,6 +688,46 @@ class AssetOut(BaseModel):
     created_at: datetime
     changed_at: datetime
     attributes: list[AssignedAttributeOut] = Field(default_factory=list)
+
+
+class AssetMergeCandidateOut(BaseModel):
+    id: int
+    assetname: str
+
+
+class AssetApproveRequest(BaseModel):
+    mode: Literal["approve_new", "map_existing"] = "approve_new"
+    source_asset_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "AssetApproveRequest":
+        if self.mode == "map_existing" and self.source_asset_id is None:
+            raise ValueError("source_asset_id is required when mode is map_existing")
+        if self.mode == "approve_new" and self.source_asset_id is not None:
+            raise ValueError("source_asset_id is only valid when mode is map_existing")
+        return self
+
+
+class BulkApprovalItem(BaseModel):
+    pending_asset_id: int
+    action: Literal["approve_new", "map_existing", "leave_pending"]
+    source_asset_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "BulkApprovalItem":
+        if self.action == "map_existing" and self.source_asset_id is None:
+            raise ValueError("source_asset_id is required when action is map_existing")
+        if self.action != "map_existing" and self.source_asset_id is not None:
+            raise ValueError("source_asset_id is only valid when action is map_existing")
+        return self
+
+
+class BulkApprovalRequest(BaseModel):
+    items: list[BulkApprovalItem]
+
+
+class AssetMergeRequest(BaseModel):
+    target_asset_id: int
 
 
 class AgentRegisterRequest(BaseModel):
@@ -2005,6 +2045,103 @@ def has_same_active_assignment(conn: Connection, asset_id: int, attribute_id: in
         .limit(1)
     ).scalar_one_or_none()
     return existing is not None
+
+
+def get_assets_for_transfer(conn: Connection, asset_ids: set[int]) -> dict[int, Any]:
+    if not asset_ids:
+        return {}
+    rows = conn.execute(
+        select(
+            assets.c.id,
+            assets.c.assetname,
+            assets.c.operatingsystem_id,
+            assets.c.approved,
+            assets.c.systempass_hash,
+            assets.c.active,
+        )
+        .where(assets.c.id.in_(asset_ids))
+        .with_for_update()
+    ).all()
+    return {row.id: row for row in rows}
+
+
+def transfer_asset_data(conn: Connection, source: Any, target: Any) -> dict[str, Any]:
+    target_rows = conn.execute(
+        select(
+            assignments.c.attribute_id,
+            assignments.c.value,
+            attributes.c.allow_multiple,
+        )
+        .join(attributes, attributes.c.id == assignments.c.attribute_id)
+        .where(assignments.c.asset_id == target.id, assignments.c.assigned.is_(True))
+    ).all()
+    target_attribute_ids = {row.attribute_id for row in target_rows}
+    target_values = {
+        (row.attribute_id, normalize_assignment_value(row.value))
+        for row in target_rows
+        if row.allow_multiple
+    }
+
+    source_rows = conn.execute(
+        select(
+            assignments.c.attribute_id,
+            assignments.c.value,
+            attributes.c.name,
+            attributes.c.allow_multiple,
+        )
+        .join(attributes, attributes.c.id == assignments.c.attribute_id)
+        .where(assignments.c.asset_id == source.id, assignments.c.assigned.is_(True))
+        .order_by(assignments.c.assigned_at, assignments.c.id)
+    ).all()
+
+    copied_by_attribute: dict[str, int] = {}
+    for row in source_rows:
+        normalized_value = normalize_assignment_value(row.value)
+        if row.allow_multiple:
+            value_key = (row.attribute_id, normalized_value)
+            if value_key in target_values:
+                continue
+            target_values.add(value_key)
+        elif row.attribute_id in target_attribute_ids:
+            continue
+
+        conn.execute(
+            assignments.insert().values(
+                asset_id=target.id,
+                attribute_id=row.attribute_id,
+                value=row.value,
+                assigned=True,
+            )
+        )
+        target_attribute_ids.add(row.attribute_id)
+        copied_by_attribute[row.name] = copied_by_attribute.get(row.name, 0) + 1
+
+    copied_operating_system = target.operatingsystem_id is None and source.operatingsystem_id is not None
+    target_updates: dict[str, Any] = {"changed_at": func.now()}
+    if copied_operating_system:
+        target_updates["operatingsystem_id"] = source.operatingsystem_id
+    conn.execute(assets.update().where(assets.c.id == target.id).values(**target_updates))
+    conn.execute(
+        assets.update()
+        .where(assets.c.id == source.id)
+        .values(active=False, changed_at=func.now())
+    )
+
+    return {
+        "source_asset_id": source.id,
+        "source_assetname": source.assetname,
+        "target_asset_id": target.id,
+        "target_assetname": target.assetname,
+        "copied_attributes": copied_by_attribute,
+        "copied_operating_system": copied_operating_system,
+    }
+
+
+def log_asset_transfer(conn: Connection, actor: str, workflow: str, details: dict[str, Any]) -> None:
+    source_details = {**details, "workflow": workflow, "role": "source"}
+    target_details = {**details, "workflow": workflow, "role": "target"}
+    log_audit_entry(conn, actor, "asset", details["source_assetname"], "merge_source", source_details)
+    log_audit_entry(conn, actor, "asset", details["target_assetname"], "merge_target", target_details)
 
 
 def log_audit_entry(
@@ -3943,6 +4080,21 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             rows = conn.execute(stmt).all()
             return build_inventory(rows, conn)
 
+    @app.get("/v1/assets/merge-candidates", response_model=list[AssetMergeCandidateOut])
+    def list_asset_merge_candidates(
+        mode: Literal["approval", "merge"],
+        exclude_asset_id: int | None = None,
+        _: AuthenticatedUser = Depends(authenticate),
+    ) -> list[AssetMergeCandidateOut]:
+        stmt = select(assets.c.id, assets.c.assetname).where(assets.c.active.is_(True))
+        if mode == "approval":
+            stmt = stmt.where(assets.c.systempass_hash.is_(None))
+        if exclude_asset_id is not None:
+            stmt = stmt.where(assets.c.id != exclude_asset_id)
+        with engine.connect() as conn:
+            rows = conn.execute(stmt.order_by(assets.c.assetname)).all()
+        return [AssetMergeCandidateOut(**row._mapping) for row in rows]
+
     @app.get("/v1/assets/{asset_id}", response_model=AssetOut)
     def get_asset(asset_id: int, _: AuthenticatedUser = Depends(authenticate)) -> AssetOut:
         with engine.connect() as conn:
@@ -3997,15 +4149,39 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/{asset_id}/approve", response_model=AssetOut)
-    def approve_asset(asset_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
+    def approve_asset(
+        asset_id: int,
+        payload: AssetApproveRequest | None = None,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> AssetOut:
+        request = payload or AssetApproveRequest()
         with engine.begin() as conn:
-            updated = conn.execute(
+            asset_ids = {asset_id}
+            if request.source_asset_id is not None:
+                asset_ids.add(request.source_asset_id)
+            asset_rows = get_assets_for_transfer(conn, asset_ids)
+            target = asset_rows.get(asset_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="Asset not found")
+            if not target.active or target.approved != APPROVAL_PENDING or not target.systempass_hash:
+                raise HTTPException(status_code=409, detail="Asset is not an active pending agent asset")
+
+            if request.mode == "map_existing":
+                source = asset_rows.get(request.source_asset_id)
+                if source is None:
+                    raise HTTPException(status_code=404, detail="Source asset not found")
+                if source.id == target.id:
+                    raise HTTPException(status_code=400, detail="Source and target assets must be different")
+                if not source.active or source.systempass_hash is not None:
+                    raise HTTPException(status_code=409, detail="Source asset must be active and manually created")
+                details = transfer_asset_data(conn, source, target)
+                log_asset_transfer(conn, _.username, "approval_map", details)
+
+            conn.execute(
                 assets.update()
                 .where(assets.c.id == asset_id)
-                .values(approved=APPROVAL_APPROVED, changed_at=func.now())
+                .values(approved=APPROVAL_APPROVED, active=True, changed_at=func.now())
             )
-            if updated.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Asset not found")
 
             row = conn.execute(
                 select(
@@ -4017,19 +4193,115 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
             ).one()
-            log_audit_entry(conn, _.username, "asset", row.assetname, "approve")
+            log_audit_entry(
+                conn,
+                _.username,
+                "asset",
+                row.assetname,
+                "approve",
+                {"mode": request.mode, "source_asset_id": request.source_asset_id},
+            )
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/approve-all", response_model=MessageResponse)
-    def approve_all_assets(_: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+    def approve_all_assets(
+        payload: BulkApprovalRequest | None = None,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> MessageResponse:
         with engine.begin() as conn:
-            conn.execute(
-                assets.update()
-                .where(assets.c.approved == APPROVAL_PENDING)
-                .values(approved=APPROVAL_APPROVED, changed_at=func.now())
+            pending_rows = conn.execute(
+                select(assets.c.id, assets.c.assetname)
+                .where(assets.c.approved == APPROVAL_PENDING, assets.c.active.is_(True))
+                .with_for_update()
+            ).all()
+            pending_ids = {row.id for row in pending_rows}
+            if payload is None:
+                items = [BulkApprovalItem(pending_asset_id=row.id, action="approve_new") for row in pending_rows]
+            else:
+                items = payload.items
+                item_ids = [item.pending_asset_id for item in items]
+                if len(item_ids) != len(set(item_ids)):
+                    raise HTTPException(status_code=400, detail="Each pending asset may appear only once")
+                if set(item_ids) != pending_ids:
+                    raise HTTPException(status_code=409, detail="Bulk review must include every active pending asset")
+
+            source_ids = [item.source_asset_id for item in items if item.source_asset_id is not None]
+            if len(source_ids) != len(set(source_ids)):
+                raise HTTPException(status_code=400, detail="A manual source asset may be mapped only once")
+
+            all_ids = pending_ids | set(source_ids)
+            asset_rows = get_assets_for_transfer(conn, all_ids)
+            approved_count = 0
+            mapped_count = 0
+            pending_count = 0
+            for item in items:
+                target = asset_rows.get(item.pending_asset_id)
+                if target is None or not target.active or target.approved != APPROVAL_PENDING or not target.systempass_hash:
+                    raise HTTPException(status_code=409, detail=f"Asset {item.pending_asset_id} is not an active pending agent asset")
+                if item.action == "leave_pending":
+                    pending_count += 1
+                    continue
+                if item.action == "map_existing":
+                    source = asset_rows.get(item.source_asset_id)
+                    if source is None:
+                        raise HTTPException(status_code=404, detail=f"Source asset {item.source_asset_id} not found")
+                    if source.id == target.id or not source.active or source.systempass_hash is not None:
+                        raise HTTPException(status_code=409, detail=f"Source asset {source.id} must be a different active manual asset")
+                    details = transfer_asset_data(conn, source, target)
+                    log_asset_transfer(conn, _.username, "approval_map", details)
+                    mapped_count += 1
+                conn.execute(
+                    assets.update()
+                    .where(assets.c.id == target.id)
+                    .values(approved=APPROVAL_APPROVED, active=True, changed_at=func.now())
+                )
+                approved_count += 1
+
+            log_audit_entry(
+                conn,
+                _.username,
+                "asset",
+                "*",
+                "approve_all",
+                {"approved": approved_count, "mapped": mapped_count, "left_pending": pending_count},
             )
-            log_audit_entry(conn, _.username, "asset", "*", "approve_all")
-        return MessageResponse(status="ok", message="All pending assets approved")
+        return MessageResponse(
+            status="ok",
+            message=f"Approved {approved_count} assets ({mapped_count} mapped); {pending_count} left pending",
+        )
+
+    @app.post("/v1/assets/{source_asset_id}/merge", response_model=AssetOut)
+    def merge_manual_asset(
+        source_asset_id: int,
+        payload: AssetMergeRequest,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> AssetOut:
+        if source_asset_id == payload.target_asset_id:
+            raise HTTPException(status_code=400, detail="Source and target assets must be different")
+        with engine.begin() as conn:
+            asset_rows = get_assets_for_transfer(conn, {source_asset_id, payload.target_asset_id})
+            source = asset_rows.get(source_asset_id)
+            target = asset_rows.get(payload.target_asset_id)
+            if source is None or target is None:
+                raise HTTPException(status_code=404, detail="Source or target asset not found")
+            if not source.active or source.systempass_hash is not None:
+                raise HTTPException(status_code=409, detail="Source asset must be active and manually created")
+            if not target.active:
+                raise HTTPException(status_code=409, detail="Target asset must be active")
+
+            details = transfer_asset_data(conn, source, target)
+            log_asset_transfer(conn, _.username, "manual_merge", details)
+            row = conn.execute(
+                select(
+                    assets.c.id,
+                    assets.c.assetname,
+                    assets.c.approved,
+                    assets.c.active,
+                    assets.c.created_at,
+                    assets.c.changed_at,
+                ).where(assets.c.id == target.id)
+            ).one()
+            return build_asset_out([row], conn)[0]
 
     @app.post("/v1/agent/register", response_model=AgentRegisterResponse, status_code=status.HTTP_201_CREATED)
     def register_agent(payload: AgentRegisterRequest) -> AgentRegisterResponse:

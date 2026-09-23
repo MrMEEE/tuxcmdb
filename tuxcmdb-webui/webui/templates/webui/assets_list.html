@@ -24,11 +24,7 @@
   <div class="card-header d-flex justify-content-between align-items-center py-2">
     <h5 class="mb-0">Asset Inventory</h5>
     <div class="d-flex gap-2">
-      <form method="post" action="{% url 'assets' %}" class="m-0">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="approve-all">
-        <button class="btn btn-default btn-sm" type="submit" {% if request.user.readonly %}disabled{% endif %}>Approve All</button>
-      </form>
+      <button class="btn btn-default btn-sm" type="button" data-open-modal="approveAllModal" {% if request.user.readonly or not pending_assets %}disabled{% endif %}>Approve All</button>
       <button class="btn btn-accent btn-sm" data-open-modal="createAssetModal" {% if request.user.readonly %}disabled{% endif %}>
         <i class="la la-plus me-1"></i>New Asset
       </button>
@@ -76,12 +72,14 @@
             {% if asset.approved == 2 %}
             <span class="badge bg-success-subtle text-success-emphasis">Approved</span>
             {% elif asset.approved == 1 %}
-            <form method="post" action="{% url 'assets' %}" class="inline-form">
-              {% csrf_token %}
-              <input type="hidden" name="action" value="approve">
-              <input type="hidden" name="asset_id" value="{{ asset.id }}">
-              <button class="btn btn-xs btn-default" type="submit" {% if request.user.readonly %}disabled{% endif %}>Approve</button>
-            </form>
+            <button
+              class="btn btn-xs btn-default js-approve-asset-btn"
+              type="button"
+              data-open-modal="approveAssetModal"
+              data-asset-id="{{ asset.id }}"
+              data-assetname="{{ asset.assetname }}"
+              {% if request.user.readonly %}disabled{% endif %}
+            >Approve</button>
             {% elif asset.approved == 3 %}
             <span class="badge bg-danger-subtle text-danger-emphasis">Rejected</span>
             {% else %}
@@ -95,20 +93,22 @@
             <span class="badge bg-info-subtle text-info-emphasis">Mapped to VM</span>
             {% endif %}
           </td>
-          <td class="d-flex gap-2 align-items-center">
-            <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a>
-            {% if asset.os_mismatch %}
-            <button
-              class="btn btn-sm btn-warning js-match-os-btn"
-              type="button"
-              data-open-modal="matchOsModal"
-              data-asset-id="{{ asset.id }}"
-              data-source-os-value="{{ asset.asset_os_value }}"
-              {% if request.user.readonly %}disabled{% endif %}
-            >
-              Match OS
-            </button>
-            {% endif %}
+          <td>
+            <div class="d-flex gap-2 align-items-center">
+              <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a>
+              {% if asset.os_mismatch %}
+              <button
+                class="btn btn-sm btn-warning js-match-os-btn"
+                type="button"
+                data-open-modal="matchOsModal"
+                data-asset-id="{{ asset.id }}"
+                data-source-os-value="{{ asset.asset_os_value }}"
+                {% if request.user.readonly %}disabled{% endif %}
+              >
+                Match OS
+              </button>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% empty %}
@@ -117,6 +117,86 @@
       </tbody>
     </table>
     </div>
+  </div>
+</div>
+
+<div id="approveAssetModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:560px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Approve Asset</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="approveAssetModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'assets' %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="approve">
+      <input type="hidden" id="approveAssetId" name="asset_id" value="">
+      <div class="tuxcmdb-modal-body">
+        <p>Review <strong id="approveAssetName"></strong>.</p>
+        <div class="form-check mb-2">
+          <input class="form-check-input js-approval-mode" id="approveAsNew" type="radio" name="approval_mode" value="approve_new" checked>
+          <label class="form-check-label" for="approveAsNew">Approve as new asset</label>
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input js-approval-mode" id="approveMapExisting" type="radio" name="approval_mode" value="map_existing">
+          <label class="form-check-label" for="approveMapExisting">Map to existing manual asset</label>
+        </div>
+        <div id="approveSourceGroup" hidden>
+          <label class="form-label" for="approveSourceAsset">Existing manual asset</label>
+          <select class="form-control" id="approveSourceAsset" name="source_asset_id" disabled>
+            <option value="">Select asset</option>
+            {% for candidate in approval_candidates %}
+            <option value="{{ candidate.id }}">{{ candidate.assetname }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="approveAssetModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit">Approve</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="approveAllModal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" style="max-width:820px">
+    <div class="tuxcmdb-modal-header">
+      <h5>Review Pending Assets</h5>
+      <button class="tuxcmdb-modal-close" data-close-modal="approveAllModal" type="button">&times;</button>
+    </div>
+    <form method="post" action="{% url 'assets' %}">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="approve-all">
+      <div class="tuxcmdb-modal-body">
+        {% for pending in pending_assets %}
+        <input type="hidden" name="pending_asset_id" value="{{ pending.id }}">
+        <div class="row g-2 align-items-center mb-3 js-bulk-approval-row">
+          <div class="col-md-4"><strong>{{ pending.assetname }}</strong></div>
+          <div class="col-md-4">
+            <select class="form-control js-bulk-action" name="bulk_action_{{ pending.id }}">
+              <option value="approve_new" selected>Approve as new</option>
+              <option value="map_existing">Map to existing</option>
+              <option value="leave_pending">Leave pending</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <select class="form-control js-bulk-source" name="bulk_source_{{ pending.id }}" disabled>
+              <option value="">Select manual asset</option>
+              {% for candidate in approval_candidates %}
+              <option value="{{ candidate.id }}">{{ candidate.assetname }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        {% empty %}
+        <p>No assets are pending approval.</p>
+        {% endfor %}
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button class="btn btn-default btn-sm" type="button" data-close-modal="approveAllModal">Cancel</button>
+        <button class="btn btn-accent btn-sm" type="submit" {% if not pending_assets %}disabled{% endif %}>Apply Review</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -216,4 +296,52 @@
     </form>
   </div>
 </div>
+<script>
+(function () {
+  "use strict";
+
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest(".js-approve-asset-btn");
+    if (!button) return;
+    document.getElementById("approveAssetId").value = button.dataset.assetId;
+    document.getElementById("approveAssetName").textContent = button.dataset.assetname;
+    document.getElementById("approveAsNew").checked = true;
+    toggleApprovalSource();
+  });
+
+  function toggleApprovalSource() {
+    var mapped = document.getElementById("approveMapExisting").checked;
+    var group = document.getElementById("approveSourceGroup");
+    var select = document.getElementById("approveSourceAsset");
+    group.hidden = !mapped;
+    select.disabled = !mapped;
+    select.required = mapped;
+    if (!mapped) select.value = "";
+  }
+
+  function updateBulkRows() {
+    var selectedSources = new Set();
+    document.querySelectorAll(".js-bulk-approval-row").forEach(function (row) {
+      var action = row.querySelector(".js-bulk-action");
+      var source = row.querySelector(".js-bulk-source");
+      var mapped = action.value === "map_existing";
+      source.disabled = !mapped;
+      source.required = mapped;
+      if (!mapped) source.value = "";
+      if (mapped && source.value) selectedSources.add(source.value);
+    });
+    document.querySelectorAll(".js-bulk-source").forEach(function (select) {
+      Array.from(select.options).forEach(function (option) {
+        option.disabled = Boolean(option.value && option.value !== select.value && selectedSources.has(option.value));
+      });
+    });
+  }
+
+  document.addEventListener("change", function (event) {
+    if (event.target.closest(".js-approval-mode")) toggleApprovalSource();
+    if (event.target.closest(".js-bulk-action, .js-bulk-source")) updateBulkRows();
+  });
+  updateBulkRows();
+}());
+</script>
 {% endblock %}
