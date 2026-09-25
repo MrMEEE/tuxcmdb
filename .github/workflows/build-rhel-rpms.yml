@@ -81,6 +81,7 @@ jobs:
           mkdir -p buildroot/tuxcmdb-api/usr/bin
           mkdir -p buildroot/tuxcmdb-api/usr/lib/systemd/system
           cp tuxcmdb-api/app.py buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/app.py
+          cp tuxcmdb-api/filtering.py buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/filtering.py
           cp -r tuxcmdb-api/conf buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/
           test -f buildroot/tuxcmdb-api/opt/tuxcmdb-api/tuxcmdb-api/conf/api.yaml.ldap-bind-example
           cp -r tuxcmdb buildroot/tuxcmdb-api/opt/tuxcmdb-api/
