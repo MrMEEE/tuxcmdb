@@ -34,6 +34,7 @@ from .forms import (
     LoginForm,
     OperatingSystemForm,
 )
+from .models import AssetListPreference
 from .services import (
     ServiceError,
     api_request,
@@ -69,6 +70,7 @@ APPROVAL_NOT_PENDING = 0
 APPROVAL_PENDING = 1
 APPROVAL_APPROVED = 2
 APPROVAL_REJECTED = 3
+ASSET_LIST_FIXED_FIELDS = {"assetname", "approved", "active", "attributes", "vm mapped"}
 
 
 def notify_ui_update(entity: str, action: str, ref: str = "") -> None:
@@ -367,21 +369,60 @@ def _asset_matches_logic_query(item: dict[str, Any], query: str) -> bool:
 
 
 def _asset_api_params(filter_query: str) -> dict[str, str] | None:
-    expression = filter_query.strip()
-    if expression.lower() == "active":
-        expression = "active=true"
-    elif expression.lower() in {"inactive", "decommissioned"}:
-        expression = "active=false"
+    params: dict[str, str] = {}
+    active_filter: bool | None = True
+    for key, value in _asset_filter_terms(filter_query):
+        if value is None:
+            if key in {"inactive", "decommissioned"}:
+                active_filter = False
+            continue
+        if key in {"active", "status"}:
+            parsed = _parse_bool_text(value)
+            if parsed is not None:
+                active_filter = parsed
 
-    params: dict[str, str] = {"filter": expression} if expression else {}
-    has_status_filter = re.search(
-        r"(?:^|[\s(])(?:active|status)\s*(?:=|NOT\b)",
-        expression,
-        flags=re.IGNORECASE,
-    )
-    if has_status_filter is None:
-        params["active"] = "true"
+    if active_filter is not None:
+        params["active"] = "true" if active_filter else "false"
     return params or None
+
+
+def _normalize_asset_list_fields(raw_fields: list[str], attribute_catalog: list[dict[str, Any]]) -> list[str]:
+    available = {
+        str(item.get("name") or "").strip().lower()
+        for item in attribute_catalog
+        if isinstance(item, dict) and item.get("name")
+    }
+    selected: list[str] = []
+    seen: set[str] = set()
+    for raw_name in raw_fields:
+        name = str(raw_name or "").strip().lower()
+        if not name:
+            continue
+        if name in ASSET_LIST_FIXED_FIELDS:
+            raise ValueError(f"'{name}' is a fixed asset-list field and cannot be added as a custom column")
+        if name not in available:
+            raise ValueError(f"Unknown attribute '{name}'")
+        if name not in seen:
+            selected.append(name)
+            seen.add(name)
+    return selected
+
+
+def _asset_custom_field_values(asset: dict[str, Any], selected_fields: list[str]) -> list[dict[str, str]]:
+    values_by_name: dict[str, list[str]] = {name: [] for name in selected_fields}
+    for item in asset.get("attributes") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip().lower()
+        if name not in values_by_name:
+            continue
+        value = item.get("value")
+        if value is not None and str(value).strip():
+            values_by_name[name].append(str(value).strip())
+    return [
+        {"name": name, "value": " · ".join(values_by_name[name]) or "-"}
+        for name in selected_fields
+    ]
 
 
 def _matches_logic_text_fields(fields: list[Any], key: str, value: str | None = None) -> bool:
@@ -399,7 +440,6 @@ def _attribute_matches_logic_query(item: dict[str, Any], query: str) -> bool:
     data_type = item.get("data_type")
     description = item.get("description")
     allow_multiple = bool(item.get("allow_multiple"))
-    inventory_group = bool(item.get("inventory_group"))
     fetchmethods = item.get("fetchmethods") or []
     fetch_commands = [str(entry.get("command") or "") for entry in fetchmethods]
     supported_os = [
@@ -407,15 +447,7 @@ def _attribute_matches_logic_query(item: dict[str, Any], query: str) -> bool:
         for entry in fetchmethods
         for os_name in (entry.get("supported_operatingsystems") or [])
     ]
-    searchable = [
-        name,
-        data_type,
-        description,
-        " ".join(fetch_commands),
-        "yes" if allow_multiple else "no",
-        "yes" if inventory_group else "no",
-        " ".join(supported_os),
-    ]
+    searchable = [name, data_type, description, " ".join(fetch_commands), "yes" if allow_multiple else "no", " ".join(supported_os)]
 
     for key, value in terms:
         if value is None:
@@ -454,11 +486,6 @@ def _attribute_matches_logic_query(item: dict[str, Any], query: str) -> bool:
         if key in {"allow_multiple", "multiple"}:
             parsed = _parse_bool_text(value)
             if parsed is None or allow_multiple is not parsed:
-                return False
-            continue
-        if key in {"inventory_group", "group"}:
-            parsed = _parse_bool_text(value)
-            if parsed is None or inventory_group is not parsed:
                 return False
             continue
         return False
@@ -971,7 +998,6 @@ def assets_view(request: HttpRequest) -> HttpResponse:
 
     attribute_catalog: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
-    approval_candidates: list[dict[str, Any]] = []
     try:
         attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
     except ServiceError:
@@ -980,41 +1006,33 @@ def assets_view(request: HttpRequest) -> HttpResponse:
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
     except ServiceError:
         operating_systems = []
-    try:
-        approval_candidates = api_request(
-            *_creds(request),
-            "GET",
-            "/v1/assets/merge-candidates",
-            params={"mode": "approval"},
-        )
-    except ServiceError:
-        approval_candidates = []
 
     if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "save-fields":
+            try:
+                selected_fields = _normalize_asset_list_fields(
+                    request.POST.getlist("selected_fields"),
+                    attribute_catalog,
+                )
+                AssetListPreference.objects.update_or_create(
+                    username=request.user.username,
+                    defaults={"selected_attributes": selected_fields},
+                )
+            except ValueError as exc:
+                messages.error(request, str(exc))
+            return redirect("assets")
+
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("assets")
-        action = request.POST.get("action")
         if action == "approve":
             asset_id = request.POST.get("asset_id", "").strip()
             if not asset_id.isdigit():
                 messages.error(request, "Invalid asset id")
                 return redirect("assets")
-            approval_mode = (request.POST.get("approval_mode") or "approve_new").strip()
-            payload: dict[str, Any] = {"mode": approval_mode}
-            if approval_mode == "map_existing":
-                source_asset_id = (request.POST.get("source_asset_id") or "").strip()
-                if not source_asset_id.isdigit():
-                    messages.error(request, "Select an existing manual asset to map")
-                    return redirect("assets")
-                payload["source_asset_id"] = int(source_asset_id)
             try:
-                approved_asset = api_request(
-                    *_creds(request),
-                    "POST",
-                    f"/v1/assets/{asset_id}/approve",
-                    payload=payload,
-                )
+                approved_asset = api_request(*_creds(request), "POST", f"/v1/assets/{asset_id}/approve")
                 messages.success(request, f"Asset approved: {approved_asset.get('assetname')}")
                 notify_ui_update("assets", "approved", approved_asset.get("assetname", ""))
             except ServiceError as exc:
@@ -1022,32 +1040,9 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             return redirect("assets")
 
         if action == "approve-all":
-            pending_asset_ids = request.POST.getlist("pending_asset_id")
-            items: list[dict[str, Any]] = []
-            for pending_asset_id in pending_asset_ids:
-                if not pending_asset_id.isdigit():
-                    messages.error(request, "Invalid pending asset id")
-                    return redirect("assets")
-                selection = (request.POST.get(f"bulk_action_{pending_asset_id}") or "approve_new").strip()
-                item: dict[str, Any] = {
-                    "pending_asset_id": int(pending_asset_id),
-                    "action": selection,
-                }
-                if selection == "map_existing":
-                    source_asset_id = (request.POST.get(f"bulk_source_{pending_asset_id}") or "").strip()
-                    if not source_asset_id.isdigit():
-                        messages.error(request, "Every mapped asset must select a manual source")
-                        return redirect("assets")
-                    item["source_asset_id"] = int(source_asset_id)
-                items.append(item)
             try:
-                result = api_request(
-                    *_creds(request),
-                    "POST",
-                    "/v1/assets/approve-all",
-                    payload={"items": items},
-                )
-                messages.success(request, str(result.get("message") or "Approval review completed"))
+                api_request(*_creds(request), "POST", "/v1/assets/approve-all")
+                messages.success(request, "All assets approved")
                 notify_ui_update("assets", "approve-all", "*")
             except ServiceError as exc:
                 messages.error(request, str(exc))
@@ -1119,6 +1114,23 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             except ServiceError as exc:
                 messages.error(request, str(exc))
 
+    preference = AssetListPreference.objects.filter(username=request.user.username).first()
+    available_fields = []
+    available_field_names: set[str] = set()
+    for attribute in attribute_catalog:
+        name = str(attribute.get("name") or "").strip().lower()
+        if name and name not in ASSET_LIST_FIXED_FIELDS and name not in available_field_names:
+            available_fields.append(name)
+            available_field_names.add(name)
+
+    selected_fields = [
+        name
+        for name in (preference.selected_attributes if preference is not None else [])
+        if isinstance(name, str) and name.strip().lower() in available_field_names
+    ]
+    selected_fields = list(dict.fromkeys(name.strip().lower() for name in selected_fields))
+    unselected_fields = [name for name in available_fields if name not in selected_fields]
+
     assets: list[dict[str, Any]] = []
     try:
         assets = api_request(*_creds(request), "GET", "/v1/assets", params=_asset_api_params(filter_query))
@@ -1127,6 +1139,8 @@ def assets_view(request: HttpRequest) -> HttpResponse:
 
     filtered_assets: list[dict[str, Any]] = []
     for item in assets:
+        if not _asset_matches_logic_query(item, filter_query):
+            continue
         asset_os_value = _asset_os_value(item)
         matched_os = _find_matching_operatingsystem(operating_systems, asset_os_value) if asset_os_value else None
         item["asset_os_value"] = asset_os_value
@@ -1150,15 +1164,15 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     for asset in assets:
         for attr in asset.get("attributes") or []:
             if isinstance(attr, dict):
-                attr_value = attr.get("value", "").strip()
+                attr_value = str(attr.get("value") or "").strip()
                 if attr_value in vm_mapping:
                     asset["vm_info"] = vm_mapping[attr_value]
                     break
+                asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
 
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
     pending_approval_count = sum(1 for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING)
-    pending_assets = [item for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING]
     base_params = {
         "q": filter_query,
     }
@@ -1169,12 +1183,13 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "assets": assets,
             "create_form": create_form,
             "attribute_catalog": attribute_catalog,
+            "selected_fields": selected_fields,
+            "unselected_fields": unselected_fields,
+            "asset_table_colspan": 6 + len(selected_fields),
             "operating_systems": operating_systems,
             "active_count": active_count,
             "decommissioned_count": decommissioned_count,
             "pending_approval_count": pending_approval_count,
-            "pending_assets": pending_assets,
-            "approval_candidates": approval_candidates,
             "filters": {
                 "q": filter_query,
                 "sort_by": sort_by,
@@ -1192,19 +1207,9 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     asset: dict[str, Any] | None = None
     attributes: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
-    merge_candidates: list[dict[str, Any]] = []
-    asset_is_manual = False
 
     try:
-        if asset_ref.isdigit():
-            assets = [api_request(*_creds(request), "GET", f"/v1/assets/{asset_ref}")]
-        else:
-            assets = api_request(
-                *_creds(request),
-                "GET",
-                "/v1/assets",
-                params={"active": "true", "filter": f"assetname={json.dumps(asset_ref)}"},
-            )
+        assets = api_request(*_creds(request), "GET", "/v1/assets", params={"active": "true", "q": asset_ref})
         exact = next((item for item in assets if item["assetname"] == asset_ref or str(item["id"]) == asset_ref), None)
         asset = exact or (assets[0] if assets else None)
         if asset is None:
@@ -1212,20 +1217,6 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         update_form = AssetUpdateForm(initial={"assetname": asset["assetname"]})
         attributes = api_request(*_creds(request), "GET", "/v1/attributes")
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
-        manual_assets = api_request(
-            *_creds(request),
-            "GET",
-            "/v1/assets/merge-candidates",
-            params={"mode": "approval"},
-        )
-        asset_is_manual = any(item["id"] == asset["id"] for item in manual_assets)
-        if asset_is_manual:
-            merge_candidates = api_request(
-                *_creds(request),
-                "GET",
-                "/v1/assets/merge-candidates",
-                params={"mode": "merge", "exclude_asset_id": asset["id"]},
-            )
         attribute_choices = [(item["name"], item["name"]) for item in attributes if item.get("name")]
         assignment_form = AssignmentForm(attribute_choices=attribute_choices)
     except ServiceError as exc:
@@ -1290,20 +1281,6 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 messages.success(request, "Asset decommissioned")
                 notify_ui_update("assets", "decommissioned", asset["assetname"])
                 return redirect("assets")
-            elif action == "merge-asset":
-                target_asset_id = (request.POST.get("target_asset_id") or "").strip()
-                if not target_asset_id.isdigit():
-                    messages.error(request, "Select an asset to merge into")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
-                merged_asset = api_request(
-                    *_creds(request),
-                    "POST",
-                    f"/v1/assets/{asset['id']}/merge",
-                    payload={"target_asset_id": int(target_asset_id)},
-                )
-                messages.success(request, f"Asset merged into {merged_asset.get('assetname')}")
-                notify_ui_update("assets", "merged", asset["assetname"])
-                return redirect("asset-detail", asset_ref=merged_asset["assetname"])
             elif action == "match-os":
                 source_os_value = (request.POST.get("source_os_value") or "").strip()
                 operating_system_id = request.POST.get("operatingsystem_id", "").strip()
@@ -1364,8 +1341,6 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             "asset_os_value": asset_os_value,
             "asset_os_mismatch": asset_os_mismatch,
             "vm_info": vm_info,
-            "asset_is_manual": asset_is_manual,
-            "merge_candidates": merge_candidates,
         },
     )
 
@@ -1490,7 +1465,6 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
             "name": lambda item: str(item.get("name") or "").lower(),
             "data_type": lambda item: str(item.get("data_type") or "").lower(),
             "allow_multiple": lambda item: 1 if item.get("allow_multiple") else 0,
-            "inventory_group": lambda item: 1 if item.get("inventory_group") else 0,
             "description": lambda item: str(item.get("description") or "").lower(),
         },
     )
@@ -1508,12 +1482,7 @@ def attributes_view(request: HttpRequest) -> HttpResponse:
                 "sort_by": sort_by,
                 "sort_dir": sort_dir,
             },
-            "sort_links": _sort_link_data(
-                {"q": search},
-                sort_by,
-                sort_dir,
-                ["name", "data_type", "allow_multiple", "inventory_group", "description"],
-            ),
+            "sort_links": _sort_link_data({"q": search}, sort_by, sort_dir, ["name", "data_type", "allow_multiple", "description"]),
         },
     )
 
@@ -1548,7 +1517,6 @@ def attribute_form_view(request: HttpRequest, attribute_id: int | None = None) -
                 "data_type": attribute["data_type"],
                 "description": attribute.get("description") or "",
                 "allow_multiple": attribute.get("allow_multiple", False),
-                "inventory_group": attribute.get("inventory_group", False),
             }
             fetchmethod_rows = attribute.get("fetchmethods") or []
         except ServiceError as exc:

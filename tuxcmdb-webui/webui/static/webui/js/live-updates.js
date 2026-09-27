@@ -461,6 +461,101 @@
     }
   });
 
+  function sortAssetFieldOptions(select) {
+    const placeholder = select.querySelector("option[value='']");
+    const options = Array.from(select.options).filter((option) => option.value);
+    options.sort((left, right) => left.text.localeCompare(right.text));
+    select.replaceChildren();
+    if (placeholder) {
+      select.appendChild(placeholder);
+    }
+    options.forEach((option) => select.appendChild(option));
+  }
+
+  document.addEventListener("click", (event) => {
+    const addButton = event.target.closest("#addAssetField");
+    if (addButton) {
+      const select = document.getElementById("assetFieldChoice");
+      const list = document.getElementById("selectedAssetFields");
+      if (!select || !list || !select.value) {
+        return;
+      }
+
+      const name = select.value;
+      const selectedRows = Array.from(list.querySelectorAll("[data-asset-field]"));
+      if (selectedRows.some((row) => row.dataset.assetField === name)) {
+        return;
+      }
+
+      const emptyMessage = list.querySelector("[data-empty-fields]");
+      if (emptyMessage) {
+        emptyMessage.remove();
+      }
+
+      const row = document.createElement("li");
+      row.className = "list-group-item d-flex justify-content-between align-items-center";
+      row.dataset.assetField = name;
+
+      const label = document.createElement("span");
+      label.textContent = name;
+      row.appendChild(label);
+
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "selected_fields";
+      hidden.value = name;
+      row.appendChild(hidden);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-xs btn-danger js-remove-asset-field";
+      remove.dataset.fieldName = name;
+      remove.setAttribute("aria-label", `Remove ${name}`);
+      remove.textContent = "Remove";
+      row.appendChild(remove);
+      list.appendChild(row);
+
+      const selectedOption = Array.from(select.options).find((option) => option.value === name);
+      if (selectedOption) {
+        selectedOption.remove();
+      }
+      select.value = "";
+      sortAssetFieldOptions(select);
+      addButton.disabled = select.options.length <= 1;
+      return;
+    }
+
+    const removeButton = event.target.closest(".js-remove-asset-field");
+    if (!removeButton) {
+      return;
+    }
+    const select = document.getElementById("assetFieldChoice");
+    const list = document.getElementById("selectedAssetFields");
+    const name = removeButton.dataset.fieldName;
+    const row = removeButton.closest("[data-asset-field]");
+    if (!select || !list || !name || !row) {
+      return;
+    }
+
+    row.remove();
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+    sortAssetFieldOptions(select);
+    const addButtonAfterRemove = document.getElementById("addAssetField");
+    if (addButtonAfterRemove) {
+      addButtonAfterRemove.disabled = false;
+    }
+    if (!list.querySelector("[data-asset-field]")) {
+      const emptyMessage = document.createElement("li");
+      emptyMessage.className = "list-group-item text-muted";
+      emptyMessage.dataset.emptyFields = "";
+      emptyMessage.textContent = "No custom fields selected.";
+      list.appendChild(emptyMessage);
+    }
+  });
+
   function bindLiveForms() {
     const forms = document.querySelectorAll("form:not([data-no-live])");
     forms.forEach((form) => {
