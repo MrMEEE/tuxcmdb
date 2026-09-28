@@ -4,7 +4,9 @@ This folder contains starter agents for Linux and Windows.
 
 ## Linux
 
-Agent script: `agent/linux/tuxcmdb_agent.py`
+Standard agent script: `agent/linux/tuxcmdb_agent.py` (Python 3.9+)
+
+EL8 compatibility script: `agent/linux/el8/tuxcmdb_agent.py` (Python 3.6; deprecated)
 
 - Stores local config in `/etc/tuxcmdb-agent/config.json`
 - Registers anonymously with `POST /v1/agent/register`
@@ -23,6 +25,7 @@ tuxcmdb-agent sudo
 This lists attribute commands that require privilege for the current host, shows which already have a rule installed under `/etc/sudoers.d/tuxcmdb-agent-<attribute>`, and lets you add (`a <number>`) or remove (`r <name>`) rules. Each rule is validated with `visudo -cf` before being installed. Running `sudo` as a non-root user prints an error and exits, since it cannot edit `/etc/sudoers.d`.
 
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
+The Linux agent normally requires Python 3.9 or newer. The EL8 RPM temporarily supports the system Python 3 runtime and depends on the distribution's `python3-requests` package. This EL8 compatibility path is deprecated and will be removed in a future release; use Python 3.9 or newer on EL8 where available.
 
 Systemd units:
 

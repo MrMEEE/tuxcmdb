@@ -19,11 +19,20 @@ jobs:
       matrix:
         include:
           - el: 8
-            container: registry.access.redhat.com/ubi8/python-39:latest
+            container: registry.access.redhat.com/ubi8/ubi:latest
+            agent_source: agent/linux/el8/tuxcmdb_agent.py
+            python: python3
+            runtime: python3
           - el: 9
             container: registry.access.redhat.com/ubi9/python-311:latest
+            agent_source: agent/linux/tuxcmdb_agent.py
+            python: python3.11
+            runtime: python3.11
           - el: 10
             container: registry.access.redhat.com/ubi10/ubi:latest
+            agent_source: agent/linux/tuxcmdb_agent.py
+            python: python3
+            runtime: python3
 
     container:
       image: ${{ matrix.container }}
@@ -37,6 +46,9 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
+          if [[ "${{ matrix.el }}" == "8" ]]; then
+            dnf install -y python3-requests
+          fi
           gem install --no-document fpm -v 1.15.1
 
       - name: Prepare build root
@@ -49,16 +61,26 @@ jobs:
           mkdir -p buildroot/usr/bin
           mkdir -p buildroot/usr/lib/systemd/system
 
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
+          if [[ "${{ matrix.el }}" == "8" ]]; then
+            echo "Building deprecated EL8-only agent with system Python and RPM-managed requests"
+          else
+            ${{ matrix.python }} -m pip install --upgrade pip
+            ${{ matrix.python }} -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
+          fi
 
-          cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          cp "${{ matrix.agent_source }}" buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
           chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          if [[ "${{ matrix.el }}" == "8" ]]; then
+            python3 buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py --help >/dev/null
+          else
+            PYTHONPATH="$PWD/buildroot/opt/tuxcmdb-agent/lib" \
+              ${{ matrix.python }} buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py --help >/dev/null
+          fi
 
-          cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
+          cat > buildroot/usr/bin/tuxcmdb-agent <<EOF
           #!/usr/bin/env bash
-          export PYTHONPATH="/opt/tuxcmdb-agent/lib${PYTHONPATH:+:$PYTHONPATH}"
-          exec /usr/bin/python3 /opt/tuxcmdb-agent/tuxcmdb_agent.py "$@"
+          export PYTHONPATH="/opt/tuxcmdb-agent/lib\${PYTHONPATH:+:\$PYTHONPATH}"
+          exec /usr/bin/${{ matrix.python }} /opt/tuxcmdb-agent/tuxcmdb_agent.py "\$@"
           EOF
           chmod +x buildroot/usr/bin/tuxcmdb-agent
 
@@ -67,12 +89,17 @@ jobs:
 
           chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
 
+          RUNTIME_DEPENDENCIES=(--depends "${{ matrix.runtime }}")
+          if [[ "${{ matrix.el }}" == "8" ]]; then
+            RUNTIME_DEPENDENCIES+=(--depends python3-requests)
+          fi
+
           fpm -s dir -t rpm \
             -n tuxcmdb-agent \
             -v "$VERSION" \
             --iteration "$ITERATION" \
             --architecture noarch \
-            --depends python3 \
+            "${RUNTIME_DEPENDENCIES[@]}" \
             --after-install packaging/scripts/postinstall.sh \
             --before-remove packaging/scripts/preuninstall.sh \
             -C buildroot .
@@ -141,7 +168,7 @@ jobs:
             -v "$VERSION" \
             --iteration "$ITERATION" \
             --architecture all \
-            --depends python3 \
+            --depends 'python3 >= 3.9' \
             --after-install packaging/scripts/postinstall.sh \
             --before-remove packaging/scripts/preuninstall.sh \
             -C buildroot .
