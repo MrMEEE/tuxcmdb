@@ -13,6 +13,7 @@ htmlcov/
 
 # Local data
 *.db
+*.sqlite3
 .runtime/
 tuxcmdb-webui/.sessions/
 

@@ -24,10 +24,10 @@ jobs:
             python: python3
             runtime: python3
           - el: 9
-            container: registry.access.redhat.com/ubi9/python-311:latest
+            container: registry.access.redhat.com/ubi9/ubi:latest
             agent_source: agent/linux/tuxcmdb_agent.py
-            python: python3.11
-            runtime: python3.11
+            python: python3
+            runtime: python3
           - el: 10
             container: registry.access.redhat.com/ubi10/ubi:latest
             agent_source: agent/linux/tuxcmdb_agent.py
