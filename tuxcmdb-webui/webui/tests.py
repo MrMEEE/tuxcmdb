@@ -28,6 +28,8 @@ class AssetListFieldsTests(TestCase):
             return self.attribute_catalog
         if method == "GET" and path == "/v1/operatingsystems":
             return []
+        if method == "GET" and path == "/v1/assets/merge-candidates":
+            return []
         if method == "GET" and path == "/v1/assets":
             return [
                 {

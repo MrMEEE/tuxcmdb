@@ -17,7 +17,7 @@ import re
 import secrets
 import ssl
 import sys
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
@@ -33,7 +33,9 @@ from sqlalchemy import (
     Table,
     Text,
     and_,
+    exists,
     func,
+    not_,
     or_,
     select,
     text,
@@ -47,6 +49,8 @@ if __package__ is None or __package__ == "":
 
 from tuxcmdb.db import create_db_engine
 from tuxcmdb.hypervisors import HypervisorProbeError, probe_hypervisor_connection
+from filtering import And as FilterAnd
+from filtering import FilterSyntaxError, Not as FilterNot, Or as FilterOr, Predicate, parse_filter
 from werkzeug.security import check_password_hash, generate_password_hash
 from cryptography.fernet import Fernet, InvalidToken
 import uvicorn
@@ -123,6 +127,8 @@ attributes = Table(
     Column("data_type", String(32), ForeignKey("datatypes.name"), nullable=False),
     Column("allow_multiple", Boolean, nullable=False, server_default=text("false")),
     Column("immutable", Boolean, nullable=False, server_default=text("false")),
+    Column("inventory_group", Boolean, nullable=False, server_default=text("false")),
+    Column("is_default", Boolean, nullable=False, server_default=text("false")),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -437,6 +443,7 @@ class AttributeCreate(BaseModel):
     description: str | None = None
     allow_multiple: bool = False
     immutable: bool = False
+    inventory_group: bool = False
     fetchmethods: list["AttributeFetchMethodIn"] = Field(default_factory=list)
 
 
@@ -446,6 +453,7 @@ class AttributeUpdate(BaseModel):
     description: str | None = None
     allow_multiple: bool | None = None
     immutable: bool | None = None
+    inventory_group: bool | None = None
     fetchmethods: list["AttributeFetchMethodIn"] | None = None
 
 
@@ -475,6 +483,7 @@ class AttributeOut(BaseModel):
     data_type: str
     allow_multiple: bool
     immutable: bool
+    inventory_group: bool
     description: str | None
     fetchmethods: list[AttributeFetchMethodOut] = Field(default_factory=list)
     created_at: datetime
@@ -682,6 +691,46 @@ class AssetOut(BaseModel):
     created_at: datetime
     changed_at: datetime
     attributes: list[AssignedAttributeOut] = Field(default_factory=list)
+
+
+class AssetMergeCandidateOut(BaseModel):
+    id: int
+    assetname: str
+
+
+class AssetApproveRequest(BaseModel):
+    mode: Literal["approve_new", "map_existing"] = "approve_new"
+    source_asset_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "AssetApproveRequest":
+        if self.mode == "map_existing" and self.source_asset_id is None:
+            raise ValueError("source_asset_id is required when mode is map_existing")
+        if self.mode == "approve_new" and self.source_asset_id is not None:
+            raise ValueError("source_asset_id is only valid when mode is map_existing")
+        return self
+
+
+class BulkApprovalItem(BaseModel):
+    pending_asset_id: int
+    action: Literal["approve_new", "map_existing", "leave_pending"]
+    source_asset_id: int | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> "BulkApprovalItem":
+        if self.action == "map_existing" and self.source_asset_id is None:
+            raise ValueError("source_asset_id is required when action is map_existing")
+        if self.action != "map_existing" and self.source_asset_id is not None:
+            raise ValueError("source_asset_id is only valid when action is map_existing")
+        return self
+
+
+class BulkApprovalRequest(BaseModel):
+    items: list[BulkApprovalItem]
+
+
+class AssetMergeRequest(BaseModel):
+    target_asset_id: int
 
 
 class AgentRegisterRequest(BaseModel):
@@ -1864,6 +1913,7 @@ def to_attribute_out(row: Any, fetchmethods: list[AttributeFetchMethodOut] | Non
         data_type=row.data_type,
         allow_multiple=row.allow_multiple,
         immutable=row.immutable,
+        inventory_group=row.inventory_group,
         description=row.description,
         fetchmethods=fetchmethods or [],
         created_at=row.created_at,
@@ -2000,6 +2050,103 @@ def has_same_active_assignment(conn: Connection, asset_id: int, attribute_id: in
     return existing is not None
 
 
+def get_assets_for_transfer(conn: Connection, asset_ids: set[int]) -> dict[int, Any]:
+    if not asset_ids:
+        return {}
+    rows = conn.execute(
+        select(
+            assets.c.id,
+            assets.c.assetname,
+            assets.c.operatingsystem_id,
+            assets.c.approved,
+            assets.c.systempass_hash,
+            assets.c.active,
+        )
+        .where(assets.c.id.in_(asset_ids))
+        .with_for_update()
+    ).all()
+    return {row.id: row for row in rows}
+
+
+def transfer_asset_data(conn: Connection, source: Any, target: Any) -> dict[str, Any]:
+    target_rows = conn.execute(
+        select(
+            assignments.c.attribute_id,
+            assignments.c.value,
+            attributes.c.allow_multiple,
+        )
+        .join(attributes, attributes.c.id == assignments.c.attribute_id)
+        .where(assignments.c.asset_id == target.id, assignments.c.assigned.is_(True))
+    ).all()
+    target_attribute_ids = {row.attribute_id for row in target_rows}
+    target_values = {
+        (row.attribute_id, normalize_assignment_value(row.value))
+        for row in target_rows
+        if row.allow_multiple
+    }
+
+    source_rows = conn.execute(
+        select(
+            assignments.c.attribute_id,
+            assignments.c.value,
+            attributes.c.name,
+            attributes.c.allow_multiple,
+        )
+        .join(attributes, attributes.c.id == assignments.c.attribute_id)
+        .where(assignments.c.asset_id == source.id, assignments.c.assigned.is_(True))
+        .order_by(assignments.c.assigned_at, assignments.c.id)
+    ).all()
+
+    copied_by_attribute: dict[str, int] = {}
+    for row in source_rows:
+        normalized_value = normalize_assignment_value(row.value)
+        if row.allow_multiple:
+            value_key = (row.attribute_id, normalized_value)
+            if value_key in target_values:
+                continue
+            target_values.add(value_key)
+        elif row.attribute_id in target_attribute_ids:
+            continue
+
+        conn.execute(
+            assignments.insert().values(
+                asset_id=target.id,
+                attribute_id=row.attribute_id,
+                value=row.value,
+                assigned=True,
+            )
+        )
+        target_attribute_ids.add(row.attribute_id)
+        copied_by_attribute[row.name] = copied_by_attribute.get(row.name, 0) + 1
+
+    copied_operating_system = target.operatingsystem_id is None and source.operatingsystem_id is not None
+    target_updates: dict[str, Any] = {"changed_at": func.now()}
+    if copied_operating_system:
+        target_updates["operatingsystem_id"] = source.operatingsystem_id
+    conn.execute(assets.update().where(assets.c.id == target.id).values(**target_updates))
+    conn.execute(
+        assets.update()
+        .where(assets.c.id == source.id)
+        .values(active=False, changed_at=func.now())
+    )
+
+    return {
+        "source_asset_id": source.id,
+        "source_assetname": source.assetname,
+        "target_asset_id": target.id,
+        "target_assetname": target.assetname,
+        "copied_attributes": copied_by_attribute,
+        "copied_operating_system": copied_operating_system,
+    }
+
+
+def log_asset_transfer(conn: Connection, actor: str, workflow: str, details: dict[str, Any]) -> None:
+    source_details = {**details, "workflow": workflow, "role": "source"}
+    target_details = {**details, "workflow": workflow, "role": "target"}
+    log_audit_entry(conn, actor, "asset", details["source_assetname"], "merge_source", source_details)
+    log_audit_entry(conn, actor, "asset", details["target_assetname"], "merge_target", target_details)
+
+
 def log_audit_entry(
     conn: Connection,
     actor_username: str,
@@ -2035,6 +2182,159 @@ def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
         )
         for row in rows
     ]
+
+
+def escape_like_prefix(value: str) -> str:
+    return value.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+def parse_filter_boolean(value: str, field_name: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on", "active"}:
+        return True
+    if normalized in {"0", "false", "no", "off", "inactive", "decommissioned"}:
+        return False
+    raise HTTPException(status_code=400, detail=f"Invalid boolean value '{value}' for {field_name}")
+
+
+def compile_filter(expression: Predicate | FilterNot | FilterAnd | FilterOr):
+    if isinstance(expression, Predicate):
+        if expression.name in {"asset", "assetname", "hostname", "name"}:
+            return func.lower(assets.c.assetname).like(
+                escape_like_prefix(expression.value),
+                escape="\\",
+            )
+        if expression.name in {"active", "status"}:
+            return assets.c.active.is_(parse_filter_boolean(expression.value, expression.name))
+
+        assignment_matches = (
+            select(1)
+            .select_from(
+                assignments.join(attributes, attributes.c.id == assignments.c.attribute_id)
+            )
+            .where(
+                assignments.c.asset_id == assets.c.id,
+                assignments.c.assigned.is_(True),
+                attributes.c.name == expression.name,
+                func.lower(func.coalesce(assignments.c.value, "")).like(
+                    escape_like_prefix(expression.value),
+                    escape="\\",
+                ),
+            )
+            .correlate(assets)
+        )
+        return exists(assignment_matches)
+    if isinstance(expression, FilterNot):
+        return not_(compile_filter(expression.operand))
+    if isinstance(expression, FilterAnd):
+        return and_(compile_filter(expression.left), compile_filter(expression.right))
+    return or_(compile_filter(expression.left), compile_filter(expression.right))
+
+
+def build_asset_select(filter_source: str | None, active: bool | None):
+    stmt = select(
+        assets.c.id,
+        assets.c.assetname,
+        assets.c.approved,
+        assets.c.active,
+        assets.c.last_checkin_at,
+        assets.c.created_at,
+        assets.c.changed_at,
+    )
+    if active is not None:
+        stmt = stmt.where(assets.c.active.is_(active))
+    if filter_source is not None:
+        try:
+            expression = parse_filter(filter_source)
+        except FilterSyntaxError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        stmt = stmt.where(compile_filter(expression))
+    return stmt
+
+
+def sanitize_inventory_group(value: str) -> str | None:
+    group_name = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    if not group_name:
+        return None
+    if group_name[0].isdigit() or group_name in {"all", "ungrouped", "_meta"}:
+        group_name = f"_{group_name}"
+    return group_name
+
+
+def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
+    assetnames = {row.id: row.assetname for row in rows}
+    current: dict[int, dict[str, tuple[Any, bool]]] = {row.id: {} for row in rows}
+    if assetnames:
+        assignment_rows = conn.execute(
+            select(
+                assignments.c.asset_id,
+                assignments.c.value,
+                assignments.c.assigned_at,
+                assignments.c.id,
+                attributes.c.name,
+                attributes.c.allow_multiple,
+                attributes.c.inventory_group,
+            )
+            .join(attributes, attributes.c.id == assignments.c.attribute_id)
+            .where(
+                assignments.c.asset_id.in_(assetnames),
+                assignments.c.assigned.is_(True),
+            )
+            .order_by(assignments.c.asset_id, attributes.c.name, assignments.c.assigned_at, assignments.c.id)
+        ).all()
+
+        for assignment in assignment_rows:
+            asset_values = current[assignment.asset_id]
+            if assignment.allow_multiple:
+                existing = asset_values.get(assignment.name)
+                values = existing[0] if existing is not None else []
+                values.append(assignment.value)
+                asset_values[assignment.name] = (values, assignment.inventory_group)
+            else:
+                asset_values[assignment.name] = (
+                    assignment.value,
+                    assignment.inventory_group,
+                )
+
+    hostvars: dict[str, dict[str, Any]] = {}
+    groups: dict[str, set[str]] = {}
+    for row in rows:
+        values = current[row.id]
+        variables = {name: value for name, (value, _) in values.items()}
+        variables.update(
+            {
+                "tuxcmdb_id": row.id,
+                "tuxcmdb_active": row.active,
+                "tuxcmdb_approved": row.approved,
+                "tuxcmdb_created_at": row.created_at,
+                "tuxcmdb_changed_at": row.changed_at,
+            }
+        )
+        hostvars[row.assetname] = variables
+
+        for value, inventory_group in values.values():
+            if not inventory_group:
+                continue
+            group_values = value if isinstance(value, list) else [value]
+            for group_value in group_values:
+                if group_value is None:
+                    continue
+                group_name = sanitize_inventory_group(str(group_value))
+                if group_name is not None:
+                    groups.setdefault(group_name, set()).add(row.assetname)
+
+    inventory: dict[str, Any] = {
+        "_meta": {"hostvars": hostvars},
+        "all": {
+            "hosts": sorted(hostvars),
+            "vars": {},
+            "children": sorted(groups),
+        },
+    }
+    inventory.update(
+        {group_name: {"hosts": sorted(group_hosts)} for group_name, group_hosts in sorted(groups.items())}
+    )
+    return inventory
 
 
 def _new_systempass() -> str:
@@ -3549,6 +3849,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     data_type=data_type,
                     allow_multiple=payload.allow_multiple,
                     immutable=payload.immutable,
+                    inventory_group=payload.inventory_group,
                     description=payload.description,
                 )
             )
@@ -3562,6 +3863,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     attributes.c.data_type,
                     attributes.c.allow_multiple,
                     attributes.c.immutable,
+                    attributes.c.inventory_group,
                     attributes.c.description,
                     attributes.c.created_at,
                     attributes.c.changed_at,
@@ -3577,6 +3879,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     "data_type": data_type,
                     "allow_multiple": payload.allow_multiple,
                     "immutable": payload.immutable,
+                    "inventory_group": payload.inventory_group,
                     "description": payload.description,
                     "fetchmethods": [item.model_dump() for item in payload.fetchmethods],
                 },
@@ -3598,6 +3901,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             attributes.c.data_type,
             attributes.c.allow_multiple,
             attributes.c.immutable,
+            attributes.c.inventory_group,
             attributes.c.description,
             attributes.c.created_at,
             attributes.c.changed_at,
@@ -3640,6 +3944,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             updates["description"] = payload.description
         if payload.allow_multiple is not None:
             updates["allow_multiple"] = payload.allow_multiple
+        if payload.inventory_group is not None:
+            updates["inventory_group"] = payload.inventory_group
 
         if not updates:
             raise HTTPException(status_code=400, detail="No fields to update")
@@ -3677,6 +3983,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         attributes.c.data_type,
                         attributes.c.allow_multiple,
                         attributes.c.immutable,
+                        attributes.c.inventory_group,
                         attributes.c.description,
                         attributes.c.created_at,
                         attributes.c.changed_at,
@@ -3745,6 +4052,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.assetname,
                     assets.c.approved,
                     assets.c.active,
+                    assets.c.last_checkin_at,
                     assets.c.created_at,
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
@@ -3756,73 +4064,42 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
 
     @app.get("/v1/assets", response_model=list[AssetOut])
     def list_assets(
-        q: str | None = None,
+        filter: str | None = None,
         active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
         _: AuthenticatedUser = Depends(authenticate),
     ) -> list[AssetOut]:
-        stmt = select(
-            assets.c.id,
-            assets.c.assetname,
-            assets.c.approved,
-            assets.c.active,
-            assets.c.last_checkin_at,
-            assets.c.created_at,
-            assets.c.changed_at,
-        )
-        if active is not None:
-            stmt = stmt.where(assets.c.active.is_(active))
-        if q:
-            pattern = f"%{q.strip().lower()}%"
-            stmt = stmt.where(func.lower(assets.c.assetname).like(pattern))
-
-        stmt = stmt.order_by(assets.c.assetname).limit(limit).offset(offset)
+        stmt = build_asset_select(filter, active).order_by(assets.c.assetname).limit(limit).offset(offset)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
             return build_asset_out(rows, conn)
 
-    @app.get("/v1/assets/by-attribute", response_model=list[AssetOut])
-    def list_assets_by_attribute(
-        attribute_name: str | None = None,
-        attribute_id: int | None = None,
-        value: str | None = None,
+    @app.get("/v1/inventory", response_model=dict[str, Any])
+    def get_inventory(
+        filter: str | None = None,
         active: bool | None = True,
         _: AuthenticatedUser = Depends(authenticate),
-    ) -> list[AssetOut]:
-        if attribute_name is None and attribute_id is None:
-            raise HTTPException(status_code=400, detail="Provide attribute_name or attribute_id")
-
-        latest = latest_assignment_subquery()
-        stmt = (
-            select(
-                assets.c.id,
-                assets.c.assetname,
-                assets.c.approved,
-                assets.c.active,
-                assets.c.last_checkin_at,
-                assets.c.created_at,
-                assets.c.changed_at,
-            )
-            .join(latest, latest.c.asset_id == assets.c.id)
-            .join(assignments, assignments.c.id == latest.c.latest_id)
-            .join(attributes, attributes.c.id == assignments.c.attribute_id)
-            .where(assignments.c.assigned.is_(True))
-        )
-
-        if active is not None:
-            stmt = stmt.where(assets.c.active.is_(active))
-        if attribute_id is not None:
-            stmt = stmt.where(attributes.c.id == attribute_id)
-        if attribute_name is not None:
-            stmt = stmt.where(attributes.c.name == attribute_name.strip().lower())
-        if value is not None:
-            stmt = stmt.where(func.lower(func.coalesce(assignments.c.value, "")).like(f"%{value.strip().lower()}%"))
-
-        stmt = stmt.distinct().order_by(assets.c.assetname)
+    ) -> dict[str, Any]:
+        stmt = build_asset_select(filter, active).order_by(assets.c.assetname)
         with engine.connect() as conn:
             rows = conn.execute(stmt).all()
-            return build_asset_out(rows, conn)
+            return build_inventory(rows, conn)
+
+    @app.get("/v1/assets/merge-candidates", response_model=list[AssetMergeCandidateOut])
+    def list_asset_merge_candidates(
+        mode: Literal["approval", "merge"],
+        exclude_asset_id: int | None = None,
+        _: AuthenticatedUser = Depends(authenticate),
+    ) -> list[AssetMergeCandidateOut]:
+        stmt = select(assets.c.id, assets.c.assetname).where(assets.c.active.is_(True))
+        if mode == "approval":
+            stmt = stmt.where(assets.c.systempass_hash.is_(None))
+        if exclude_asset_id is not None:
+            stmt = stmt.where(assets.c.id != exclude_asset_id)
+        with engine.connect() as conn:
+            rows = conn.execute(stmt.order_by(assets.c.assetname)).all()
+        return [AssetMergeCandidateOut(**row._mapping) for row in rows]
 
     @app.get("/v1/assets/{asset_id}", response_model=AssetOut)
     def get_asset(asset_id: int, _: AuthenticatedUser = Depends(authenticate)) -> AssetOut:
@@ -3871,6 +4148,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.assetname,
                     assets.c.approved,
                     assets.c.active,
+                    assets.c.last_checkin_at,
                     assets.c.created_at,
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
@@ -3879,15 +4157,39 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/{asset_id}/approve", response_model=AssetOut)
-    def approve_asset(asset_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
+    def approve_asset(
+        asset_id: int,
+        payload: AssetApproveRequest | None = None,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> AssetOut:
+        request = payload or AssetApproveRequest()
         with engine.begin() as conn:
-            updated = conn.execute(
+            asset_ids = {asset_id}
+            if request.source_asset_id is not None:
+                asset_ids.add(request.source_asset_id)
+            asset_rows = get_assets_for_transfer(conn, asset_ids)
+            target = asset_rows.get(asset_id)
+            if target is None:
+                raise HTTPException(status_code=404, detail="Asset not found")
+            if not target.active or target.approved != APPROVAL_PENDING or not target.systempass_hash:
+                raise HTTPException(status_code=409, detail="Asset is not an active pending agent asset")
+
+            if request.mode == "map_existing":
+                source = asset_rows.get(request.source_asset_id)
+                if source is None:
+                    raise HTTPException(status_code=404, detail="Source asset not found")
+                if source.id == target.id:
+                    raise HTTPException(status_code=400, detail="Source and target assets must be different")
+                if not source.active or source.systempass_hash is not None:
+                    raise HTTPException(status_code=409, detail="Source asset must be active and manually created")
+                details = transfer_asset_data(conn, source, target)
+                log_asset_transfer(conn, _.username, "approval_map", details)
+
+            conn.execute(
                 assets.update()
                 .where(assets.c.id == asset_id)
-                .values(approved=APPROVAL_APPROVED, changed_at=func.now())
+                .values(approved=APPROVAL_APPROVED, active=True, changed_at=func.now())
             )
-            if updated.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Asset not found")
 
             row = conn.execute(
                 select(
@@ -3895,23 +4197,121 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.assetname,
                     assets.c.approved,
                     assets.c.active,
+                    assets.c.last_checkin_at,
                     assets.c.created_at,
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
             ).one()
-            log_audit_entry(conn, _.username, "asset", row.assetname, "approve")
+            log_audit_entry(
+                conn,
+                _.username,
+                "asset",
+                row.assetname,
+                "approve",
+                {"mode": request.mode, "source_asset_id": request.source_asset_id},
+            )
             return build_asset_out([row], conn)[0]
 
     @app.post("/v1/assets/approve-all", response_model=MessageResponse)
-    def approve_all_assets(_: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
+    def approve_all_assets(
+        payload: BulkApprovalRequest | None = None,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> MessageResponse:
         with engine.begin() as conn:
-            conn.execute(
-                assets.update()
-                .where(assets.c.approved == APPROVAL_PENDING)
-                .values(approved=APPROVAL_APPROVED, changed_at=func.now())
+            pending_rows = conn.execute(
+                select(assets.c.id, assets.c.assetname)
+                .where(assets.c.approved == APPROVAL_PENDING, assets.c.active.is_(True))
+                .with_for_update()
+            ).all()
+            pending_ids = {row.id for row in pending_rows}
+            if payload is None:
+                items = [BulkApprovalItem(pending_asset_id=row.id, action="approve_new") for row in pending_rows]
+            else:
+                items = payload.items
+                item_ids = [item.pending_asset_id for item in items]
+                if len(item_ids) != len(set(item_ids)):
+                    raise HTTPException(status_code=400, detail="Each pending asset may appear only once")
+                if set(item_ids) != pending_ids:
+                    raise HTTPException(status_code=409, detail="Bulk review must include every active pending asset")
+
+            source_ids = [item.source_asset_id for item in items if item.source_asset_id is not None]
+            if len(source_ids) != len(set(source_ids)):
+                raise HTTPException(status_code=400, detail="A manual source asset may be mapped only once")
+
+            all_ids = pending_ids | set(source_ids)
+            asset_rows = get_assets_for_transfer(conn, all_ids)
+            approved_count = 0
+            mapped_count = 0
+            pending_count = 0
+            for item in items:
+                target = asset_rows.get(item.pending_asset_id)
+                if target is None or not target.active or target.approved != APPROVAL_PENDING or not target.systempass_hash:
+                    raise HTTPException(status_code=409, detail=f"Asset {item.pending_asset_id} is not an active pending agent asset")
+                if item.action == "leave_pending":
+                    pending_count += 1
+                    continue
+                if item.action == "map_existing":
+                    source = asset_rows.get(item.source_asset_id)
+                    if source is None:
+                        raise HTTPException(status_code=404, detail=f"Source asset {item.source_asset_id} not found")
+                    if source.id == target.id or not source.active or source.systempass_hash is not None:
+                        raise HTTPException(status_code=409, detail=f"Source asset {source.id} must be a different active manual asset")
+                    details = transfer_asset_data(conn, source, target)
+                    log_asset_transfer(conn, _.username, "approval_map", details)
+                    mapped_count += 1
+                conn.execute(
+                    assets.update()
+                    .where(assets.c.id == target.id)
+                    .values(approved=APPROVAL_APPROVED, active=True, changed_at=func.now())
+                )
+                approved_count += 1
+
+            log_audit_entry(
+                conn,
+                _.username,
+                "asset",
+                "*",
+                "approve_all",
+                {"approved": approved_count, "mapped": mapped_count, "left_pending": pending_count},
             )
-            log_audit_entry(conn, _.username, "asset", "*", "approve_all")
-        return MessageResponse(status="ok", message="All pending assets approved")
+        return MessageResponse(
+            status="ok",
+            message=f"Approved {approved_count} assets ({mapped_count} mapped); {pending_count} left pending",
+        )
+
+    @app.post("/v1/assets/{source_asset_id}/merge", response_model=AssetOut)
+    def merge_manual_asset(
+        source_asset_id: int,
+        payload: AssetMergeRequest,
+        _: AuthenticatedUser = Depends(require_write_access),
+    ) -> AssetOut:
+        if source_asset_id == payload.target_asset_id:
+            raise HTTPException(status_code=400, detail="Source and target assets must be different")
+        with engine.begin() as conn:
+            asset_rows = get_assets_for_transfer(conn, {source_asset_id, payload.target_asset_id})
+            source = asset_rows.get(source_asset_id)
+            target = asset_rows.get(payload.target_asset_id)
+            if source is None or target is None:
+                raise HTTPException(status_code=404, detail="Source or target asset not found")
+            if not source.active or source.systempass_hash is not None:
+                raise HTTPException(status_code=409, detail="Source asset must be active and manually created")
+            if not target.active:
+                raise HTTPException(status_code=409, detail="Target asset must be active")
+
+            details = transfer_asset_data(conn, source, target)
+            log_asset_transfer(conn, _.username, "manual_merge", details)
+            row = conn.execute(
+                select(
+                    assets.c.id,
+                    assets.c.assetname,
+                    assets.c.approved,
+                    assets.c.active,
+                    assets.c.last_checkin_at,
+                    assets.c.created_at,
+                    assets.c.changed_at,
+                ).where(assets.c.id == target.id)
+            ).one()
+            return build_asset_out([row], conn)[0]
 
     @app.post("/v1/agent/register", response_model=AgentRegisterResponse, status_code=status.HTTP_201_CREATED)
     def register_agent(payload: AgentRegisterRequest) -> AgentRegisterResponse:
@@ -4209,6 +4609,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.assetname,
                     assets.c.approved,
                     assets.c.active,
+                    assets.c.last_checkin_at,
                     assets.c.created_at,
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)

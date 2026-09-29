@@ -22,6 +22,8 @@ DEFAULT_TIMEOUT = 30
 AGENT_USER = "tuxcmdb-agent"
 SUDOERS_DIR = Path("/etc/sudoers.d")
 SUDOERS_PREFIX = "tuxcmdb-agent-"
+# Stamped with the release version at RPM build time; keep as-is for source checkouts.
+AGENT_VERSION = "0.0.0-dev"
 
 
 def ask(prompt: str) -> str:
@@ -466,6 +468,7 @@ def cmd_sudo(args: argparse.Namespace) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="tuxcmdb Linux agent (deprecated EL8 compatibility)")
+    parser.add_argument("--version", action="version", version=AGENT_VERSION)
     parser.add_argument(
         "action",
         nargs="?",
