@@ -19,7 +19,7 @@ jobs:
       matrix:
         include:
           - el: 9
-            container: registry.access.redhat.com/ubi9/ubi:latest
+            container: registry.access.redhat.com/ubi9/python-311:latest
           - el: 10
             container: registry.access.redhat.com/ubi10/ubi:latest
 
