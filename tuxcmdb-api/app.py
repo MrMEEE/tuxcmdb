@@ -109,6 +109,7 @@ assets = Table(
     Column("approved", Integer, nullable=False, server_default=text("0")),
     Column("systempass_hash", String(255), nullable=True),
     Column("active", Boolean, nullable=False, server_default=text("true")),
+    Column("last_checkin_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -677,6 +678,7 @@ class AssetOut(BaseModel):
     assetname: str
     approved: int
     active: bool
+    last_checkin_at: datetime | None
     created_at: datetime
     changed_at: datetime
     attributes: list[AssignedAttributeOut] = Field(default_factory=list)
@@ -2026,6 +2028,7 @@ def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
             assetname=row.assetname,
             approved=row.approved,
             active=row.active,
+            last_checkin_at=row.last_checkin_at,
             created_at=row.created_at,
             changed_at=row.changed_at,
             attributes=attrs_by_asset.get(row.id, []),
@@ -3764,6 +3767,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             assets.c.assetname,
             assets.c.approved,
             assets.c.active,
+            assets.c.last_checkin_at,
             assets.c.created_at,
             assets.c.changed_at,
         )
@@ -3796,6 +3800,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 assets.c.assetname,
                 assets.c.approved,
                 assets.c.active,
+                assets.c.last_checkin_at,
                 assets.c.created_at,
                 assets.c.changed_at,
             )
@@ -3828,6 +3833,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     assets.c.assetname,
                     assets.c.approved,
                     assets.c.active,
+                    assets.c.last_checkin_at,
                     assets.c.created_at,
                     assets.c.changed_at,
                 ).where(assets.c.id == asset_id)
@@ -3989,6 +3995,12 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 raise HTTPException(status_code=409, detail="Asset is decommissioned")
             if asset_row.approved != APPROVAL_APPROVED:
                 raise HTTPException(status_code=403, detail=f"Asset is not approved (state={asset_row.approved})")
+
+            conn.execute(
+                assets.update()
+                .where(assets.c.id == asset_row.id)
+                .values(last_checkin_at=func.now(), changed_at=assets.c.changed_at)
+            )
 
             updated_count = 0
             for item in payload.values:

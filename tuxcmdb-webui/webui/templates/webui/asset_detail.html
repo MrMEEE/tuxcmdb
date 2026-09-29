@@ -18,7 +18,7 @@
           <label>Approval</label>
           <div>
             {% if asset.approved == 2 %}
-            <span class="badge bg-success-subtle text-success-emphasis">Approved</span>
+            <span class="badge bg-success-subtle text-success-emphasis" title="Last checkin: {{ asset.last_checkin_at|default:'Never' }}">Approved</span>
             {% elif asset.approved == 1 %}
             <span class="badge bg-warning-subtle text-warning-emphasis">Pending</span>
             {% elif asset.approved == 3 %}
@@ -27,6 +27,9 @@
             <span class="badge bg-secondary-subtle text-body">Not pending</span>
             {% endif %}
           </div>
+          {% if asset.approved == 2 %}
+          <small class="text-muted">Last checkin: {{ asset.last_checkin_at|default:'Never' }}</small>
+          {% endif %}
         </div>
         {% if vm_info %}
         <div class="form-group">

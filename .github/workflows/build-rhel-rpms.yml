@@ -129,6 +129,7 @@ jobs:
             --iteration "$ITERATION" \
             --architecture noarch \
             --depends "tuxcmdb-pydeps = ${VERSION}-${ITERATION}" \
+            --after-install packaging/scripts/postinstall-tuxcmdb.sh \
             -C buildroot/tuxcmdb .
 
           fpm -s dir -t rpm \
