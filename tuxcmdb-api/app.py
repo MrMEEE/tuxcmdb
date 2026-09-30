@@ -113,13 +113,14 @@ assets = Table(
     Column("operatingsystem_id", Integer, ForeignKey("operatingsystems.id", ondelete="SET NULL"), nullable=True),
     Column("approved", Integer, nullable=False, server_default=text("0")),
     Column("systempass_hash", String(255), nullable=True),
+    Column("is_agent", Boolean, nullable=False, server_default=text("false")),
     Column("active", Boolean, nullable=False, server_default=text("true")),
     Column("last_checkin_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
-Index("uq_assets_manual_assetname", assets.c.assetname, unique=True, sqlite_where=assets.c.systempass_hash.is_(None), postgresql_where=assets.c.systempass_hash.is_(None))
-Index("uq_assets_agent_assetname", assets.c.assetname, unique=True, sqlite_where=assets.c.systempass_hash.is_not(None), postgresql_where=assets.c.systempass_hash.is_not(None))
+# Partial indexes are silently ignored by MySQL, so the origin is a real column.
+Index("uq_assets_assetname_is_agent", assets.c.assetname, assets.c.is_agent, unique=True)
 
 attributes = Table(
     "attributes",
@@ -4366,16 +4367,28 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 if not payload.assetname:
                     raise HTTPException(status_code=400, detail="assetname is required when asset_id is not provided")
                 assetname = normalize_assetname(payload.assetname)
+                if conn.execute(
+                    select(assets.c.id)
+                    .where(assets.c.assetname == assetname, assets.c.systempass_hash.is_not(None))
+                    .limit(1)
+                ).first():
+                    raise HTTPException(status_code=409, detail="An agent is already registered for this assetname")
                 try:
                     insert_result = conn.execute(
                         assets.insert().values(
                             assetname=assetname,
                             approved=APPROVAL_PENDING,
                             systempass_hash=generate_password_hash(systempass),
+                            is_agent=True,
                             active=True,
                         )
                     )
                 except IntegrityError as exc:
+                    logger.warning(
+                        "Agent registration for %r hit a uniqueness constraint even though no agent owns that name. "
+                        "Run 'tuxcmdb migrate' so manual and agent assets can share a name.",
+                        assetname,
+                    )
                     raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
                 asset_id = insert_result.inserted_primary_key[0]
 
@@ -4387,6 +4400,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         .values(
                             approved=APPROVAL_PENDING,
                             systempass_hash=generate_password_hash(systempass),
+                            is_agent=True,
                             changed_at=func.now(),
                         )
                     )

@@ -113,6 +113,7 @@ class AssetMergeApiTests(unittest.TestCase):
                     assetname=name,
                     approved=api.APPROVAL_PENDING if pending else api.APPROVAL_NOT_PENDING,
                     systempass_hash=generate_password_hash("agent-secret") if pending else None,
+                    is_agent=pending,
                     active=active,
                     operatingsystem_id=operating_system_id,
                 )
@@ -208,7 +209,9 @@ class AssetMergeApiTests(unittest.TestCase):
         agent_id = registered.json()["id"]
         self.assertNotEqual(agent_id, source_id)
         self.assertEqual(registered.json()["assetname"], "shared-host")
-        self.assertEqual(self.client.post("/v1/agent/register", json={"assetname": "shared-host"}).status_code, 409)
+        duplicate_agent = self.client.post("/v1/agent/register", json={"assetname": "shared-host"})
+        self.assertEqual(duplicate_agent.status_code, 409)
+        self.assertEqual(duplicate_agent.json()["detail"], "An agent is already registered for this assetname")
         self.assertEqual(self.client.post("/v1/assets", json={"assetname": "shared-host"}, auth=self.auth).status_code, 409)
 
         listed = self.client.get("/v1/assets", auth=self.auth)

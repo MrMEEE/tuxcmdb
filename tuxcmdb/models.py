@@ -11,7 +11,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    text,
     func,
     false,
     true,
@@ -25,8 +24,8 @@ class Asset(Base):
     __tablename__ = "assets"
     __table_args__ = (
         CheckConstraint("assetname = lower(assetname)", name="ck_assets_assetname_lowercase"),
-        Index("uq_assets_manual_assetname", "assetname", unique=True, sqlite_where=text("systempass_hash IS NULL"), postgresql_where=text("systempass_hash IS NULL")),
-        Index("uq_assets_agent_assetname", "assetname", unique=True, sqlite_where=text("systempass_hash IS NOT NULL"), postgresql_where=text("systempass_hash IS NOT NULL")),
+        # Partial indexes are silently ignored by MySQL, so the origin is a real column.
+        Index("uq_assets_assetname_is_agent", "assetname", "is_agent", unique=True),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -37,6 +36,7 @@ class Asset(Base):
     )
     approved: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
     systempass_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_agent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=false(), default=False)
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true(), default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
