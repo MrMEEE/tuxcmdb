@@ -18,10 +18,10 @@
       <tbody>
         {% for file in agent_files %}
         <tr>
-          <td>{{ file.name }}</td>
+          <td>{{ file.name }}{% if file.latest_of %}<small class="text-muted d-block">Latest: {{ file.latest_of }}</small>{% endif %}</td>
           <td>{{ file.size|filesizeformat }}</td>
           <td class="text-end">
-            <a class="btn btn-sm btn-primary" href="{% url 'agents-download' file.name %}">
+            <a class="btn btn-sm btn-primary" href="{% url 'agents-download' file.name %}" download="{{ file.name }}">
               <i class="la la-download"></i> Download
             </a>
           </td>

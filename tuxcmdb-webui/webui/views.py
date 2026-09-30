@@ -70,7 +70,7 @@ APPROVAL_NOT_PENDING = 0
 APPROVAL_PENDING = 1
 APPROVAL_APPROVED = 2
 APPROVAL_REJECTED = 3
-ASSET_LIST_FIXED_FIELDS = {"assetname", "approved", "active", "attributes", "vm mapped"}
+ASSET_LIST_FIXED_FIELDS = {"assetname", "approved", "active", "attributes", "vm mapped", "tuxcmdb-agent-version"}
 
 
 def notify_ui_update(entity: str, action: str, ref: str = "") -> None:
@@ -219,6 +219,13 @@ def _asset_os_value(asset: dict[str, Any]) -> str:
         value = str(item.get("value") or "").strip()
         if value:
             return value
+    return ""
+
+
+def _asset_agent_version(asset: dict[str, Any]) -> str:
+    for item in asset.get("attributes") or []:
+        if isinstance(item, dict) and str(item.get("name") or "").strip().lower() == "tuxcmdb-agent-version":
+            return str(item.get("value") or "").strip()
     return ""
 
 
@@ -1190,6 +1197,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
         asset_os_value = _asset_os_value(item)
         matched_os = _find_matching_operatingsystem(operating_systems, asset_os_value) if asset_os_value else None
         item["asset_os_value"] = asset_os_value
+        item["agent_version"] = _asset_agent_version(item)
         item["os_mismatch"] = bool(asset_os_value) and matched_os is None
         filtered_assets.append(item)
 
@@ -1204,6 +1212,8 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "attributes_count": lambda item: len(item.get("attributes", [])),
         },
     )
+    show_last_checkin = any(asset.get("last_checkin_at") for asset in assets)
+    show_agent_version = any(asset["agent_version"] for asset in assets)
 
     # Get VM mappings for reverse linking
     vm_mapping = _get_vm_mappings(*_creds(request))
@@ -1232,7 +1242,9 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "attribute_catalog": attribute_catalog,
             "selected_fields": selected_fields,
             "unselected_fields": unselected_fields,
-            "asset_table_colspan": 6 + len(selected_fields),
+            "show_last_checkin": show_last_checkin,
+            "show_agent_version": show_agent_version,
+            "asset_table_colspan": 6 + len(selected_fields) + int(show_last_checkin) + int(show_agent_version),
             "operating_systems": operating_systems,
             "active_count": active_count,
             "decommissioned_count": decommissioned_count,
@@ -1395,6 +1407,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         messages.error(request, str(exc))
         return redirect("assets")
 
+    asset_agent_version = _asset_agent_version(asset)
     asset_os_value = _asset_os_value(asset)
     asset_os_mismatch = bool(asset_os_value) and _find_matching_operatingsystem(operating_systems, asset_os_value) is None
 
@@ -1413,6 +1426,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         "webui/asset_detail.html",
         {
             "asset": asset,
+            "agent_version": asset_agent_version,
             "attributes": attributes,
             "assignment_form": assignment_form,
             "update_form": update_form,
@@ -2670,14 +2684,51 @@ def docs_view(request: HttpRequest) -> HttpResponse:
     return render(request, "webui/docs.html", {"api_url": api_url})
 
 
+_AGENT_RPM_NAME = re.compile(r"^tuxcmdb-agent-(\d+)\.(\d+)\.(\d+)-(\d+)\.(el\d+)\.noarch\.rpm$")
+_AGENT_DEB_NAME = re.compile(r"^tuxcmdb-agent_(\d+)\.(\d+)\.(\d+)-(\d+)\.debian_all\.deb$")
+_AGENT_WINDOWS_NAME = re.compile(r"^tuxcmdb-agent-(\d+)\.(\d+)\.(\d+)\.ps1$")
+
+
+def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
+    """Resolve each stable download name to the highest packaged version."""
+    latest: dict[str, tuple[tuple[int, ...], Path]] = {}
+    for entry in agents_dir.iterdir():
+        if not entry.is_file() or entry.resolve().parent != agents_dir.resolve():
+            continue
+        rpm = _AGENT_RPM_NAME.fullmatch(entry.name)
+        deb = _AGENT_DEB_NAME.fullmatch(entry.name)
+        windows = _AGENT_WINDOWS_NAME.fullmatch(entry.name)
+        if rpm:
+            alias = f"tuxcmdb-agent-latest.{rpm.group(5)}.noarch.rpm"
+            version = tuple(int(part) for part in rpm.groups()[:4])
+        elif deb:
+            alias = "tuxcmdb-agent_latest.debian_all.deb"
+            version = tuple(int(part) for part in deb.groups())
+        elif windows:
+            alias = "tuxcmdb-agent-latest.ps1"
+            version = tuple(int(part) for part in windows.groups())
+        else:
+            continue
+        if alias not in latest or version > latest[alias][0]:
+            latest[alias] = (version, entry)
+
+    # Existing installations have only the unversioned PowerShell script.
+    legacy_windows = agents_dir / "tuxcmdb-agent.ps1"
+    if "tuxcmdb-agent-latest.ps1" not in latest and legacy_windows.is_file() and legacy_windows.resolve().parent == agents_dir.resolve():
+        latest["tuxcmdb-agent-latest.ps1"] = ((0,), legacy_windows)
+    return {alias: entry for alias, (_version, entry) in latest.items()}
+
+
 def _list_agent_files() -> list[dict[str, Any]]:
     agents_dir = settings.AGENTS_DIR
     if not agents_dir.is_dir():
         return []
     files = []
     for entry in sorted(agents_dir.iterdir()):
-        if entry.is_file():
+        if entry.is_file() and entry.resolve().parent == agents_dir.resolve():
             files.append({"name": entry.name, "size": entry.stat().st_size})
+    for alias, entry in sorted(_latest_agent_files(agents_dir).items()):
+        files.append({"name": alias, "size": entry.stat().st_size, "latest_of": entry.name})
     return files
 
 
@@ -2696,10 +2747,17 @@ def agents_view(request: HttpRequest) -> HttpResponse:
 
 def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:
     agents_dir = settings.AGENTS_DIR.resolve()
-    requested = (agents_dir / Path(filename).name).resolve()
+    if filename != Path(filename).name or not agents_dir.is_dir():
+        raise Http404("Agent file not found")
+    latest = _latest_agent_files(agents_dir)
+    requested = (latest.get(filename) or (agents_dir / filename)).resolve()
     if requested.parent != agents_dir or not requested.is_file():
         raise Http404("Agent file not found")
-    return FileResponse(requested.open("rb"), as_attachment=True, filename=requested.name)
+    response = FileResponse(requested.open("rb"), as_attachment=True, filename=filename, content_type="application/octet-stream")
+    response["X-Content-Type-Options"] = "nosniff"
+    if filename in latest:
+        response["Cache-Control"] = "no-store"
+    return response
 
 
 def agents_asset_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:

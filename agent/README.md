@@ -55,3 +55,5 @@ For a hardened production rollout, move credentials to DPAPI-protected storage o
 
 The `tuxcmdb-webui-agents` package bundles the Debian/Ubuntu, RHEL 8/9/10 agent packages, and the Windows PowerShell script into `/opt/tuxcmdb-webui-agents`. When installed alongside `tuxcmdb-webui`, these files become downloadable from the **Agents** page (`/agents/`) in the web interface. If the package is not installed, the page reports that no agent downloads are available.
 
+Each package can be downloaded by its versioned filename or a stable `latest` URL on the Agents page. For example, `/agents/download/tuxcmdb-agent-latest.el10.noarch.rpm` always downloads the newest available EL10 RPM with that filename. The Debian package uses `tuxcmdb-agent_latest.debian_all.deb`; the Windows script uses `tuxcmdb-agent-latest.ps1`. Downloads are served as attachments.
+

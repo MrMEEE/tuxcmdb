@@ -150,6 +150,7 @@ jobs:
           python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
 
           cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
+          sed -i "s/^AGENT_VERSION = .*/AGENT_VERSION = \"$VERSION\"/" buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
           chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
 
           cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
@@ -220,6 +221,7 @@ jobs:
 
           find agent-artifacts -type f \( -name '*.rpm' -o -name '*.deb' \) -exec cp {} buildroot/opt/tuxcmdb-webui-agents/ \;
           cp agent/windows/tuxcmdb-agent.ps1 buildroot/opt/tuxcmdb-webui-agents/tuxcmdb-agent.ps1
+          cp agent/windows/tuxcmdb-agent.ps1 "buildroot/opt/tuxcmdb-webui-agents/tuxcmdb-agent-${VERSION}.ps1"
           chmod 0644 buildroot/opt/tuxcmdb-webui-agents/*
 
           fpm -s dir -t rpm \

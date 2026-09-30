@@ -31,6 +31,12 @@
           <small class="text-muted">Last checkin: {{ asset.last_checkin_at|default:'Never' }}</small>
           {% endif %}
         </div>
+        {% if agent_version %}
+        <div class="form-group">
+          <label>Agent version</label>
+          <div>{{ agent_version }}</div>
+        </div>
+        {% endif %}
         {% if vm_info %}
         <div class="form-group">
           <label>VM Mapped</label>

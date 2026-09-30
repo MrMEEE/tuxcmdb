@@ -62,6 +62,8 @@
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.assetname.field }}" data-sort-dir="{{ sort_links.assetname.next_dir }}">Assetname {{ sort_links.assetname.indicator }}</button></th>
           <th>Approved</th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.active.field }}" data-sort-dir="{{ sort_links.active.next_dir }}">Active {{ sort_links.active.indicator }}</button></th>
+          {% if show_last_checkin %}<th>Last checkin</th>{% endif %}
+          {% if show_agent_version %}<th>Agent version</th>{% endif %}
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="assets-filters" data-sort-field="{{ sort_links.attributes_count.field }}" data-sort-dir="{{ sort_links.attributes_count.next_dir }}">Attributes {{ sort_links.attributes_count.indicator }}</button></th>
           <th>VM Mapped</th>
           {% for field in selected_fields %}
@@ -93,6 +95,8 @@
             {% endif %}
           </td>
           <td>{% if asset.active %}Yes{% else %}No{% endif %}</td>
+          {% if show_last_checkin %}<td>{{ asset.last_checkin_at|default:'Never' }}</td>{% endif %}
+          {% if show_agent_version %}<td>{{ asset.agent_version|default:'-' }}</td>{% endif %}
           <td>{{ asset.attributes|length }}</td>
           <td>
             {% if asset.vm_info %}
