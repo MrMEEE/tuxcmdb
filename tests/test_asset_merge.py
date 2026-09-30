@@ -199,6 +199,63 @@ class AssetMergeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(self.asset_state(target_id).approved, api.APPROVAL_APPROVED)
 
+    def test_agent_registration_can_share_manual_name_then_merge(self) -> None:
+        source_id = self.create_asset("shared-host")
+        self.assign(source_id, self.location_id, "dc1")
+
+        registered = self.client.post("/v1/agent/register", json={"assetname": "SHARED-HOST"})
+        self.assertEqual(registered.status_code, 201, registered.text)
+        agent_id = registered.json()["id"]
+        self.assertNotEqual(agent_id, source_id)
+        self.assertEqual(registered.json()["assetname"], "shared-host")
+        self.assertEqual(self.client.post("/v1/agent/register", json={"assetname": "shared-host"}).status_code, 409)
+        self.assertEqual(self.client.post("/v1/assets", json={"assetname": "shared-host"}, auth=self.auth).status_code, 409)
+
+        listed = self.client.get("/v1/assets", auth=self.auth)
+        self.assertEqual({item["id"] for item in listed.json() if item["assetname"] == "shared-host"}, {source_id, agent_id})
+        self.assertEqual(self.client.get(f"/v1/assets/{agent_id}", auth=self.auth).json()["id"], agent_id)
+        self.assertEqual(self.client.post("/v1/assets/shared-host/attributes", json={"location": "dc2"}, auth=self.auth).status_code, 409)
+        inventory = self.client.get("/v1/inventory", auth=self.auth).json()
+        self.assertEqual(inventory["_meta"]["hostvars"]["shared-host"]["tuxcmdb_id"], source_id)
+
+        merged = self.client.post(
+            f"/v1/assets/{agent_id}/approve",
+            json={"mode": "map_existing", "source_asset_id": source_id},
+            auth=self.auth,
+        )
+        self.assertEqual(merged.status_code, 200, merged.text)
+        self.assertFalse(self.asset_state(source_id).active)
+        self.assertEqual(self.current_values(agent_id, self.location_id), ["dc1"])
+        inventory = self.client.get("/v1/inventory", auth=self.auth).json()
+        self.assertEqual(inventory["_meta"]["hostvars"]["shared-host"]["tuxcmdb_id"], agent_id)
+        by_name = self.client.post(
+            "/v1/assets/shared-host/attributes", json={"location": "dc1"}, auth=self.auth,
+        )
+        self.assertEqual(by_name.status_code, 200, by_name.text)
+
+    def test_manual_names_are_unique_even_after_agent_registration(self) -> None:
+        registered = self.client.post("/v1/agent/register", json={"assetname": "agent-host"})
+        self.assertEqual(registered.status_code, 201, registered.text)
+        self.assertEqual(self.client.post("/v1/assets", json={"assetname": "agent-host"}, auth=self.auth).status_code, 409)
+        manual = self.client.post("/v1/assets", json={"assetname": "manual-host"}, auth=self.auth)
+        self.assertEqual(manual.status_code, 201, manual.text)
+        self.assertEqual(self.client.post("/v1/assets", json={"assetname": "manual-host"}, auth=self.auth).status_code, 409)
+        renamed = self.client.patch(
+            f"/v1/assets/{manual.json()['id']}", json={"assetname": "agent-host"}, auth=self.auth,
+        )
+        self.assertEqual(renamed.status_code, 409)
+
+    def test_explicit_id_registration_cannot_create_second_same_named_agent(self) -> None:
+        source_id = self.create_asset("shared-host")
+        self.assertEqual(self.client.post("/v1/agent/register", json={"assetname": "shared-host"}).status_code, 201)
+        attempt = self.client.post("/v1/agent/register", json={"asset_id": source_id})
+        self.assertEqual(attempt.status_code, 409)
+        with self.engine.connect() as conn:
+            manual_hash = conn.execute(
+                api.select(api.assets.c.systempass_hash).where(api.assets.c.id == source_id)
+            ).scalar_one()
+        self.assertIsNone(manual_hash)
+
     def test_manual_merge_keeps_target_identity_and_existing_singleton(self) -> None:
         source_id = self.create_asset("manual-source")
         target_id = self.create_asset("managed-target", pending=True)

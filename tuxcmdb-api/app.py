@@ -27,6 +27,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     MetaData,
     String,
@@ -108,7 +109,7 @@ assets = Table(
     "assets",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("assetname", String(255), nullable=False, unique=True),
+    Column("assetname", String(255), nullable=False),
     Column("operatingsystem_id", Integer, ForeignKey("operatingsystems.id", ondelete="SET NULL"), nullable=True),
     Column("approved", Integer, nullable=False, server_default=text("0")),
     Column("systempass_hash", String(255), nullable=True),
@@ -117,6 +118,8 @@ assets = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
+Index("uq_assets_manual_assetname", assets.c.assetname, unique=True, sqlite_where=assets.c.systempass_hash.is_(None), postgresql_where=assets.c.systempass_hash.is_(None))
+Index("uq_assets_agent_assetname", assets.c.assetname, unique=True, sqlite_where=assets.c.systempass_hash.is_not(None), postgresql_where=assets.c.systempass_hash.is_not(None))
 
 attributes = Table(
     "attributes",
@@ -626,12 +629,17 @@ def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
             return row
 
     normalized_assetname = normalize_assetname(asset_ref)
-    row = conn.execute(
-        select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname)
-    ).one_or_none()
-    if row is None:
+    rows = conn.execute(
+        select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname).limit(2)
+    ).all()
+    if not rows:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return row
+    if len(rows) > 1:
+        active_rows = [row for row in rows if row.active]
+        if len(active_rows) == 1:
+            return active_rows[0]
+        raise HTTPException(status_code=409, detail="Asset name is ambiguous; use its numeric id")
+    return rows[0]
 
 
 def resolve_attribute_ref(conn: Connection, attribute_ref: str) -> Any:
@@ -2235,6 +2243,7 @@ def build_asset_select(filter_source: str | None, active: bool | None):
     stmt = select(
         assets.c.id,
         assets.c.assetname,
+        assets.c.systempass_hash,
         assets.c.approved,
         assets.c.active,
         assets.c.last_checkin_at,
@@ -2262,6 +2271,22 @@ def sanitize_inventory_group(value: str) -> str | None:
 
 
 def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
+    # Ansible inventory has one hostvars entry per hostname. While manual and
+    # agent records coexist pending a merge, prefer the manual record until
+    # the agent is approved; never let query ordering silently choose one.
+    def priority(row: Any) -> tuple[bool, bool, int]:
+        return (
+            row.systempass_hash is not None and row.approved == APPROVAL_APPROVED,
+            row.systempass_hash is None,
+            row.id,
+        )
+
+    by_name = {}
+    for row in rows:
+        chosen = by_name.get(row.assetname)
+        if chosen is None or priority(row) > priority(chosen):
+            by_name[row.assetname] = row
+    rows = list(by_name.values())
     assetnames = {row.id: row.assetname for row in rows}
     current: dict[int, dict[str, tuple[Any, bool]]] = {row.id: {} for row in rows}
     if assetnames:
@@ -4038,6 +4063,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     def create_asset(payload: AssetCreate, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
         assetname = normalize_assetname(payload.assetname)
         with engine.begin() as conn:
+            if conn.execute(select(assets.c.id).where(assets.c.assetname == assetname).limit(1)).first():
+                raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 insert_result = conn.execute(
                     assets.insert().values(assetname=assetname, approved=APPROVAL_NOT_PENDING, systempass_hash=None, active=True)
@@ -4130,6 +4157,14 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         updates["changed_at"] = func.now()
 
         with engine.begin() as conn:
+            if "assetname" in updates:
+                current = conn.execute(select(assets.c.systempass_hash).where(assets.c.id == asset_id)).one_or_none()
+                if current is not None and current.systempass_hash is None:
+                    duplicate = conn.execute(
+                        select(assets.c.id).where(assets.c.assetname == updates["assetname"], assets.c.id != asset_id).limit(1)
+                    ).first()
+                    if duplicate:
+                        raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 update_result = conn.execute(
                     assets.update()
@@ -4316,6 +4351,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.post("/v1/agent/register", response_model=AgentRegisterResponse, status_code=status.HTTP_201_CREATED)
     def register_agent(payload: AgentRegisterRequest) -> AgentRegisterResponse:
         with engine.begin() as conn:
+            systempass = _new_systempass()
             if payload.asset_id is not None:
                 row = conn.execute(
                     select(assets.c.id, assets.c.assetname, assets.c.systempass_hash).where(assets.c.id == payload.asset_id)
@@ -4335,7 +4371,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                         assets.insert().values(
                             assetname=assetname,
                             approved=APPROVAL_PENDING,
-                            systempass_hash=None,
+                            systempass_hash=generate_password_hash(systempass),
                             active=True,
                         )
                     )
@@ -4343,16 +4379,19 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
                 asset_id = insert_result.inserted_primary_key[0]
 
-            systempass = _new_systempass()
-            conn.execute(
-                assets.update()
-                .where(assets.c.id == asset_id)
-                .values(
-                    approved=APPROVAL_PENDING,
-                    systempass_hash=generate_password_hash(systempass),
-                    changed_at=func.now(),
-                )
-            )
+            if payload.asset_id is not None:
+                try:
+                    conn.execute(
+                        assets.update()
+                        .where(assets.c.id == asset_id)
+                        .values(
+                            approved=APPROVAL_PENDING,
+                            systempass_hash=generate_password_hash(systempass),
+                            changed_at=func.now(),
+                        )
+                    )
+                except IntegrityError as exc:
+                    raise HTTPException(status_code=409, detail="Agent assetname already exists") from exc
             log_audit_entry(conn, "agent-registration", "asset", str(asset_id), "register")
             return AgentRegisterResponse(
                 id=asset_id,

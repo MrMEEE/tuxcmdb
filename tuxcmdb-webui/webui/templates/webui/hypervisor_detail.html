@@ -70,7 +70,7 @@
           <tr>
             <td>
               {% if vm.asset_id %}
-              <a href="{% url 'asset-detail' vm.asset_name %}">{{ vm.name }}</a>
+              <a href="{% url 'asset-detail' vm.asset_id %}">{{ vm.name }}</a>
               {% else %}
               {{ vm.name }}
               {% endif %}

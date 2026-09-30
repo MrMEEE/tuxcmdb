@@ -11,6 +11,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    text,
     func,
     false,
     true,
@@ -24,10 +25,12 @@ class Asset(Base):
     __tablename__ = "assets"
     __table_args__ = (
         CheckConstraint("assetname = lower(assetname)", name="ck_assets_assetname_lowercase"),
+        Index("uq_assets_manual_assetname", "assetname", unique=True, sqlite_where=text("systempass_hash IS NULL"), postgresql_where=text("systempass_hash IS NULL")),
+        Index("uq_assets_agent_assetname", "assetname", unique=True, sqlite_where=text("systempass_hash IS NOT NULL"), postgresql_where=text("systempass_hash IS NOT NULL")),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    assetname: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    assetname: Mapped[str] = mapped_column(String(255), nullable=False)
     operatingsystem_id: Mapped[int | None] = mapped_column(
         ForeignKey("operatingsystems.id", ondelete="SET NULL"),
         nullable=True,

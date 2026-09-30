@@ -99,6 +99,31 @@ class AssetListCheckinTests(unittest.TestCase):
         self.assertIn("<label>Agent version</label>", html)
         self.assertIn("<div>0.2.18</div>", html)
 
+    def test_same_named_assets_link_to_distinct_detail_pages(self):
+        manual = self.asset("shared-host")
+        agent = {**self.asset("shared-host"), "id": 2, "approved": 1}
+        html = self.render_assets([manual, agent])
+        self.assertIn('href="/assets/1/"', html)
+        self.assertIn('href="/assets/2/"', html)
+
+        def api_response(_username, _password, _method, path, **_kwargs):
+            if path == "/v1/assets/2":
+                return agent
+            if path == "/v1/assets":
+                return [manual, agent]
+            return []
+
+        request = RequestFactory().get("/assets/2/")
+        request.session = self.request.session
+        request.user = self.request.user
+        with (
+            patch("webui.views.api_request", side_effect=api_response),
+            patch("webui.views._get_vm_mappings", return_value={}),
+        ):
+            detail = asset_detail_view(request, "2")
+        self.assertEqual(detail.status_code, 200)
+        self.assertIn("Pending", detail.content.decode())
+
 
 if __name__ == "__main__":
     unittest.main()

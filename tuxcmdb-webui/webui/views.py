@@ -1272,9 +1272,14 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     asset_is_manual = False
 
     try:
-        assets = api_request(*_creds(request), "GET", "/v1/assets", params={"active": "true", "q": asset_ref})
-        exact = next((item for item in assets if item["assetname"] == asset_ref or str(item["id"]) == asset_ref), None)
-        asset = exact or (assets[0] if assets else None)
+        if asset_ref.isdigit():
+            asset = api_request(*_creds(request), "GET", f"/v1/assets/{asset_ref}")
+        else:
+            assets = api_request(*_creds(request), "GET", "/v1/assets", params={"active": "true", "q": asset_ref})
+            name_matches = [item for item in assets if item["assetname"] == asset_ref]
+            if len(name_matches) > 1:
+                raise ServiceError("Asset name is ambiguous; open it from the asset list")
+            asset = name_matches[0] if name_matches else None
         if asset is None:
             raise ServiceError("Asset not found")
         update_form = AssetUpdateForm(initial={"assetname": asset["assetname"]})
@@ -1316,7 +1321,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                     api_request(*_creds(request), "POST", f"/v1/assets/{asset['id']}/attributes", payload=payload)
                     messages.success(request, "Assignment added")
                     notify_ui_update("assignments", "created", asset["assetname"])
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
             elif action == "remove":
                 attribute_name = request.POST.get("attribute_name", "")
                 value = request.POST.get("value") or None
@@ -1328,12 +1333,12 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 )
                 messages.success(request, "Assignment removed")
                 notify_ui_update("assignments", "removed", asset["assetname"])
-                return redirect("asset-detail", asset_ref=asset["assetname"])
+                return redirect("asset-detail", asset_ref=asset["id"])
             elif action == "edit-assignment":
                 attribute_name = (request.POST.get("attribute_name") or "").strip()
                 if not attribute_name:
                     messages.error(request, "Missing attribute name")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
 
                 raw_value = request.POST.get("value")
                 value = raw_value if raw_value not in {None, ""} else None
@@ -1345,14 +1350,14 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 else:
                     messages.success(request, f"Assignment updated for '{attribute_name}'")
                     notify_ui_update("assignments", "updated", asset["assetname"])
-                return redirect("asset-detail", asset_ref=asset["assetname"])
+                return redirect("asset-detail", asset_ref=asset["id"])
             elif action == "update-asset":
                 update_form = AssetUpdateForm(request.POST)
                 if update_form.is_valid():
                     api_request(*_creds(request), "PATCH", f"/v1/assets/{asset['id']}", payload=update_form.cleaned_data)
                     messages.success(request, "Asset updated")
                     notify_ui_update("assets", "updated", update_form.cleaned_data["assetname"])
-                    return redirect("asset-detail", asset_ref=update_form.cleaned_data["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
             elif action == "decommission":
                 api_request(*_creds(request), "POST", f"/v1/assets/{asset['id']}/decommission")
                 messages.success(request, "Asset decommissioned")
@@ -1362,7 +1367,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 target_asset_id = (request.POST.get("target_asset_id") or "").strip()
                 if not target_asset_id.isdigit():
                     messages.error(request, "Select an asset to merge into")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
                 merged_asset = api_request(
                     *_creds(request),
                     "POST",
@@ -1371,22 +1376,22 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 )
                 messages.success(request, f"Asset merged into {merged_asset.get('assetname')}")
                 notify_ui_update("assets", "merged", asset["assetname"])
-                return redirect("asset-detail", asset_ref=merged_asset["assetname"])
+                return redirect("asset-detail", asset_ref=merged_asset["id"])
             elif action == "match-os":
                 source_os_value = (request.POST.get("source_os_value") or "").strip()
                 operating_system_id = request.POST.get("operatingsystem_id", "").strip()
                 if not source_os_value or not operating_system_id.isdigit():
                     messages.error(request, "Invalid operating system matching request")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
 
                 target = next((item for item in operating_systems if int(item.get("id", 0)) == int(operating_system_id)), None)
                 if target is None:
                     messages.error(request, "Selected operating system not found")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
 
                 if _os_matches_value(target, source_os_value):
                     messages.info(request, "OS value is already matched")
-                    return redirect("asset-detail", asset_ref=asset["assetname"])
+                    return redirect("asset-detail", asset_ref=asset["id"])
 
                 updated_aliases = _append_alias(target.get("aliases") or [], source_os_value)
                 api_request(
@@ -1397,7 +1402,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
                 )
                 messages.success(request, f"Added alias '{source_os_value}' to OS '{target.get('name')}'")
                 notify_ui_update("operatingsystems", "alias-added", target.get("name", ""))
-                return redirect("asset-detail", asset_ref=asset["assetname"])
+                return redirect("asset-detail", asset_ref=asset["id"])
         except ServiceError as exc:
             messages.error(request, str(exc))
 
@@ -1405,6 +1410,9 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         asset = api_request(*_creds(request), "GET", f"/v1/assets/{asset['id']}")
     except ServiceError as exc:
         messages.error(request, str(exc))
+        return redirect("assets")
+    if asset is None:
+        messages.error(request, "Asset not found")
         return redirect("assets")
 
     asset_agent_version = _asset_agent_version(asset)

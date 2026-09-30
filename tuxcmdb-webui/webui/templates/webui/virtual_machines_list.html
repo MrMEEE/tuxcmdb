@@ -35,7 +35,7 @@
             <td><a href="{% url 'hypervisor-detail' vm.cluster_id %}">{{ vm.cluster_name }}</a></td>
             <td>
               {% if vm.asset_id %}
-              <a href="{% url 'asset-detail' vm.asset_name %}">{{ vm.name }}</a>
+              <a href="{% url 'asset-detail' vm.asset_id %}">{{ vm.name }}</a>
               {% else %}
               {{ vm.name }}
               {% endif %}

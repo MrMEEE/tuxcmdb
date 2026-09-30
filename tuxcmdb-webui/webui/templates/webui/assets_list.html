@@ -107,7 +107,7 @@
           <td>{{ field.value }}</td>
           {% endfor %}
           <td class="d-flex gap-2 align-items-center">
-            <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.assetname %}">Open</a>
+            <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.id %}">Open</a>
             {% if asset.os_mismatch %}
             <button
               class="btn btn-sm btn-warning js-match-os-btn"
