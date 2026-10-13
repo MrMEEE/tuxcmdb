@@ -30,6 +30,7 @@
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.name.field }}" data-sort-dir="{{ sort_links.name.next_dir }}">Name {{ sort_links.name.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.builtin_validator.field }}" data-sort-dir="{{ sort_links.builtin_validator.next_dir }}">Builtin validator {{ sort_links.builtin_validator.indicator }}</button></th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.regex_pattern.field }}" data-sort-dir="{{ sort_links.regex_pattern.next_dir }}">Regex {{ sort_links.regex_pattern.indicator }}</button></th>
+          <th>Allowed values</th>
           <th><button class="btn btn-link p-0 js-sort-trigger" type="button" data-sort-form="datatypes-filters" data-sort-field="{{ sort_links.description.field }}" data-sort-dir="{{ sort_links.description.next_dir }}">Description {{ sort_links.description.indicator }}</button></th>
           <th></th>
         </tr>
@@ -40,6 +41,7 @@
           <td>{{ datatype.name }}</td>
           <td>{{ datatype.builtin_validator|default:'-' }}</td>
           <td><code>{{ datatype.regex_pattern|default:'-' }}</code></td>
+          <td>{{ datatype.allowed_values|join:", "|default:'-' }}</td>
           <td>{{ datatype.description|default:'-' }}</td>
           <td class="table-actions">
             <a class="btn btn-xs btn-default" href="{% url 'datatype-edit' datatype.id %}">Edit</a>
@@ -50,7 +52,7 @@
           </td>
         </tr>
         {% empty %}
-        <tr><td colspan="5">No datatypes found.</td></tr>
+        <tr><td colspan="6">No datatypes found.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -73,12 +75,39 @@
           {{ create_form.name }}
         </div>
         <div class="mb-3">
-          <label class="form-label">Builtin validator <small class="text-muted">(e.g. ipv4, ipv6)</small></label>
+          <label class="form-label">Validation</label>
+          <div class="d-flex flex-column gap-1">
+            {% for radio in create_form.validation_mode %}
+            <div class="form-check">
+              {{ radio.tag }}
+              <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="mb-3 js-validation-section" data-validation-mode="builtin" hidden>
+          <label class="form-label">Builtin validator</label>
           {{ create_form.builtin_validator }}
         </div>
-        <div class="mb-3">
+        <div class="mb-3 js-validation-section" data-validation-mode="regex" hidden>
           <label class="form-label">Regex pattern</label>
           {{ create_form.regex_pattern }}
+        </div>
+        <div class="mb-3 js-validation-section" data-validation-mode="allowed_values" hidden>
+          <label class="form-label">Allowed values</label>
+          <div id="createDatatypeAllowedValues" class="d-flex flex-column gap-2 mb-2">
+            <div class="d-flex gap-2 js-allowed-value-row">
+              <input class="form-control" type="text" name="allowed_values" placeholder="Value">
+              <button class="btn btn-danger btn-xs js-remove-allowed-value-row" type="button" aria-label="Remove value">&times;</button>
+            </div>
+          </div>
+          <template id="createAllowedValueRowTemplate">
+            <div class="d-flex gap-2 js-allowed-value-row">
+              <input class="form-control" type="text" name="allowed_values" placeholder="Value">
+              <button class="btn btn-danger btn-xs js-remove-allowed-value-row" type="button" aria-label="Remove value">&times;</button>
+            </div>
+          </template>
+          <button class="btn btn-default btn-xs js-add-allowed-value-row" type="button" data-target="createDatatypeAllowedValues" data-template="createAllowedValueRowTemplate">Add Value</button>
         </div>
         <div class="mb-3">
           <label class="form-label">Description</label>

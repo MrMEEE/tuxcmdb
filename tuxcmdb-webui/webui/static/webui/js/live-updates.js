@@ -90,6 +90,23 @@
     document.close();
   }
 
+  function updateValidationSections(form) {
+    if (!form) {
+      return;
+    }
+    const checked = form.querySelector("input[name='validation_mode']:checked");
+    const mode = checked ? checked.value : "none";
+    form.querySelectorAll(".js-validation-section").forEach(function (section) {
+      section.hidden = section.dataset.validationMode !== mode;
+    });
+  }
+
+  function syncValidationModeSections(root) {
+    (root || document).querySelectorAll("input[name='validation_mode']").forEach(function (radio) {
+      updateValidationSections(radio.form);
+    });
+  }
+
   function updateDomFromParsed(parsed, responseUrl, historyMode) {
     const root = document.querySelector(rootSelector);
     if (!root || !parsed.root) {
@@ -117,6 +134,7 @@
     }
 
     restoreFocusState(root, focusState);
+    syncValidationModeSections(root);
 
     return true;
   }
@@ -697,6 +715,37 @@
       return;
     }
 
+    const addAllowedValueButton = event.target.closest(".js-add-allowed-value-row");
+    if (addAllowedValueButton) {
+      event.preventDefault();
+      const container = document.getElementById(addAllowedValueButton.dataset.target);
+      const template = document.getElementById(addAllowedValueButton.dataset.template);
+      if (!container || !template || !template.content) {
+        return;
+      }
+      container.appendChild(template.content.cloneNode(true));
+      return;
+    }
+
+    const removeAllowedValueButton = event.target.closest(".js-remove-allowed-value-row");
+    if (removeAllowedValueButton) {
+      event.preventDefault();
+      const row = removeAllowedValueButton.closest(".js-allowed-value-row");
+      if (!row) {
+        return;
+      }
+      const rows = row.parentElement ? row.parentElement.querySelectorAll(".js-allowed-value-row") : [];
+      if (rows.length <= 1) {
+        const valueInput = row.querySelector("input[name='allowed_values']");
+        if (valueInput) {
+          valueInput.value = "";
+        }
+      } else {
+        row.remove();
+      }
+      return;
+    }
+
     const addFetchMethodButton = event.target.closest(".js-add-fetchmethod-row");
     if (addFetchMethodButton) {
       event.preventDefault();
@@ -813,6 +862,10 @@
 
   document.addEventListener("change", function (event) {
     const target = event.target;
+    if (target.name === "validation_mode") {
+      updateValidationSections(target.form);
+      return;
+    }
     const form = target && target.form;
     if (!form || !form.hasAttribute("data-auto-submit")) {
       return;
@@ -825,5 +878,6 @@
   });
 
   bindLiveForms();
+  syncValidationModeSections(document);
   connectWebSocket();
 })();

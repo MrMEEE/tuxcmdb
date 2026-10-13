@@ -80,10 +80,24 @@ class APIUserForm(forms.Form):
 
 
 class DatatypeForm(forms.Form):
+    VALIDATION_MODE_CHOICES = (
+        ("none", "None"),
+        ("builtin", "Builtin validator"),
+        ("regex", "Regex pattern"),
+        ("allowed_values", "Allowed values list"),
+    )
+
     name = forms.CharField(max_length=32, widget=forms.TextInput(attrs=TEXT_INPUT))
     description = forms.CharField(widget=forms.Textarea(attrs=TEXTAREA_INPUT), required=False)
-    builtin_validator = forms.CharField(max_length=32, required=False, widget=forms.TextInput(attrs=TEXT_INPUT))
+    validation_mode = forms.ChoiceField(choices=VALIDATION_MODE_CHOICES, initial="none", widget=forms.RadioSelect)
+    builtin_validator = forms.ChoiceField(choices=(), required=False, widget=forms.Select(attrs=TEXT_INPUT))
     regex_pattern = forms.CharField(widget=forms.Textarea(attrs={**TEXTAREA_INPUT, "rows": 2}), required=False)
+
+    def __init__(self, *args, builtin_validator_choices: list[str] | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        choices = [("", "None")]
+        choices.extend((value, value) for value in (builtin_validator_choices or []))
+        self.fields["builtin_validator"].choices = choices
 
 
 class OperatingSystemForm(forms.Form):
