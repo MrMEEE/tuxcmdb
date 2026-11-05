@@ -27,7 +27,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     MetaData,
     String,
@@ -109,18 +108,15 @@ assets = Table(
     "assets",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("assetname", String(255), nullable=False),
+    Column("assetname", String(255), nullable=False, unique=True),
     Column("operatingsystem_id", Integer, ForeignKey("operatingsystems.id", ondelete="SET NULL"), nullable=True),
     Column("approved", Integer, nullable=False, server_default=text("0")),
     Column("systempass_hash", String(255), nullable=True),
-    Column("is_agent", Boolean, nullable=False, server_default=text("false")),
     Column("active", Boolean, nullable=False, server_default=text("true")),
     Column("last_checkin_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
-# Partial indexes are silently ignored by MySQL, so the origin is a real column.
-Index("uq_assets_assetname_is_agent", assets.c.assetname, assets.c.is_agent, unique=True)
 
 attributes = Table(
     "attributes",
@@ -173,6 +169,7 @@ datatypes = Table(
     Column("description", Text, nullable=True),
     Column("regex_pattern", Text, nullable=True),
     Column("builtin_validator", String(32), nullable=True),
+    Column("allowed_values", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
@@ -521,6 +518,7 @@ class DatatypeOut(BaseModel):
     description: str | None
     regex_pattern: str | None
     builtin_validator: str | None
+    allowed_values: list[str] | None
     created_at: datetime
     changed_at: datetime
 
@@ -530,6 +528,7 @@ class DatatypeCreate(BaseModel):
     description: str | None = None
     regex_pattern: str | None = None
     builtin_validator: str | None = Field(default=None, max_length=32)
+    allowed_values: list[str] | None = None
 
 
 class DatatypeUpdate(BaseModel):
@@ -537,6 +536,7 @@ class DatatypeUpdate(BaseModel):
     description: str | None = None
     regex_pattern: str | None = None
     builtin_validator: str | None = Field(default=None, max_length=32)
+    allowed_values: list[str] | None = None
 
 
 class HypervisorClusterCreate(BaseModel):
@@ -630,17 +630,12 @@ def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
             return row
 
     normalized_assetname = normalize_assetname(asset_ref)
-    rows = conn.execute(
-        select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname).limit(2)
-    ).all()
-    if not rows:
+    row = conn.execute(
+        select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname)
+    ).one_or_none()
+    if row is None:
         raise HTTPException(status_code=404, detail="Asset not found")
-    if len(rows) > 1:
-        active_rows = [row for row in rows if row.active]
-        if len(active_rows) == 1:
-            return active_rows[0]
-        raise HTTPException(status_code=409, detail="Asset name is ambiguous; use its numeric id")
-    return rows[0]
+    return row
 
 
 def resolve_attribute_ref(conn: Connection, attribute_ref: str) -> Any:
@@ -1721,6 +1716,10 @@ def ensure_datatype_exists(conn: Connection, datatype_name: str) -> None:
         raise HTTPException(status_code=400, detail=f"Unknown data_type '{datatype_name}'")
 
 
+# Keep in sync with tuxcmdb-webui/webui/forms.py's DatatypeForm builtin_validator choices.
+BUILTIN_VALIDATORS: tuple[str, ...] = ("integer", "ipv4", "ipv6", "subnet", "boolean")
+
+
 def validate_by_builtin(value: str, builtin_name: str) -> bool:
     if builtin_name == "ipv4":
         try:
@@ -1756,6 +1755,7 @@ def validate_attribute_value(conn: Connection, data_type: str, value: str | None
             datatypes.c.name,
             datatypes.c.regex_pattern,
             datatypes.c.builtin_validator,
+            datatypes.c.allowed_values,
         ).where(datatypes.c.name == data_type)
     ).one_or_none()
 
@@ -1771,6 +1771,10 @@ def validate_attribute_value(conn: Connection, data_type: str, value: str | None
                 raise HTTPException(status_code=400, detail=f"Value '{value}' is not valid for data_type '{data_type}'")
         except re.error as exc:
             raise HTTPException(status_code=500, detail=f"Invalid regex for data_type '{data_type}'") from exc
+
+    allowed_values = aliases_from_db(row.allowed_values)
+    if allowed_values and value.strip().lower() not in {item.lower() for item in allowed_values}:
+        raise HTTPException(status_code=400, detail=f"Value '{value}' is not one of the allowed values for data_type '{data_type}'")
 
 
 def resolve_supported_operatingsystem_ids(conn: Connection, names: list[str]) -> list[int]:
@@ -1939,6 +1943,45 @@ def to_operatingsystem_out(row: Any) -> OperatingSystemOut:
         created_at=row.created_at,
         changed_at=row.changed_at,
     )
+
+
+def to_datatype_out(row: Any) -> DatatypeOut:
+    return DatatypeOut(
+        id=row.id,
+        name=row.name,
+        description=row.description,
+        regex_pattern=row.regex_pattern,
+        builtin_validator=row.builtin_validator,
+        allowed_values=aliases_from_db(row.allowed_values) or None,
+        created_at=row.created_at,
+        changed_at=row.changed_at,
+    )
+
+
+def normalize_enum_values(values: list[str]) -> list[str]:
+    # Allowed values are free-form (spaces, punctuation, etc.); only collapse
+    # whitespace runs and dedupe case-insensitively, keep the original casing.
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        value = re.sub(r"\s+", " ", str(item or "")).strip()
+        if not value:
+            continue
+        key = value.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(value)
+    return normalized
+
+
+def ensure_single_validation_mode(builtin_validator: str | None, regex_pattern: str | None, allowed_values: list[str]) -> None:
+    modes_set = sum([bool(builtin_validator), bool(regex_pattern), bool(allowed_values)])
+    if modes_set > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Only one of builtin_validator, regex_pattern, or allowed_values may be set",
+        )
 
 
 def latest_assignment_subquery():
@@ -2244,7 +2287,6 @@ def build_asset_select(filter_source: str | None, active: bool | None):
     stmt = select(
         assets.c.id,
         assets.c.assetname,
-        assets.c.systempass_hash,
         assets.c.approved,
         assets.c.active,
         assets.c.last_checkin_at,
@@ -2272,22 +2314,6 @@ def sanitize_inventory_group(value: str) -> str | None:
 
 
 def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
-    # Ansible inventory has one hostvars entry per hostname. While manual and
-    # agent records coexist pending a merge, prefer the manual record until
-    # the agent is approved; never let query ordering silently choose one.
-    def priority(row: Any) -> tuple[bool, bool, int]:
-        return (
-            row.systempass_hash is not None and row.approved == APPROVAL_APPROVED,
-            row.systempass_hash is None,
-            row.id,
-        )
-
-    by_name = {}
-    for row in rows:
-        chosen = by_name.get(row.assetname)
-        if chosen is None or priority(row) > priority(chosen):
-            by_name[row.assetname] = row
-    rows = list(by_name.values())
     assetnames = {row.id: row.assetname for row in rows}
     current: dict[int, dict[str, tuple[Any, bool]]] = {row.id: {} for row in rows}
     if assetnames:
@@ -3584,6 +3610,10 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             log_audit_entry(conn, _.username, "hypervisor_cluster", row.name, "delete")
         return MessageResponse(status="ok", message="Hypervisor cluster deleted")
 
+    @app.get("/v1/datatypes/builtin-validators", response_model=list[str])
+    def list_builtin_validators(_: AuthenticatedUser = Depends(authenticate)) -> list[str]:
+        return list(BUILTIN_VALIDATORS)
+
     @app.get("/v1/datatypes", response_model=list[DatatypeOut])
     def list_datatypes(_: AuthenticatedUser = Depends(authenticate)) -> list[DatatypeOut]:
         with engine.connect() as conn:
@@ -3594,15 +3624,20 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     datatypes.c.description,
                     datatypes.c.regex_pattern,
                     datatypes.c.builtin_validator,
+                    datatypes.c.allowed_values,
                     datatypes.c.created_at,
                     datatypes.c.changed_at,
                 ).order_by(datatypes.c.name)
             ).all()
-        return [DatatypeOut(**row._mapping) for row in rows]
+        return [to_datatype_out(row) for row in rows]
 
     @app.post("/v1/datatypes", response_model=DatatypeOut, status_code=status.HTTP_201_CREATED)
     def create_datatype(payload: DatatypeCreate, _: AuthenticatedUser = Depends(require_write_access)) -> DatatypeOut:
         name = payload.name.strip().lower()
+        if payload.builtin_validator and payload.builtin_validator not in BUILTIN_VALIDATORS:
+            raise HTTPException(status_code=400, detail=f"Invalid builtin_validator '{payload.builtin_validator}'")
+        allowed_values = normalize_enum_values(payload.allowed_values or [])
+        ensure_single_validation_mode(payload.builtin_validator, payload.regex_pattern, allowed_values)
         with engine.begin() as conn:
             existing = conn.execute(
                 select(datatypes.c.id).where(datatypes.c.name == name)
@@ -3615,12 +3650,13 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     description=payload.description or None,
                     regex_pattern=payload.regex_pattern or None,
                     builtin_validator=payload.builtin_validator or None,
+                    allowed_values=aliases_to_db(allowed_values) if allowed_values else None,
                 )
             )
             row = conn.execute(
                 select(
                     datatypes.c.id, datatypes.c.name, datatypes.c.description,
-                    datatypes.c.regex_pattern, datatypes.c.builtin_validator,
+                    datatypes.c.regex_pattern, datatypes.c.builtin_validator, datatypes.c.allowed_values,
                     datatypes.c.created_at, datatypes.c.changed_at,
                 ).where(datatypes.c.id == insert_result.inserted_primary_key[0])
             ).one()
@@ -3634,15 +3670,23 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                     "description": payload.description or None,
                     "regex_pattern": payload.regex_pattern or None,
                     "builtin_validator": payload.builtin_validator or None,
+                    "allowed_values": allowed_values or None,
                 },
             )
-        return DatatypeOut(**row._mapping)
+        return to_datatype_out(row)
 
     @app.patch("/v1/datatypes/{datatype_id}", response_model=DatatypeOut)
     def update_datatype(datatype_id: int, payload: DatatypeUpdate, _: AuthenticatedUser = Depends(require_write_access)) -> DatatypeOut:
+        if payload.builtin_validator and payload.builtin_validator not in BUILTIN_VALIDATORS:
+            raise HTTPException(status_code=400, detail=f"Invalid builtin_validator '{payload.builtin_validator}'")
         with engine.begin() as conn:
             current = conn.execute(
-                select(datatypes.c.name).where(datatypes.c.id == datatype_id)
+                select(
+                    datatypes.c.name,
+                    datatypes.c.regex_pattern,
+                    datatypes.c.builtin_validator,
+                    datatypes.c.allowed_values,
+                ).where(datatypes.c.id == datatype_id)
             ).one_or_none()
             if current is None:
                 raise HTTPException(status_code=404, detail="Datatype not found")
@@ -3668,9 +3712,21 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 updates["regex_pattern"] = payload.regex_pattern or None
             if payload.builtin_validator is not None:
                 updates["builtin_validator"] = payload.builtin_validator or None
+            if payload.allowed_values is not None:
+                allowed_values = normalize_enum_values(payload.allowed_values)
+                updates["allowed_values"] = aliases_to_db(allowed_values) if allowed_values else None
 
             if not updates:
                 raise HTTPException(status_code=400, detail="No fields to update")
+
+            effective_builtin_validator = updates.get("builtin_validator", current.builtin_validator)
+            effective_regex_pattern = updates.get("regex_pattern", current.regex_pattern)
+            effective_allowed_values = (
+                normalize_enum_values(payload.allowed_values)
+                if payload.allowed_values is not None
+                else aliases_from_db(current.allowed_values)
+            )
+            ensure_single_validation_mode(effective_builtin_validator, effective_regex_pattern, effective_allowed_values)
 
             updates["changed_at"] = func.now()
             try:
@@ -3683,12 +3739,12 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             row = conn.execute(
                 select(
                     datatypes.c.id, datatypes.c.name, datatypes.c.description,
-                    datatypes.c.regex_pattern, datatypes.c.builtin_validator,
+                    datatypes.c.regex_pattern, datatypes.c.builtin_validator, datatypes.c.allowed_values,
                     datatypes.c.created_at, datatypes.c.changed_at,
                 ).where(datatypes.c.id == datatype_id)
             ).one()
             log_audit_entry(conn, _.username, "datatype", row.name, "update", updates)
-        return DatatypeOut(**row._mapping)
+        return to_datatype_out(row)
 
     @app.delete("/v1/datatypes/{datatype_id}", response_model=MessageResponse)
     def delete_datatype(datatype_id: int, _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:
@@ -4064,8 +4120,6 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     def create_asset(payload: AssetCreate, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
         assetname = normalize_assetname(payload.assetname)
         with engine.begin() as conn:
-            if conn.execute(select(assets.c.id).where(assets.c.assetname == assetname).limit(1)).first():
-                raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 insert_result = conn.execute(
                     assets.insert().values(assetname=assetname, approved=APPROVAL_NOT_PENDING, systempass_hash=None, active=True)
@@ -4158,14 +4212,6 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         updates["changed_at"] = func.now()
 
         with engine.begin() as conn:
-            if "assetname" in updates:
-                current = conn.execute(select(assets.c.systempass_hash).where(assets.c.id == asset_id)).one_or_none()
-                if current is not None and current.systempass_hash is None:
-                    duplicate = conn.execute(
-                        select(assets.c.id).where(assets.c.assetname == updates["assetname"], assets.c.id != asset_id).limit(1)
-                    ).first()
-                    if duplicate:
-                        raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 update_result = conn.execute(
                     assets.update()
@@ -4352,7 +4398,6 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.post("/v1/agent/register", response_model=AgentRegisterResponse, status_code=status.HTTP_201_CREATED)
     def register_agent(payload: AgentRegisterRequest) -> AgentRegisterResponse:
         with engine.begin() as conn:
-            systempass = _new_systempass()
             if payload.asset_id is not None:
                 row = conn.execute(
                     select(assets.c.id, assets.c.assetname, assets.c.systempass_hash).where(assets.c.id == payload.asset_id)
@@ -4367,45 +4412,29 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 if not payload.assetname:
                     raise HTTPException(status_code=400, detail="assetname is required when asset_id is not provided")
                 assetname = normalize_assetname(payload.assetname)
-                if conn.execute(
-                    select(assets.c.id)
-                    .where(assets.c.assetname == assetname, assets.c.systempass_hash.is_not(None))
-                    .limit(1)
-                ).first():
-                    raise HTTPException(status_code=409, detail="An agent is already registered for this assetname")
                 try:
                     insert_result = conn.execute(
                         assets.insert().values(
                             assetname=assetname,
                             approved=APPROVAL_PENDING,
-                            systempass_hash=generate_password_hash(systempass),
-                            is_agent=True,
+                            systempass_hash=None,
                             active=True,
                         )
                     )
                 except IntegrityError as exc:
-                    logger.warning(
-                        "Agent registration for %r hit a uniqueness constraint even though no agent owns that name. "
-                        "Run 'tuxcmdb migrate' so manual and agent assets can share a name.",
-                        assetname,
-                    )
                     raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
                 asset_id = insert_result.inserted_primary_key[0]
 
-            if payload.asset_id is not None:
-                try:
-                    conn.execute(
-                        assets.update()
-                        .where(assets.c.id == asset_id)
-                        .values(
-                            approved=APPROVAL_PENDING,
-                            systempass_hash=generate_password_hash(systempass),
-                            is_agent=True,
-                            changed_at=func.now(),
-                        )
-                    )
-                except IntegrityError as exc:
-                    raise HTTPException(status_code=409, detail="Agent assetname already exists") from exc
+            systempass = _new_systempass()
+            conn.execute(
+                assets.update()
+                .where(assets.c.id == asset_id)
+                .values(
+                    approved=APPROVAL_PENDING,
+                    systempass_hash=generate_password_hash(systempass),
+                    changed_at=func.now(),
+                )
+            )
             log_audit_entry(conn, "agent-registration", "asset", str(asset_id), "register")
             return AgentRegisterResponse(
                 id=asset_id,

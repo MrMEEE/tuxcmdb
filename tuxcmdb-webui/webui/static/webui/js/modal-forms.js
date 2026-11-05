@@ -53,6 +53,34 @@
 
   document.addEventListener("submit", async function (e) {
     var form = e.target;
+
+    // Reject duplicate "allowed values" entries before any submission happens,
+    // for both modal and plain (live-updates) forms.
+    var valueInputs = form.querySelectorAll("input[name='allowed_values']");
+    if (valueInputs.length) {
+      var seen = {};
+      var duplicate = null;
+      valueInputs.forEach(function (input) {
+        var value = input.value.trim();
+        if (!value) return;
+        var key = value.toLowerCase();
+        if (seen[key]) {
+          duplicate = value;
+        }
+        seen[key] = true;
+      });
+      if (duplicate) {
+        e.preventDefault();
+        e.stopPropagation();
+        var errorEl = form.querySelector(".modal-form-error, .form-error");
+        if (errorEl) {
+          errorEl.textContent = "Allowed value '" + duplicate + "' is listed more than once.";
+          errorEl.hidden = false;
+        }
+        return;
+      }
+    }
+
     var modalId = form.dataset.modalId;
     if (!modalId) return;          // not a modal form – let live-updates handle it
     e.preventDefault();

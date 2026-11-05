@@ -375,9 +375,9 @@ def _asset_matches_logic_query(item: dict[str, Any], query: str) -> bool:
     return True
 
 
-def _asset_api_params(filter_query: str) -> dict[str, str] | None:
+def _asset_api_params(filter_query: str, show_inactive: bool = False) -> dict[str, str] | None:
     params: dict[str, str] = {}
-    active_filter: bool | None = True
+    active_filter: bool | None = None if show_inactive else True
     for key, value in _asset_filter_terms(filter_query):
         if value is None:
             if key in {"inactive", "decommissioned"}:
@@ -536,6 +536,27 @@ def _datatype_matches_logic_query(item: dict[str, Any], query: str) -> bool:
         return False
 
     return True
+
+
+def _datatype_validation_mode(datatype: dict[str, Any]) -> str:
+    if datatype.get("builtin_validator"):
+        return "builtin"
+    if datatype.get("regex_pattern"):
+        return "regex"
+    if datatype.get("allowed_values"):
+        return "allowed_values"
+    return "none"
+
+
+def _datatype_payload_from_form(form: "DatatypeForm", raw_allowed_values: list[str]) -> dict[str, Any]:
+    mode = form.cleaned_data["validation_mode"]
+    return {
+        "name": form.cleaned_data["name"],
+        "description": form.cleaned_data["description"] or None,
+        "builtin_validator": form.cleaned_data["builtin_validator"] or None if mode == "builtin" else None,
+        "regex_pattern": form.cleaned_data["regex_pattern"] or None if mode == "regex" else None,
+        "allowed_values": [value for value in raw_allowed_values if value.strip()] if mode == "allowed_values" else [],
+    }
 
 
 def _operatingsystem_matches_logic_query(item: dict[str, Any], query: str) -> bool:
@@ -1001,6 +1022,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     filter_query = _raw_param(request, "q") or _param(request, "assetname") or _param(request, "attribute_name")
     sort_by = _param(request, "sort_by") or "assetname"
     sort_dir = _sort_direction(request)
+    show_inactive = _param(request, "show_inactive") in {"1", "true", "on", "yes"}
     create_form = AssetCreateForm(request.POST or None)
 
     attribute_catalog: list[dict[str, Any]] = []
@@ -1186,7 +1208,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
 
     assets: list[dict[str, Any]] = []
     try:
-        assets = api_request(*_creds(request), "GET", "/v1/assets", params=_asset_api_params(filter_query))
+        assets = api_request(*_creds(request), "GET", "/v1/assets", params=_asset_api_params(filter_query, show_inactive))
     except ServiceError as exc:
         messages.error(request, str(exc))
 
@@ -1224,7 +1246,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
                 if attr_value in vm_mapping:
                     asset["vm_info"] = vm_mapping[attr_value]
                     break
-                asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
+        asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
 
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
@@ -1232,6 +1254,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     pending_assets = [item for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING]
     base_params = {
         "q": filter_query,
+        "show_inactive": "1" if show_inactive else "",
     }
     return render(
         request,
@@ -1255,6 +1278,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
                 "q": filter_query,
                 "sort_by": sort_by,
                 "sort_dir": sort_dir,
+                "show_inactive": show_inactive,
             },
             "sort_links": _sort_link_data(base_params, sort_by, sort_dir, ["assetname", "active", "attributes_count"]),
         },
@@ -1696,14 +1720,22 @@ def datatypes_view(request: HttpRequest) -> HttpResponse:
     search = _raw_param(request, "q") or _param(request, "name") or _param(request, "builtin_validator")
     sort_by = _param(request, "sort_by") or "name"
     sort_dir = _sort_direction(request)
-    create_form = DatatypeForm(request.POST if request.method == "POST" else None)
+    builtin_validator_choices: list[str] = []
+    try:
+        builtin_validator_choices = api_request(*_creds(request), "GET", "/v1/datatypes/builtin-validators")
+    except ServiceError:
+        builtin_validator_choices = []
+    create_form = DatatypeForm(
+        request.POST if request.method == "POST" else None,
+        builtin_validator_choices=builtin_validator_choices,
+    )
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("datatypes")
         if create_form.is_valid():
             try:
-                payload = {k: v or None for k, v in create_form.cleaned_data.items()}
+                payload = _datatype_payload_from_form(create_form, request.POST.getlist("allowed_values"))
                 api_request(*_creds(request), "POST", "/v1/datatypes", payload=payload)
                 messages.success(request, "Datatype created")
                 notify_ui_update("datatypes", "created", create_form.cleaned_data["name"])
@@ -1754,6 +1786,11 @@ def datatypes_view(request: HttpRequest) -> HttpResponse:
 @login_required
 def datatype_form_view(request: HttpRequest, datatype_id: int) -> HttpResponse:
     datatype: dict[str, Any] | None = None
+    builtin_validator_choices: list[str] = []
+    try:
+        builtin_validator_choices = api_request(*_creds(request), "GET", "/v1/datatypes/builtin-validators")
+    except ServiceError:
+        builtin_validator_choices = []
     try:
         datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
         datatype = next((item for item in datatypes if item.get("id") == datatype_id), None)
@@ -1767,17 +1804,18 @@ def datatype_form_view(request: HttpRequest, datatype_id: int) -> HttpResponse:
     initial = {
         "name": datatype["name"],
         "description": datatype.get("description") or "",
+        "validation_mode": _datatype_validation_mode(datatype),
         "builtin_validator": datatype.get("builtin_validator") or "",
         "regex_pattern": datatype.get("regex_pattern") or "",
     }
-    form = DatatypeForm(request.POST or None, initial=initial)
+    form = DatatypeForm(request.POST or None, initial=initial, builtin_validator_choices=builtin_validator_choices)
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
             return redirect("datatypes")
         if form.is_valid():
             try:
-                payload = {k: v or None for k, v in form.cleaned_data.items()}
+                payload = _datatype_payload_from_form(form, request.POST.getlist("allowed_values"))
                 api_request(*_creds(request), "PATCH", f"/v1/datatypes/{datatype_id}", payload=payload)
                 messages.success(request, "Datatype updated")
                 notify_ui_update("datatypes", "updated", form.cleaned_data["name"])
@@ -1785,7 +1823,11 @@ def datatype_form_view(request: HttpRequest, datatype_id: int) -> HttpResponse:
             except ServiceError as exc:
                 messages.error(request, str(exc))
 
-    return render(request, "webui/datatype_form.html", {"form": form, "datatype": datatype})
+    return render(
+        request,
+        "webui/datatype_form.html",
+        {"form": form, "datatype": datatype, "allowed_values": datatype.get("allowed_values") or []},
+    )
 
 
 @login_required

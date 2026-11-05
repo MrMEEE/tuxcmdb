@@ -14,17 +14,52 @@
             {{ form.name }}
           </div>
           <div class="form-group">
-            <label>Builtin validator <small class="text-muted">(e.g. ipv4, ipv6)</small></label>
+            <label>Validation</label>
+            <div class="d-flex flex-column gap-1">
+              {% for radio in form.validation_mode %}
+              <div class="form-check">
+                {{ radio.tag }}
+                <label class="form-check-label" for="{{ radio.id_for_label }}">{{ radio.choice_label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="form-group js-validation-section" data-validation-mode="builtin" hidden>
+            <label>Builtin validator</label>
             {{ form.builtin_validator }}
           </div>
-          <div class="form-group">
+          <div class="form-group js-validation-section" data-validation-mode="regex" hidden>
             <label>Regex pattern</label>
             {{ form.regex_pattern }}
+          </div>
+          <div class="form-group js-validation-section" data-validation-mode="allowed_values" hidden>
+            <label>Allowed values</label>
+            <div id="editDatatypeAllowedValues" class="d-flex flex-column gap-2 mb-2">
+              {% for value in allowed_values %}
+              <div class="d-flex gap-2 js-allowed-value-row">
+                <input class="form-control" type="text" name="allowed_values" value="{{ value }}" placeholder="Value">
+                <button class="btn btn-danger btn-xs js-remove-allowed-value-row" type="button" aria-label="Remove value">&times;</button>
+              </div>
+              {% empty %}
+              <div class="d-flex gap-2 js-allowed-value-row">
+                <input class="form-control" type="text" name="allowed_values" placeholder="Value">
+                <button class="btn btn-danger btn-xs js-remove-allowed-value-row" type="button" aria-label="Remove value">&times;</button>
+              </div>
+              {% endfor %}
+            </div>
+            <template id="editAllowedValueRowTemplate">
+              <div class="d-flex gap-2 js-allowed-value-row">
+                <input class="form-control" type="text" name="allowed_values" placeholder="Value">
+                <button class="btn btn-danger btn-xs js-remove-allowed-value-row" type="button" aria-label="Remove value">&times;</button>
+              </div>
+            </template>
+            <button class="btn btn-default btn-xs js-add-allowed-value-row" type="button" data-target="editDatatypeAllowedValues" data-template="editAllowedValueRowTemplate">Add Value</button>
           </div>
           <div class="form-group">
             <label>Description</label>
             {{ form.description }}
           </div>
+          <p class="form-error text-danger" hidden></p>
           <div class="button-row">
             <button class="btn btn-accent" type="submit" {% if request.user.readonly %}disabled{% endif %}>Save</button>
             <a class="btn btn-default" href="{% url 'datatypes' %}">Cancel</a>
