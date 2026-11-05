@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="${TUXCMDB_AGENT_SOURCE:-/opt/tuxcmdb-webui-agents}"
+storage="${TUXCMDB_AGENT_STORAGE:-/var/lib/tuxcmdb-agents}"
+version="$(cat "$source_dir/agent-version")"
+commit="$(cat "$source_dir/agent-commit")"
+if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || ! "$commit" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "Invalid agent version or commit metadata" >&2
+    exit 1
+fi
+
+umask 022
+mkdir -p "$storage/releases"
+release="$(mktemp -d "$storage/releases/${version}-${commit}.XXXXXX")"
+next_link="$storage/.current-$(basename "$release")"
+trap 'rm -f "$next_link"' EXIT
+
+for package in \
+    "tuxcmdb-agent-${version}-1.el8.noarch.rpm" \
+    "tuxcmdb-agent-${version}-1.el9.noarch.rpm" \
+    "tuxcmdb-agent-${version}-1.el10.noarch.rpm" \
+    "tuxcmdb-agent_${version}-1.debian_all.deb" \
+    "tuxcmdb-agent-${version}.ps1" \
+    tuxcmdb-agent.ps1; do
+    if [[ ! -s "$source_dir/$package" ]]; then
+        echo "Missing agent artifact: $package" >&2
+        exit 1
+    fi
+    cp --no-preserve=ownership,timestamps "$source_dir/$package" "$release/"
+done
+(cd "$release" && sha256sum --check "$source_dir/SHA256SUMS")
+chmod 644 "$release/"*
+chmod 755 "$release"
+# Rename a relative symlink on the same filesystem to publish a complete set.
+ln -s "releases/$(basename "$release")" "$next_link"
+mv -Tf "$next_link" "$storage/current"
+echo "Published agent version $version ($commit)"

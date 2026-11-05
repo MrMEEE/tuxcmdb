@@ -13,26 +13,8 @@ pip install -r "deploy/openshift/${TUXCMDB_COMPONENT}-requirements.txt"
 # Local database URLs, sessions and virtualenvs must never enter a runtime image.
 rm -f conf/database.yaml tuxcmdb-api/conf/api.yaml tuxcmdb.db
 rm -f tuxcmdb-webui/webui-session.sqlite3
-rm -rf .venv .runtime tuxcmdb-webui/.sessions
-if [[ "$TUXCMDB_COMPONENT" == webui && "${TUXCMDB_INCLUDE_AGENTS:-false}" == true ]]; then
-    version="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' version.py)"
-    test -n "$version"
-    for package in \
-        "tuxcmdb-agent-${version}-1.el8.noarch.rpm" \
-        "tuxcmdb-agent-${version}-1.el9.noarch.rpm" \
-        "tuxcmdb-agent-${version}-1.el10.noarch.rpm" \
-        "tuxcmdb-agent_${version}-1.debian_all.deb" \
-        "tuxcmdb-agent-${version}.ps1" \
-        tuxcmdb-agent.ps1; do
-        if [[ ! -s "agent-artifacts/$package" ]]; then
-            echo "Missing agent artifact: $package. Rebuild tuxcmdb-agents from the same source version." >&2
-            exit 1
-        fi
-    done
-    chmod 644 agent-artifacts/*
-else
-    rm -rf agent-artifacts
-fi
+rm -rf .git .venv .runtime tuxcmdb-webui/.sessions
+rm -rf agent-artifacts
 if [[ "$TUXCMDB_COMPONENT" == webui ]]; then
     export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"
     DJANGO_SETTINGS_MODULE=webui_settings \

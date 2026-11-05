@@ -182,37 +182,41 @@ class OpenShiftTemplateTests(unittest.TestCase):
             self.assertEqual(route["spec"]["tls"]["termination"], "edge")
             self.assertEqual(route["spec"]["tls"]["insecureEdgeTerminationPolicy"], "Redirect")
 
-    def test_optional_agents_template_only_adds_artifacts_and_webui_build(self) -> None:
-        objects = self.render("agents.yaml", "SOURCE_REPOSITORY_REF=agent-test")
+    def test_optional_agents_use_shared_storage_without_webui_build_dependency(self) -> None:
+        objects = self.render(
+            "agents.yaml", "SOURCE_REPOSITORY_REF=agent-test", "AGENTS_STORAGE_CLASS=shared-rwx"
+        )
         self.assertEqual(
             {(obj["kind"], obj["metadata"]["name"]) for obj in objects},
             {("ImageStream", "tuxcmdb-agents"), ("BuildConfig", "tuxcmdb-agents"),
-             ("BuildConfig", "tuxcmdb-webui")},
+             ("PersistentVolumeClaim", "tuxcmdb-agents"), ("Deployment", "tuxcmdb-agents-updater")},
         )
         builds = {obj["metadata"]["name"]: obj for obj in objects if obj["kind"] == "BuildConfig"}
-        agents, webui = builds["tuxcmdb-agents"], builds["tuxcmdb-webui"]
+        self.assertEqual(set(builds), {"tuxcmdb-agents"})
+        agents = builds["tuxcmdb-agents"]
         self.assertEqual(agents["spec"]["strategy"]["type"], "Docker")
         self.assertEqual(
             agents["spec"]["strategy"]["dockerStrategy"]["dockerfilePath"],
             "deploy/openshift/agents/Dockerfile",
         )
+        self.assertEqual(
+            agents["spec"]["strategy"]["dockerStrategy"]["buildArgs"],
+            [{"name": "SOURCE_REPOSITORY_URL", "value": "https://github.com/MrMEEE/tuxcmdb.git"}],
+        )
         self.assertEqual(agents["spec"]["triggers"], [{"type": "ConfigChange"}])
         image_tag = agents["spec"]["output"]["to"]
-        self.assertEqual(webui["spec"]["source"]["images"][0]["from"], image_tag)
+        updater = next(obj for obj in objects if obj["kind"] == "Deployment")
+        triggers = json.loads(updater["metadata"]["annotations"]["image.openshift.io/triggers"])
+        self.assertEqual(triggers[0]["from"], image_tag)
+        self.assertEqual(updater["spec"]["strategy"]["type"], "Recreate")
+        self.assertEqual(updater["spec"]["replicas"], 1)
         self.assertEqual(
-            webui["spec"]["source"]["images"][0]["paths"],
-            [{"sourcePath": "/opt/tuxcmdb-webui-agents/.", "destinationDir": "agent-artifacts"}],
+            updater["spec"]["template"]["spec"]["containers"][0]["command"],
+            ["/bin/bash", "/usr/local/bin/run-updater"],
         )
-        self.assertEqual(
-            webui["spec"]["triggers"],
-            [{"type": "ImageChange", "imageChange": {"from": image_tag}}],
-        )
-        env = {
-            entry["name"]: entry["value"]
-            for entry in webui["spec"]["strategy"]["sourceStrategy"]["env"]
-        }
-        self.assertEqual(env["TUXCMDB_INCLUDE_AGENTS"], "true")
-        self.assertEqual(env["TUXCMDB_COMPONENT"], "webui")
+        claim = next(obj for obj in objects if obj["kind"] == "PersistentVolumeClaim")
+        self.assertEqual(claim["spec"]["accessModes"], ["ReadWriteMany"])
+        self.assertEqual(claim["spec"]["storageClassName"], "shared-rwx")
         for build in builds.values():
             self.assertEqual(build["spec"]["source"]["git"]["ref"], "agent-test")
         server = self.render(
@@ -224,7 +228,13 @@ class OpenShiftTemplateTests(unittest.TestCase):
             entry["name"]: entry["value"]
             for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
         }
-        self.assertEqual(env["TUXCMDB_AGENTS_DIR"], "/opt/app-root/src/agent-artifacts")
+        self.assertEqual(env["TUXCMDB_AGENTS_DIR"], "/opt/app-root/src/agent-artifacts/current")
+        patch = yaml.safe_load((ROOT / "deploy/openshift/agents-webui-patch.yaml").read_text())
+        spec = patch["spec"]["template"]["spec"]
+        mount = spec["containers"][0]["volumeMounts"][0]
+        self.assertTrue(mount["readOnly"])
+        self.assertEqual(mount["mountPath"], "/opt/app-root/src/agent-artifacts")
+        self.assertEqual(spec["volumes"][0]["persistentVolumeClaim"]["claimName"], "tuxcmdb-agents")
 
 
 if __name__ == "__main__":

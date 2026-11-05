@@ -2734,9 +2734,9 @@ def docs_view(request: HttpRequest) -> HttpResponse:
     return render(request, "webui/docs.html", {"api_url": api_url})
 
 
-_AGENT_RPM_NAME = re.compile(r"^tuxcmdb-agent-(\d+)\.(\d+)\.(\d+)-(\d+)\.(el\d+)\.noarch\.rpm$")
-_AGENT_DEB_NAME = re.compile(r"^tuxcmdb-agent_(\d+)\.(\d+)\.(\d+)-(\d+)\.debian_all\.deb$")
-_AGENT_WINDOWS_NAME = re.compile(r"^tuxcmdb-agent-(\d+)\.(\d+)\.(\d+)\.ps1$")
+_AGENT_RPM_NAME = re.compile(r"^tuxcmdb-agent-(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)-(?P<release>\d+)\.(?P<platform>el\d+)\.noarch\.rpm$")
+_AGENT_DEB_NAME = re.compile(r"^tuxcmdb-agent_(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)-(?P<release>\d+)\.debian_all\.deb$")
+_AGENT_WINDOWS_NAME = re.compile(r"^tuxcmdb-agent-(?P<version>\d+\.\d+\.\d+(?:\.\d+)?)\.ps1$")
 
 
 def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
@@ -2749,16 +2749,19 @@ def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
         deb = _AGENT_DEB_NAME.fullmatch(entry.name)
         windows = _AGENT_WINDOWS_NAME.fullmatch(entry.name)
         if rpm:
-            alias = f"tuxcmdb-agent-latest.{rpm.group(5)}.noarch.rpm"
-            version = tuple(int(part) for part in rpm.groups()[:4])
+            alias = f"tuxcmdb-agent-latest.{rpm.group('platform')}.noarch.rpm"
         elif deb:
             alias = "tuxcmdb-agent_latest.debian_all.deb"
-            version = tuple(int(part) for part in deb.groups())
         elif windows:
             alias = "tuxcmdb-agent-latest.ps1"
-            version = tuple(int(part) for part in windows.groups())
         else:
             continue
+        match = rpm or deb or windows
+        assert match is not None
+        parts = tuple(int(part) for part in match.group("version").split("."))
+        version = parts + (0,) * (4 - len(parts))
+        if rpm or deb:
+            version += (int(match.group("release")),)
         if alias not in latest or version > latest[alias][0]:
             latest[alias] = (version, entry)
 
@@ -2770,7 +2773,7 @@ def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
 
 
 def _list_agent_files() -> list[dict[str, Any]]:
-    agents_dir = settings.AGENTS_DIR
+    agents_dir = settings.AGENTS_DIR.resolve()
     if not agents_dir.is_dir():
         return []
     files = []

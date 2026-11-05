@@ -56,8 +56,10 @@ For a hardened production rollout, move credentials to DPAPI-protected storage o
 The `tuxcmdb-webui-agents` package bundles the Debian/Ubuntu, RHEL 8/9/10 agent packages, and the Windows PowerShell script into `/opt/tuxcmdb-webui-agents`. When installed alongside `tuxcmdb-webui`, these files become downloadable from the **Agents** page (`/agents/`) in the web interface. If the package is not installed, the page reports that no agent downloads are available.
 
 On OpenShift, the optional [agent build template](../deploy/openshift/agents.yaml)
-builds the same downloads in distribution-specific containers and embeds them
-in the WebUI image. See the [deployment guide](../deploy/openshift/README.md)
+builds the same downloads in distribution-specific containers and publishes
+them to a shared RWX volume through a separate updater pod. The WebUI mounts
+that volume read-only, so new agents require no WebUI rebuild or restart.
+See the [deployment guide](../deploy/openshift/README.md)
 for enabling or disabling this independently of the server installation.
 
 Each package can be downloaded by its versioned filename or a stable `latest` URL on the Agents page. For example, `/agents/download/tuxcmdb-agent-latest.el10.noarch.rpm` always downloads the newest available EL10 RPM with that filename. The Debian package uses `tuxcmdb-agent_latest.debian_all.deb`; the Windows script uses `tuxcmdb-agent-latest.ps1`. Downloads are served as attachments.

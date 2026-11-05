@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+bash /usr/local/bin/publish-agents
+touch /tmp/agents-published
+if [[ "${1:-}" == --once ]]; then
+    exit 0
+fi
+# Deployment image triggers restart this publisher only when artifacts change.
+trap 'exit 0' TERM INT
+while true; do
+    sleep 3600 &
+    wait "$!"
+done

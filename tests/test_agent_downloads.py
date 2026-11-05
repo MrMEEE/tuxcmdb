@@ -79,6 +79,44 @@ class AgentDownloadTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertNotIn("tuxcmdb-agent-latest.el10.noarch.rpm", self.client.get("/agents/").content.decode())
 
+    def test_shared_volume_switch_updates_downloads_without_restarting_webui(self):
+        first = self.agents_dir / "release-one"
+        second = self.agents_dir / "release-two"
+        first.mkdir()
+        second.mkdir()
+        first.joinpath("tuxcmdb-agent-0.2.26.4-1.el10.noarch.rpm").write_bytes(b"first")
+        second.joinpath("tuxcmdb-agent-0.2.26.5-1.el10.noarch.rpm").write_bytes(b"second")
+        current = self.agents_dir / "current"
+        current.symlink_to(first.name)
+        with override_settings(AGENTS_DIR=current):
+            response = self.client.get("/agents/download/tuxcmdb-agent-latest.el10.noarch.rpm")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("0.2.26.4", self.client.get("/agents/").content.decode())
+            next_link = self.agents_dir / "next"
+            next_link.symlink_to(second.name)
+            next_link.replace(current)
+            self.assertEqual(b"".join(response.streaming_content), b"first")
+            listing = self.client.get("/agents/").content.decode()
+            self.assertIn("0.2.26.5", listing)
+            self.assertNotIn("0.2.26.4", listing)
+            updated = self.client.get("/agents/download/tuxcmdb-agent-latest.el10.noarch.rpm")
+            self.assertEqual(updated.status_code, 200)
+            self.assertEqual(b"".join(updated.streaming_content), b"second")
+
+    def test_latest_aliases_compare_git_versions_numerically(self):
+        packages = (
+            ("tuxcmdb-agent-{}-1.el10.noarch.rpm", "tuxcmdb-agent-latest.el10.noarch.rpm"),
+            ("tuxcmdb-agent_{}-1.debian_all.deb", "tuxcmdb-agent_latest.debian_all.deb"),
+            ("tuxcmdb-agent-{}.ps1", "tuxcmdb-agent-latest.ps1"),
+        )
+        for pattern, alias in packages:
+            for version in ("0.2.26", "0.2.26.0", "0.2.26.9", "0.2.26.10"):
+                self.add_file(pattern.format(version), version.encode())
+            with self.subTest(alias=alias):
+                response = self.client.get("/agents/download/" + alias)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(b"".join(response.streaming_content), b"0.2.26.10")
+
 
 if __name__ == "__main__":
     unittest.main()

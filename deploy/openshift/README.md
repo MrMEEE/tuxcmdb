@@ -8,7 +8,7 @@ These namespace-scoped OpenShift Templates deploy the server components only:
 - [database.yaml](database.yaml): either MariaDB 11.8 or PostgreSQL 16, a
   database PVC, generated database credentials and database builds.
 - [agents.yaml](agents.yaml) (optional): containerized agent package builds and
-  an updated WebUI BuildConfig that embeds their downloads.
+  an updater pod that publishes downloads to shared persistent storage.
 
 All deployed runtime images and database builders are based on **UBI 10**. The public UBI
 repositories do not include the database server packages. Therefore a
@@ -32,7 +32,7 @@ missing source maps.
 
 Agent downloads are **disabled by default**. The optional agent build uses
 matching distribution stages: UBI 8/9/10 for RPMs and Debian 12 for the DEB,
-then collects the packages and Windows PowerShell scripts in a UBI 10 artifact
+then collects the packages and Windows PowerShell scripts in a UBI 10 updater
 image. Those build stages are not deployed services. API/WebUI runtime images
 remain UBI 10 whether or not agent downloads are enabled.
 
@@ -205,25 +205,36 @@ The WebUI talks to the API's internal Service, not the public Route.
 Skip this step to opt out. The default WebUI will report that no agent
 downloads are available; it has no dependency on agent builds.
 
-To include the contents of `tuxcmdb-webui-agents`, apply the optional template
-**after** installing the server. Use the same repository/ref and `PYTHON_IMAGE`
-as the server:
+To serve the contents of `tuxcmdb-webui-agents`, apply the optional template
+**after** installing the server. Set a StorageClass that supports
+**ReadWriteMany (RWX)**. The WebUI and updater may then run on different nodes.
+Use the same source repository/ref you want for the agents:
 
 ```bash
 oc process --local -f deploy/openshift/agents.yaml \
   -p SOURCE_REPOSITORY_URL=https://github.com/MrMEEE/tuxcmdb.git \
   -p SOURCE_REPOSITORY_REF=main \
+  -p AGENTS_STORAGE_CLASS=your-rwx-storageclass \
   | oc apply -f -
 
 oc logs -f bc/tuxcmdb-agents
-# A successful artifact image triggers the WebUI S2I build:
+# A successful artifact image rolls out only the updater:
 oc get builds -w
+oc rollout status deployment/tuxcmdb-agents-updater --timeout=10m
+
+# Add the read-only volume mount once; this restarts the WebUI but does not build it:
+oc patch deployment/tuxcmdb-webui --type=strategic \
+  -p "$(cat deploy/openshift/agents-webui-patch.yaml)"
 oc rollout status deployment/tuxcmdb-webui --timeout=10m
 ```
 
-This template creates the `tuxcmdb-agents` ImageStream/BuildConfig and replaces
-the configuration of the existing `tuxcmdb-webui` BuildConfig. It does not
-modify Secrets, PVCs or the API. It builds:
+This template creates the `tuxcmdb-agents` ImageStream/BuildConfig, a dedicated
+RWX PVC (5 GiB by default, configurable with `AGENTS_VOLUME_SIZE`), and the
+`tuxcmdb-agents-updater` Deployment. It does not modify either application
+BuildConfig or existing Secrets/PVCs. The separate
+[WebUI mount patch](agents-webui-patch.yaml) preserves the session PVC and mounts
+the downloads read-only. The updater is the sole writer and runs one replica
+with a Recreate strategy. The build produces:
 
 - `tuxcmdb-agent-VERSION-1.el8.noarch.rpm` (legacy EL8 source, system requests).
 - `tuxcmdb-agent-VERSION-1.el9.noarch.rpm`.
@@ -232,53 +243,121 @@ modify Secrets, PVCs or the API. It builds:
 - `tuxcmdb-agent.ps1` and `tuxcmdb-agent-VERSION.ps1`.
 
 Packages use [the shared packaging helper](../../tools/build-agent-package.sh),
-also used by the Linux agent release workflow. The version comes from
-`version.py`; CI can override it with the release version. RPMs and DEBs
+also used by the Linux agent release workflow. OpenShift derives the version
+from the nearest reachable release tag matching `vMAJOR.MINOR.PATCH`, followed
+by the number of commits since that tag: three commits after `v0.2.26` becomes
+`0.2.26.3`. A build exactly at that tag becomes `0.2.26.0`. A new release tag
+resets the counter; prerelease and unrelated-branch tags are ignored. This is
+Git ancestry distance, not the highest version tag anywhere in the repository.
+
+The version stage uses the checked-out build commit's Git metadata and fetches
+tags/full history (including unshallowing an OpenShift clone). Keep `.git`
+available in the Docker build context; it is copied only into the intermediate
+version stage, never the artifact or WebUI runtime images. The configured
+repository URL must permit fetching Git history from inside the build. Missing
+release tags or failed history fetches fail the build rather than guessing a
+version. The artifact image records `agent-version` and `agent-commit` for
+provenance. GitHub release builds remain unchanged: they explicitly pass the
+release tag version, without the OpenShift commit counter.
+
+RPMs and DEBs
 preserve the existing launcher, systemd units and installation/removal scripts.
 EL9/10 and Debian vendor pure-Python dependencies so the packages remain
 architecture-independent.
 
-The WebUI build copies `/opt/tuxcmdb-webui-agents` from the artifact image
-into its S2I source and checks that every package matches the source version.
-Missing or mismatched artifacts fail the build explicitly. Downloads are
-embedded in the WebUI image, not generated at startup or stored on a PVC.
-They are served through `/agents/` and the existing stable `latest` aliases.
+The updater validates the version, commit, complete package set and SHA-256
+checksums, then copies the artifacts to a new release directory on the PVC.
+Only after verification does it atomically switch the relative `current`
+symlink. A failed publication leaves the previous downloads available.
+The WebUI reads `current` on each request; in-flight downloads keep their
+previous release file open. The updater then stays idle until its image
+changes or its pod is restarted. It needs no Kubernetes API credentials.
+Downloads are served through `/agents/` and the existing stable `latest`
+aliases. **Agent updates do not rebuild or restart the WebUI or API.**
 
-To rebuild agent packages, including after a version change:
+Previous release directories are deliberately retained to avoid disrupting
+in-flight requests. Monitor volume usage and remove only old, non-current
+release directories during a maintenance window, after active downloads finish.
+Failed publication attempts can leave unused release directories as well.
+Back up this PVC if you need to preserve published artifacts across cluster
+recovery; otherwise rebuild the agent image and republish.
+
+To rebuild agent packages for a newer source commit/version:
 
 ```bash
 oc start-build tuxcmdb-agents --follow
-# This automatically starts a new WebUI build, but not an API build.
+# This automatically rolls out the updater, without an application build/restart.
+oc rollout status deployment/tuxcmdb-agents-updater --timeout=10m
 ```
 
-Keep the source refs in both BuildConfigs aligned. With agent downloads
-enabled, apply `agents.yaml` last when updating build configuration so that
-the base server template does not overwrite the optional WebUI build settings.
-For routine WebUI-only changes with the same version, `oc start-build
-tuxcmdb-webui --follow` reuses the existing artifacts.
+The agent source ref can be updated independently of the WebUI. Keep the
+mount patch in your deployment configuration and reapply it after any workflow
+that replaces the WebUI Deployment.
+
+#### Updater restarts with no logs
+
+Check the previous container exit and the image command:
+
+```bash
+oc get pods -l component=agents-updater
+oc logs deployment/tuxcmdb-agents-updater --previous
+oc get pods -l component=agents-updater -o json \
+  | jq '.items[].status.containerStatuses[] | {imageID,lastState}'
+oc get istag tuxcmdb-agents:latest -o json \
+  | jq '.image.dockerImageMetadata.Config | {Cmd,Labels}'
+```
+
+An immediate exit with code `0` and image command `["/bin/bash"]` means the
+Deployment is using the older artifacts-only image, not the updater image.
+Ensure the updater Dockerfile and scripts have been committed and pushed to
+the configured source ref before rebuilding `tuxcmdb-agents`. Applying local
+YAML does not upload local source files to a Git-based build. The Deployment
+explicitly invokes `/usr/local/bin/run-updater`; an old image then reports a
+missing script instead of silently exiting. After rebuilding:
+
+```bash
+oc start-build tuxcmdb-agents --follow
+oc rollout status deployment/tuxcmdb-agents-updater --timeout=10m
+oc logs deployment/tuxcmdb-agents-updater
+```
 
 #### Disabling agent downloads after enabling them
 
-Reapply only the base WebUI BuildConfig using your existing source/image
-parameters (replace the example hostnames):
+Remove only the download volume mount from the WebUI; this restarts the WebUI
+once and leaves its session volume untouched:
+
+```bash
+oc set volume deployment/tuxcmdb-webui --remove --name=agent-downloads
+oc rollout status deployment/tuxcmdb-webui --timeout=10m
+oc scale deployment/tuxcmdb-agents-updater --replicas=0
+```
+
+Optionally remove the agent BuildConfig, ImageStream and updater Deployment
+afterward. Keep the PVC unless intentionally discarding the downloads.
+
+#### Migrating from embedded agent downloads
+
+If you previously applied an older `agents.yaml` that modified the WebUI
+BuildConfig, first restore the base WebUI BuildConfig (only that object) using
+`server.yaml`. This removes its artifact image input and agent-triggered builds.
+Rebuild the WebUI once from the updated source, then apply the optional storage
+template and mount patch above. Do not reapply generated Secrets or recreate
+your session/database PVCs. Subsequent agent builds update only the updater pod.
+
+Use your existing repository/ref and Python image parameters when restoring it:
 
 ```bash
 oc process --local -f deploy/openshift/server.yaml \
+  -p SOURCE_REPOSITORY_URL=https://github.com/MrMEEE/tuxcmdb.git \
   -p SOURCE_REPOSITORY_REF=main \
   -p WEBUI_HOST=cmdb.apps.example.com \
   -p API_HOST=cmdb-api.apps.example.com \
   | jq '{apiVersion:"v1",kind:"List",items:[.items[] |
       select(.kind == "BuildConfig" and .metadata.name == "tuxcmdb-webui")]}' \
   | oc apply -f -
-
 oc get builds -w
-oc rollout status deployment/tuxcmdb-webui --timeout=10m
+# The restored ConfigChange trigger starts the one-time WebUI rebuild.
 ```
-
-This removes the artifact input/requirement and restores the configuration
-trigger, rebuilding the WebUI without downloads. After that rollout, optionally
-remove `bc/tuxcmdb-agents` and `is/tuxcmdb-agents`. Do **not** delete all objects
-from the optional template: that would also delete the WebUI BuildConfig.
 
 ## Updates and operation
 

@@ -206,7 +206,7 @@ objects:
                 - name: TUXCMDB_WEBUI_HOST
                   value: ${WEBUI_HOST}
                 - name: TUXCMDB_AGENTS_DIR
-                  value: /opt/app-root/src/agent-artifacts
+                  value: /opt/app-root/src/agent-artifacts/current
               envFrom:
                 - secretRef: {name: tuxcmdb-database}
                 - secretRef: {name: tuxcmdb-server}

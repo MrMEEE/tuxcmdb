@@ -3,7 +3,7 @@ kind: Template
 metadata:
   name: tuxcmdb-agents
   annotations:
-    description: Optional agent package builders and WebUI build with embedded downloads. Apply after server.yaml.
+    description: Optional agent package build, shared RWX storage and independent updater pod.
 parameters:
   - name: SOURCE_REPOSITORY_URL
     value: https://github.com/MrMEEE/tuxcmdb.git
@@ -11,8 +11,11 @@ parameters:
   - name: SOURCE_REPOSITORY_REF
     value: main
     required: true
-  - name: PYTHON_IMAGE
-    value: registry.access.redhat.com/ubi10/python-312-minimal:latest
+  - name: AGENTS_STORAGE_CLASS
+    description: StorageClass supporting ReadWriteMany
+    required: true
+  - name: AGENTS_VOLUME_SIZE
+    value: 5Gi
     required: true
 objects:
   - apiVersion: image.openshift.io/v1
@@ -34,6 +37,9 @@ objects:
         type: Docker
         dockerStrategy:
           dockerfilePath: deploy/openshift/agents/Dockerfile
+          buildArgs:
+            - name: SOURCE_REPOSITORY_URL
+              value: ${SOURCE_REPOSITORY_URL}
       output:
         to:
           kind: ImageStreamTag
@@ -43,47 +49,60 @@ objects:
       resources:
         requests: {cpu: 100m, memory: 512Mi}
         limits: {cpu: "2", memory: 2Gi}
-  - apiVersion: build.openshift.io/v1
-    kind: BuildConfig
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
     metadata:
-      name: tuxcmdb-webui
+      name: tuxcmdb-agents
     spec:
-      runPolicy: Serial
-      source:
-        type: Git
-        git:
-          uri: ${SOURCE_REPOSITORY_URL}
-          ref: ${SOURCE_REPOSITORY_REF}
-        images:
-          - from:
-              kind: ImageStreamTag
-              name: tuxcmdb-agents:latest
-            paths:
-              - sourcePath: /opt/tuxcmdb-webui-agents/.
-                destinationDir: agent-artifacts
-      strategy:
-        type: Source
-        sourceStrategy:
-          from:
-            kind: DockerImage
-            name: ${PYTHON_IMAGE}
-          env:
-            - name: TUXCMDB_COMPONENT
-              value: webui
-            - name: TUXCMDB_INCLUDE_AGENTS
-              value: "true"
-            - name: DISABLE_COLLECTSTATIC
-              value: "1"
-      output:
-        to:
-          kind: ImageStreamTag
-          name: tuxcmdb-webui:latest
-      triggers:
-        - type: ImageChange
-          imageChange:
-            from:
-              kind: ImageStreamTag
-              name: tuxcmdb-agents:latest
+      accessModes: [ReadWriteMany]
+      storageClassName: ${AGENTS_STORAGE_CLASS}
       resources:
-        requests: {cpu: 100m, memory: 512Mi}
-        limits: {cpu: "2", memory: 2Gi}
+        requests:
+          storage: ${AGENTS_VOLUME_SIZE}
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: tuxcmdb-agents-updater
+      annotations:
+        image.openshift.io/triggers: >-
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-agents:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"updater\")].image"}]
+    spec:
+      replicas: 1
+      strategy:
+        type: Recreate
+      selector:
+        matchLabels: {app: tuxcmdb, component: agents-updater}
+      template:
+        metadata:
+          labels: {app: tuxcmdb, component: agents-updater}
+          annotations:
+            alpha.image.policy.openshift.io/resolve-names: "*"
+        spec:
+          automountServiceAccountToken: false
+          containers:
+            - name: updater
+              image: tuxcmdb-agents:latest
+              imagePullPolicy: Always
+              command: ["/bin/bash", "/usr/local/bin/run-updater"]
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              volumeMounts:
+                - name: agent-downloads
+                  mountPath: /var/lib/tuxcmdb-agents
+              readinessProbe:
+                exec:
+                  command:
+                    - /bin/bash
+                    - -ec
+                    - test -f /tmp/agents-published && test -d /var/lib/tuxcmdb-agents/current
+                periodSeconds: 10
+              resources:
+                requests: {cpu: 10m, memory: 32Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+          volumes:
+            - name: agent-downloads
+              persistentVolumeClaim:
+                claimName: tuxcmdb-agents
