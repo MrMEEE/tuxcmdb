@@ -182,6 +182,20 @@ class OpenShiftTemplateTests(unittest.TestCase):
             self.assertEqual(route["spec"]["tls"]["termination"], "edge")
             self.assertEqual(route["spec"]["tls"]["insecureEdgeTerminationPolicy"], "Redirect")
 
+    def test_all_buildconfigs_keep_one_successful_and_one_failed_build(self) -> None:
+        templates = [
+            ("server.yaml", ["WEBUI_HOST=cmdb.apps.example.com", "API_HOST=api.apps.example.com"]),
+            ("agents.yaml", ["AGENTS_STORAGE_CLASS=shared-rwx"]),
+            ("database.yaml", ["DB_BACKEND=mariadb"]),
+            ("database.yaml", ["DB_BACKEND=postgresql"]),
+        ]
+        for template, parameters in templates:
+            for obj in self.render(template, *parameters):
+                if obj["kind"] == "BuildConfig":
+                    with self.subTest(template=template, name=obj["metadata"]["name"]):
+                        self.assertEqual(obj["spec"]["successfulBuildsHistoryLimit"], 1)
+                        self.assertEqual(obj["spec"]["failedBuildsHistoryLimit"], 1)
+
     def test_optional_agents_use_shared_storage_without_webui_build_dependency(self) -> None:
         objects = self.render(
             "agents.yaml", "SOURCE_REPOSITORY_REF=agent-test", "AGENTS_STORAGE_CLASS=shared-rwx"
@@ -232,6 +246,7 @@ class OpenShiftTemplateTests(unittest.TestCase):
             for entry in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
         }
         self.assertEqual(env["TUXCMDB_AGENTS_DIR"], "/opt/app-root/src/agent-artifacts/current")
+        self.assertEqual(env["TUXCMDB_AGENT_INSTALL_SERVER_URL"], "https://api.apps.example.com")
         patch = yaml.safe_load((ROOT / "deploy/openshift/agents-webui-patch.yaml").read_text())
         spec = patch["spec"]["template"]["spec"]
         mount = spec["containers"][0]["volumeMounts"][0]

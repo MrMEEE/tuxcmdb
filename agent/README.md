@@ -53,6 +53,50 @@ For a hardened production rollout, move credentials to DPAPI-protected storage o
 
 ## Downloading agents from the WebUI
 
+### Remote Linux installation
+
+Signed-in users with write access can use **Agents → Install agent** above the
+downloads list. Supply up to 50 literal IP addresses (comma/space/newline
+separated), an SSH username/password, and the server's API hostname or URL.
+The default is the current WebUI server; OpenShift uses its separate API Route
+when `TUXCMDB_AGENT_INSTALL_SERVER_URL` is configured. A bare hostname uses
+HTTPS. Targets must reach the API address and their package repositories.
+
+The WebUI server connects over SSH port 22, detects EL8/9/10 or Debian/Ubuntu,
+uploads the corresponding currently published package over SFTP, verifies its
+checksum, installs dependencies with dnf/apt, and registers the agent as the
+non-privileged `tuxcmdb-agent` account created by the package. It then enables
+and starts `tuxcmdb-agent.timer`. systemd is required. Unsupported distributions
+fail explicitly; Windows installation over SSH is not supported.
+
+Use root SSH login or check **Use sudo**. Sudo uses the SSH password and also
+supports passwordless sudo; sudo policies requiring a TTY are not supported.
+**Ignore SSL verification** disables HTTPS certificate verification for this
+agent's registration and future requests. It does not disable SSH host-key
+checks. First-seen SSH keys are trusted and recorded; changed keys are rejected.
+Verify host identity independently on first use, and manage changed keys manually.
+
+The page shows live per-host steps: SSH, OS detection, transfer, installation,
+account verification, registration, timer activation and cleanup. Hosts are
+processed sequentially; one host's failure does not stop the next. Only one
+installation batch can run at a time. Progress is visible only to its initiating
+user, and polling resumes on page refresh in the same browser tab.
+
+Credentials are used in worker memory only, never persisted in progress records,
+shell commands or logs. Browser-side passwords are cleared after successful
+submission. Progress and SSH known-host keys persist under
+`TUXCMDB_AGENT_INSTALL_DATA_DIR` (default `tuxcmdb-webui/.agent-installs`).
+Keep this directory private/writable by the WebUI service account and never
+serve it as static files. Install progress records can be removed manually after
+a job has finished. The single WebUI process hosts the background worker; a
+WebUI restart interrupts deployment and the status page reports interruption.
+Inspect partially installed hosts before retrying.
+
+Matching existing registrations are reused. An existing configuration pointing
+at another API server or TLS policy is not overwritten; reconcile it manually
+before retrying. Registration does not approve an asset automatically. Package
+installation is not rolled back if a later step fails.
+
 The `tuxcmdb-webui-agents` package bundles the Debian/Ubuntu, RHEL 8/9/10 agent packages, and the Windows PowerShell script into `/opt/tuxcmdb-webui-agents`. When installed alongside `tuxcmdb-webui`, these files become downloadable from the **Agents** page (`/agents/`) in the web interface. If the package is not installed, the page reports that no agent downloads are available.
 
 On OpenShift, the optional [agent build template](../deploy/openshift/agents.yaml)

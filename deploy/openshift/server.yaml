@@ -69,6 +69,8 @@ objects:
       name: tuxcmdb-api
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git:
@@ -100,6 +102,8 @@ objects:
       name: tuxcmdb-webui
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git:
@@ -207,6 +211,8 @@ objects:
                   value: ${WEBUI_HOST}
                 - name: TUXCMDB_AGENTS_DIR
                   value: /opt/app-root/src/agent-artifacts/current
+                - name: TUXCMDB_AGENT_INSTALL_SERVER_URL
+                  value: https://${API_HOST}
               envFrom:
                 - secretRef: {name: tuxcmdb-database}
                 - secretRef: {name: tuxcmdb-server}

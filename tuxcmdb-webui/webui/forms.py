@@ -1,4 +1,7 @@
 from django import forms
+import ipaddress
+import re
+from urllib.parse import urlsplit
 
 from tuxcmdb.hypervisors import list_supported_hypervisor_types
 
@@ -199,3 +202,66 @@ class AgentBuildSettingsForm(forms.Form):
         help_text="Includes the current version. Older versions are removed by the updater when no build is active.",
         widget=forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
     )
+
+
+class AgentInstallForm(forms.Form):
+    hosts = forms.CharField(
+        label="Host IP addresses", max_length=4000,
+        help_text="Separate IPv4 or IPv6 addresses with spaces, commas or new lines (up to 50).",
+        widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+    )
+    username = forms.CharField(max_length=128, widget=forms.TextInput(attrs=TEXT_INPUT))
+    password = forms.CharField(
+        max_length=1024, strip=False,
+        widget=forms.PasswordInput(attrs={"class": "form-control", "autocomplete": "off"}),
+    )
+    server_url = forms.CharField(
+        label="Server hostname / API URL", max_length=500,
+        help_text="The API address reachable from the target hosts. HTTPS is used if no scheme is supplied.",
+        widget=forms.TextInput(attrs=TEXT_INPUT),
+    )
+    use_sudo = forms.BooleanField(required=False, label="Use sudo")
+    ignore_ssl = forms.BooleanField(required=False, label="Ignore SSL verification")
+
+    def clean_hosts(self):
+        hosts = []
+        for value in re.split(r"[\s,]+", self.cleaned_data["hosts"].strip()):
+            try:
+                address = ipaddress.ip_address(value)
+            except ValueError as exc:
+                raise forms.ValidationError(f"Invalid IP address: {value}") from exc
+            if address.is_unspecified or address.is_multicast or "%" in value:
+                raise forms.ValidationError("Use unicast IP addresses without scope identifiers.")
+            if str(address) not in hosts:
+                hosts.append(str(address))
+        if len(hosts) > 50:
+            raise forms.ValidationError("Install on at most 50 hosts per request.")
+        return hosts
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        if "\n" in password or "\r" in password or "\0" in password:
+            raise forms.ValidationError("The SSH/sudo password cannot contain line breaks or null bytes.")
+        return password
+
+    def clean_username(self):
+        username = self.cleaned_data["username"]
+        if not re.fullmatch(r"[a-zA-Z0-9_][a-zA-Z0-9_.@-]*", username):
+            raise forms.ValidationError("Enter a valid SSH username.")
+        return username
+
+    def clean_server_url(self):
+        value = self.cleaned_data["server_url"]
+        if "://" not in value:
+            value = "https://" + value
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as exc:
+            raise forms.ValidationError("Invalid server hostname or port.") from exc
+        if (parsed.scheme not in ("http", "https") or not parsed.hostname
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or parsed.path not in ("", "/") or re.search(r"[\s\x00-\x1f]", value)
+                or port == 0):
+            raise forms.ValidationError("Enter an HTTP(S) server hostname with optional port, without a path or credentials.")
+        return value.rstrip("/")

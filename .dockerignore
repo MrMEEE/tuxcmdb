@@ -6,6 +6,7 @@
 **/*.db
 **/*.sqlite3
 tuxcmdb-webui/.sessions
+tuxcmdb-webui/.agent-installs
 conf/database.yaml
 tuxcmdb-api/conf/api.yaml
 dist

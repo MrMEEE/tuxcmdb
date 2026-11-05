@@ -406,6 +406,43 @@ oc get builds -w
 
 ## Updates and operation
 
+### Remote agent installation
+
+The Agents page includes **Install agent** for signed-in users with write access,
+independently of the optional build controls. Published Linux packages are
+required. See the [remote installation guide](../../agent/README.md#remote-linux-installation).
+The WebUI pod needs network access to the target IPs on TCP 22; target hosts need
+API Route and package-repository access. Restrict WebUI egress to authorized
+management networks as appropriate.
+
+The installer stores per-host progress and SSH known-host keys under
+`/opt/app-root/src/webui-data/agent-installs` on the existing session PVC.
+SSH passwords are not stored. Do not restart/rebuild WebUI during an installation.
+The server template defaults the registration URL to `https://${API_HOST}`,
+not the separate WebUI hostname. On an existing installation set it explicitly
+without reapplying generated Secrets:
+
+```bash
+oc set env deployment/tuxcmdb-webui \
+  TUXCMDB_AGENT_INSTALL_SERVER_URL="https://$(oc get route tuxcmdb-api -o jsonpath='{.spec.host}')"
+```
+
+Rebuild the WebUI once after publishing installer changes to install its
+Paramiko SSH dependency. No API or updater rebuild is needed.
+
+All BuildConfigs retain only one successful and one failed build. To apply
+these limits to existing BuildConfigs without reprocessing templates or Secrets:
+
+```bash
+oc -n tuxcmdb get buildconfigs -o name | while IFS= read -r buildconfig; do
+  oc -n tuxcmdb patch "$buildconfig" --type=merge \
+    -p '{"spec":{"successfulBuildsHistoryLimit":1,"failedBuildsHistoryLimit":1}}'
+done
+```
+
+OpenShift handles build-history pruning; these limits do not control the
+downloadable agent version retention setting or package-build Job history.
+
 **Do not re-process and apply templates with fresh generated secrets to an
 existing installation.** That would rotate database credentials and encryption
 keys without updating persisted database users/encrypted values. Initial

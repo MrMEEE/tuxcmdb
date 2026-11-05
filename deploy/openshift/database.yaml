@@ -76,6 +76,8 @@ objects:
       name: tuxcmdb-database-builder
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git:
@@ -101,6 +103,8 @@ objects:
       name: tuxcmdb-database
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git:

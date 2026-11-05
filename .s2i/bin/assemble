@@ -13,7 +13,7 @@ pip install -r "deploy/openshift/${TUXCMDB_COMPONENT}-requirements.txt"
 # Local database URLs, sessions and virtualenvs must never enter a runtime image.
 rm -f conf/database.yaml tuxcmdb-api/conf/api.yaml tuxcmdb.db
 rm -f tuxcmdb-webui/webui-session.sqlite3
-rm -rf .git .venv .runtime tuxcmdb-webui/.sessions
+rm -rf .git .venv .runtime tuxcmdb-webui/.sessions tuxcmdb-webui/.agent-installs
 rm -rf agent-artifacts
 if [[ "$TUXCMDB_COMPONENT" == webui ]]; then
     export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"

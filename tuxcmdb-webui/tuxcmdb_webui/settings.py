@@ -10,6 +10,10 @@ AGENT_RELEASES_DIR = os.environ.get("TUXCMDB_AGENT_RELEASES_DIR", "")
 AGENT_UPDATER_URL = os.environ.get("TUXCMDB_AGENT_UPDATER_URL", "")
 AGENT_UPDATER_TOKEN = os.environ.get("TUXCMDB_AGENT_UPDATER_TOKEN", "")
 INSTALLATION_MODE = "standard"
+AGENT_INSTALL_SERVER_URL = os.environ.get("TUXCMDB_AGENT_INSTALL_SERVER_URL", "")
+AGENT_INSTALL_DATA_DIR = Path(os.environ.get(
+    "TUXCMDB_AGENT_INSTALL_DATA_DIR", str(BASE_DIR / ".agent-installs")
+))
 SECRET_KEY = "tuxcmdb-webui-dev-secret-key-change-me"
 DEBUG = True
 ALLOWED_HOSTS = ["*"]

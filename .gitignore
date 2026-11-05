@@ -16,6 +16,7 @@ htmlcov/
 *.sqlite3
 .runtime/
 tuxcmdb-webui/.sessions/
+tuxcmdb-webui/.agent-installs/
 
 # Local configuration with secrets
 tuxcmdb-api/conf/api.yaml

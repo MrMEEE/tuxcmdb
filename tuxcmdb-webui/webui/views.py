@@ -18,12 +18,15 @@ from django.contrib import messages
 from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
+from django.views.decorators.debug import sensitive_post_parameters
 
-from . import agent_builds
+from . import agent_builds, agent_install
 from .auth import login_required
 from .forms import (
     AgentBuildSettingsForm,
+    AgentInstallForm,
     APIUserForm,
     AssetCreateForm,
     AssetUpdateForm,
@@ -2848,8 +2851,60 @@ def agents_view(request: HttpRequest) -> HttpResponse:
             "use_agents_static": True,
             "agent_build_status": build_status,
             "agent_build_error": build_error,
+            "can_install_agents": _can_install_agents(request),
+            "install_form": AgentInstallForm(initial={
+                "server_url": settings.AGENT_INSTALL_SERVER_URL or request.build_absolute_uri("/").rstrip("/"),
+            }),
         },
     )
+
+
+def _can_install_agents(request: HttpRequest) -> bool:
+    return (getattr(request.user, "is_authenticated", False)
+            and not getattr(request.user, "readonly", True))
+
+
+@sensitive_post_parameters("password")
+@login_required
+@require_POST
+def agents_install_view(request: HttpRequest) -> HttpResponse:
+    if not _can_install_agents(request):
+        return JsonResponse({"error": "Agent installation requires write access."}, status=403)
+    form = AgentInstallForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
+    current = settings.AGENTS_DIR.resolve()
+    packages = {}
+    if current.is_dir():
+        latest = _latest_agent_files(current)
+        for target in ("el8", "el9", "el10", "debian"):
+            alias = ("tuxcmdb-agent_latest.debian_all.deb" if target == "debian"
+                     else f"tuxcmdb-agent-latest.{target}.noarch.rpm")
+            if alias in latest:
+                packages[target] = latest[alias]
+    if not packages:
+        return JsonResponse({"error": "No Linux agent packages are available. Build or install agent downloads first."}, status=400)
+    try:
+        job = agent_install.start(request.user.username, dict(form.cleaned_data), packages)
+    except agent_install.InstallError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    except (OSError, RuntimeError):
+        logging.getLogger(__name__).exception("Could not start agent installation")
+        return JsonResponse({"error": "Cannot start installation. Check WebUI worker resources and data directory permissions."}, status=500)
+    return JsonResponse({"job": job, "status_url": reverse("agents-install-status", args=[job])}, status=202)
+
+
+@login_required
+def agents_install_status_view(request: HttpRequest, job_id: str) -> HttpResponse:
+    if not _can_install_agents(request):
+        return JsonResponse({"error": "Agent installation requires write access."}, status=403)
+    data = agent_install.status(job_id, request.user.username)
+    if data is None:
+        raise Http404("Installation not found")
+    response = JsonResponse(data)
+    response["Cache-Control"] = "no-store"
+    return response
+
 
 @login_required
 @require_POST

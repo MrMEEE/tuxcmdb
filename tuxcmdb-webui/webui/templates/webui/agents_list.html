@@ -19,6 +19,105 @@
   </div>
 </div>
 {% endif %}
+{% if can_install_agents %}
+<div class="card shadow-sm mb-3">
+  <div class="card-header py-2"><h5 class="mb-0">Install agent</h5></div>
+  <div class="card-body">
+    <p>Install on Linux hosts over SSH (port 22). Requires root login or sudo with the same password.
+      New SSH host keys are trusted and recorded; changed keys are rejected.
+      “Ignore SSL verification” affects HTTPS registration only.</p>
+    <form method="post" action="{% url 'agents-install' %}" id="agent-install-form">
+      {% csrf_token %}
+      {{ install_form.as_p }}
+      <button type="submit" class="btn btn-primary" id="agent-install-submit">Install agents</button>
+    </form>
+    <div id="agent-install-error" class="alert alert-danger mt-3" role="alert" hidden></div>
+    <div id="agent-install-progress" class="mt-3" aria-live="polite"></div>
+  </div>
+</div>
+<script>
+(() => {
+  const form = document.getElementById("agent-install-form");
+  const button = document.getElementById("agent-install-submit");
+  const error = document.getElementById("agent-install-error");
+  const progress = document.getElementById("agent-install-progress");
+  const storageKey = "tuxcmdb-agent-install-status";
+  function showError(message) {
+    error.textContent = message;
+    error.hidden = false;
+  }
+  function render(data) {
+    progress.replaceChildren();
+    const heading = document.createElement("h5");
+    heading.textContent = "Installation: " + data.state;
+    progress.append(heading);
+    for (const host of data.hosts) {
+      const title = document.createElement("h6");
+      title.textContent = host.host + " — " + host.state;
+      progress.append(title);
+      const list = document.createElement("ul");
+      for (const step of host.steps) {
+        const item = document.createElement("li");
+        item.textContent = step.label + ": " + step.state + (step.message ? " — " + step.message : "");
+        if (step.state === "failed" || step.state === "interrupted") item.className = "text-danger";
+        else if (step.state === "success") item.className = "text-success";
+        list.append(item);
+      }
+      progress.append(list);
+    }
+  }
+  async function poll(url) {
+    try {
+      const response = await fetch(url, {headers: {"Accept": "application/json"}, cache: "no-store"});
+      if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("Cannot read installation status. Check your login and refresh this page.");
+      }
+      const data = await response.json();
+      render(data);
+      if (data.state === "running") {
+        button.disabled = true;
+        setTimeout(() => poll(url), 2000);
+      } else {
+        button.disabled = false;
+        sessionStorage.removeItem(storageKey);
+      }
+    } catch (failure) {
+      button.disabled = false;
+      showError(failure.message);
+    }
+  }
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
+    button.disabled = true;
+    error.hidden = true;
+    const body = new FormData(form);
+    try {
+      const response = await fetch(form.action, {method: "POST", body, headers: {"Accept": "application/json"}});
+      if (!response.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("Installation request failed. Check your login and refresh the page.");
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        const fields = Object.entries(data.errors || {}).map(([name, errors]) =>
+          name + ": " + errors.map(value => value.message).join("; "));
+        throw new Error(data.error || fields.join("\n") || "Installation request failed.");
+      }
+      form.elements.password.value = "";
+      body.delete("password");
+      sessionStorage.setItem(storageKey, data.status_url);
+      poll(data.status_url);
+    } catch (failure) {
+      button.disabled = false;
+      showError(failure.message);
+    } finally {
+      body.delete("password");
+    }
+  });
+  const saved = sessionStorage.getItem(storageKey);
+  if (saved && /^\/agents\/install\/[a-f0-9]{32}\/$/.test(saved)) poll(saved);
+})();
+</script>
+{% endif %}
 <div class="card shadow-sm">
   <div class="card-header py-2"><h5 class="mb-0">Agent Downloads</h5></div>
   <div class="card-body">

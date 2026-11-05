@@ -84,6 +84,8 @@ objects:
       name: tuxcmdb-agents
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git:
@@ -119,6 +121,8 @@ objects:
     metadata: {name: tuxcmdb-agent-builder-el8}
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
@@ -136,6 +140,8 @@ objects:
     metadata: {name: tuxcmdb-agent-builder-el9}
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
@@ -153,6 +159,8 @@ objects:
     metadata: {name: tuxcmdb-agent-builder-el10}
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
@@ -170,6 +178,8 @@ objects:
     metadata: {name: tuxcmdb-agent-builder-debian}
     spec:
       runPolicy: Serial
+      successfulBuildsHistoryLimit: 1
+      failedBuildsHistoryLimit: 1
       source:
         type: Git
         git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
