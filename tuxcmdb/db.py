@@ -36,6 +36,7 @@ def _enable_sqlite_foreign_keys(engine: Engine) -> None:
 
 
 def create_db_engine(database_url: str, echo: bool = False, **kwargs) -> Engine:  # type: ignore[no-untyped-def]
+    kwargs.setdefault("pool_pre_ping", True)
     parsed_url = make_url(database_url)
     if parsed_url.drivername.startswith("mysql") and parsed_url.query.get("unix_socket"):
         # Older SQLAlchemy versions may leave the unix_socket value

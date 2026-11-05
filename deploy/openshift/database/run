@@ -1,0 +1,40 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+
+# Bootstrap SQL uses identifiers and literals restricted to this alphabet.
+validate_variable() {
+    local name="$1" value="$2"
+    if [[ ! "$value" =~ ^[a-zA-Z0-9_]+$ ]]; then
+        echo "$name must contain only ASCII letters, digits and underscores" >&2
+        exit 1
+    fi
+}
+validate_variable DB_USER "${DB_USER:?Missing DB_USER}"
+validate_variable DB_NAME "${DB_NAME:?Missing DB_NAME}"
+validate_variable DB_PASSWORD "${DB_PASSWORD:?Missing DB_PASSWORD}"
+validate_variable DB_ADMIN_PASSWORD "${DB_ADMIN_PASSWORD:?Missing DB_ADMIN_PASSWORD}"
+if [[ "$DB_USER" == root || "$DB_USER" == postgres || ${#DB_USER} -gt 32 || ${#DB_NAME} -gt 63 ]]; then
+    echo "Use a non-administrative DB_USER (max 32 characters) and DB_NAME (max 63 characters)" >&2
+    exit 1
+fi
+
+# PostgreSQL requires a passwd entry, which arbitrary OpenShift UIDs lack.
+nss_dir="$(mktemp -d /tmp/tuxcmdb-nss.XXXXXX)"
+cat /etc/passwd > "$nss_dir/passwd"
+cat /etc/group > "$nss_dir/group"
+if ! getent passwd "$(id -u)" >/dev/null; then
+    printf 'tuxcmdb:x:%s:%s:TuxCMDB:/var/lib/tuxcmdb:/bin/bash\n' "$(id -u)" "$(id -g)" >> "$nss_dir/passwd"
+fi
+export NSS_WRAPPER_PASSWD="$nss_dir/passwd"
+export NSS_WRAPPER_GROUP="$nss_dir/group"
+export LD_PRELOAD=/usr/lib64/libnss_wrapper.so
+export PGDATA=/var/lib/tuxcmdb/data
+mkdir -p "$PGDATA"
+chmod 700 "$PGDATA"
+
+case "${DB_BACKEND:?Missing DB_BACKEND}" in
+    postgresql) source /opt/app-root/src/postgresql/run ;;
+    mariadb) source /opt/app-root/src/mariadb/run ;;
+    *) echo "Unsupported DB_BACKEND: $DB_BACKEND" >&2; exit 1 ;;
+esac

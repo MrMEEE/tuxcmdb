@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+cd /opt/app-root/src
+export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"
+umask 077
+python deploy/openshift/runtime.py configure
+
+case "${TUXCMDB_COMPONENT:?Set TUXCMDB_COMPONENT to api or webui}" in
+    api)
+        python deploy/openshift/runtime.py migrate
+        exec python tuxcmdb-api/app.py
+        ;;
+    webui)
+        export DJANGO_SETTINGS_MODULE=webui_settings
+        python tuxcmdb-webui/manage.py migrate --noinput
+        cd tuxcmdb-webui
+        exec daphne -b 0.0.0.0 -p 8080 tuxcmdb_webui.asgi:application
+        ;;
+    *)
+        echo "Unsupported TUXCMDB_COMPONENT: $TUXCMDB_COMPONENT" >&2
+        exit 1
+        ;;
+esac

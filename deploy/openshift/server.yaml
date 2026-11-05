@@ -1,0 +1,251 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: tuxcmdb-server
+  annotations:
+    description: UBI 10 Python S2I build, API, Daphne WebUI, persistent sessions and TLS routes.
+parameters:
+  - name: SOURCE_REPOSITORY_URL
+    value: https://github.com/MrMEEE/tuxcmdb.git
+    required: true
+  - name: SOURCE_REPOSITORY_REF
+    value: main
+    required: true
+  - name: WEBUI_HOST
+    description: External WebUI DNS name, without scheme or path
+    required: true
+  - name: API_HOST
+    description: External API DNS name, without scheme or path
+    required: true
+  - name: PYTHON_IMAGE
+    value: registry.access.redhat.com/ubi10/python-312-minimal:latest
+    required: true
+  - name: ADMIN_USER
+    value: admin
+    required: true
+  - name: ADMIN_PASSWORD
+    generate: expression
+    from: "[a-zA-Z0-9]{40}"
+  - name: WEBUI_SECRET_KEY
+    generate: expression
+    from: "[a-zA-Z0-9]{64}"
+  - name: LDAP_BIND_PASSWORD_KEY
+    generate: expression
+    from: "[a-zA-Z0-9]{64}"
+  - name: WEBUI_VOLUME_SIZE
+    value: 1Gi
+    required: true
+objects:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: tuxcmdb-server
+    type: Opaque
+    stringData:
+      TUXCMDB_ADMIN_USER: ${ADMIN_USER}
+      TUXCMDB_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      TUXCMDB_WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      TUXCMDB_API_LDAP_BIND_PASSWORD_KEY: ${LDAP_BIND_PASSWORD_KEY}
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: tuxcmdb-webui
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: ${WEBUI_VOLUME_SIZE}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata:
+      name: tuxcmdb-server
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: tuxcmdb-server
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git:
+          uri: ${SOURCE_REPOSITORY_URL}
+          ref: ${SOURCE_REPOSITORY_REF}
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: DockerImage
+            name: ${PYTHON_IMAGE}
+          env:
+            - name: DISABLE_COLLECTSTATIC
+              value: "1"
+      output:
+        to:
+          kind: ImageStreamTag
+          name: tuxcmdb-server:latest
+      triggers:
+        - type: ConfigChange
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: tuxcmdb-api
+      annotations:
+        image.openshift.io/triggers: >-
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-server:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"api\")].image"}]
+    spec:
+      replicas: 1
+      strategy:
+        type: Recreate
+      selector:
+        matchLabels: {app: tuxcmdb, component: api}
+      template:
+        metadata:
+          labels: {app: tuxcmdb, component: api}
+          annotations:
+            alpha.image.policy.openshift.io/resolve-names: "*"
+        spec:
+          automountServiceAccountToken: false
+          containers:
+            - name: api
+              image: tuxcmdb-server:latest
+              imagePullPolicy: Always
+              env:
+                - name: TUXCMDB_COMPONENT
+                  value: api
+              envFrom:
+                - secretRef: {name: tuxcmdb-database}
+                - secretRef: {name: tuxcmdb-server}
+              ports:
+                - name: http
+                  containerPort: 8080
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              startupProbe:
+                httpGet: {path: /health, port: http}
+                periodSeconds: 5
+                failureThreshold: 120
+              readinessProbe:
+                httpGet: {path: /health, port: http}
+                periodSeconds: 10
+              livenessProbe:
+                httpGet: {path: /health, port: http}
+                periodSeconds: 10
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "2", memory: 1Gi}
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: tuxcmdb-webui
+      annotations:
+        image.openshift.io/triggers: >-
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-server:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"webui\")].image"}]
+    spec:
+      replicas: 1
+      strategy:
+        type: Recreate
+      selector:
+        matchLabels: {app: tuxcmdb, component: webui}
+      template:
+        metadata:
+          labels: {app: tuxcmdb, component: webui}
+          annotations:
+            alpha.image.policy.openshift.io/resolve-names: "*"
+        spec:
+          automountServiceAccountToken: false
+          containers:
+            - name: webui
+              image: tuxcmdb-server:latest
+              imagePullPolicy: Always
+              env:
+                - name: TUXCMDB_COMPONENT
+                  value: webui
+                - name: TUXCMDB_WEBUI_HOST
+                  value: ${WEBUI_HOST}
+              envFrom:
+                - secretRef: {name: tuxcmdb-database}
+                - secretRef: {name: tuxcmdb-server}
+              ports:
+                - name: http
+                  containerPort: 8080
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              volumeMounts:
+                - name: sessions
+                  mountPath: /opt/app-root/src/webui-data
+              startupProbe:
+                httpGet:
+                  path: /login/
+                  port: http
+                  httpHeaders: [{name: Host, value: "${WEBUI_HOST}"}]
+                periodSeconds: 5
+                failureThreshold: 120
+              readinessProbe:
+                httpGet:
+                  path: /login/
+                  port: http
+                  httpHeaders: [{name: Host, value: "${WEBUI_HOST}"}]
+                periodSeconds: 10
+              livenessProbe:
+                tcpSocket: {port: http}
+                periodSeconds: 10
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "2", memory: 1Gi}
+          volumes:
+            - name: sessions
+              persistentVolumeClaim: {claimName: tuxcmdb-webui}
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: tuxcmdb-api
+    spec:
+      selector: {app: tuxcmdb, component: api}
+      ports:
+        - name: http
+          port: 8080
+          targetPort: http
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: tuxcmdb-webui
+    spec:
+      selector: {app: tuxcmdb, component: webui}
+      ports:
+        - name: http
+          port: 8080
+          targetPort: http
+  - apiVersion: route.openshift.io/v1
+    kind: Route
+    metadata:
+      name: tuxcmdb-api
+    spec:
+      host: ${API_HOST}
+      to: {kind: Service, name: tuxcmdb-api}
+      port: {targetPort: http}
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+  - apiVersion: route.openshift.io/v1
+    kind: Route
+    metadata:
+      name: tuxcmdb-webui
+      annotations:
+        haproxy.router.openshift.io/timeout: 1h
+        haproxy.router.openshift.io/timeout-tunnel: 1h
+    spec:
+      host: ${WEBUI_HOST}
+      to: {kind: Service, name: tuxcmdb-webui}
+      port: {targetPort: http}
+      tls:
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect

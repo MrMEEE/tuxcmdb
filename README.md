@@ -93,6 +93,12 @@ python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
 
+## OKD / OpenShift
+
+See the [OpenShift deployment guide](deploy/openshift/README.md) for UBI 10
+Source-to-Image builds of the server components, TLS routes, and a choice of
+persistent MariaDB or PostgreSQL databases.
+
 ## Reverse Proxy Examples
 
 The `tuxcmdb-webui` RPM installs disabled example reverse-proxy configs at:

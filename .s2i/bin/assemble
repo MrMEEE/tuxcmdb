@@ -1,0 +1,19 @@
+#!/bin/bash
+set -euo pipefail
+
+export DISABLE_COLLECTSTATIC=1
+/usr/libexec/s2i/assemble
+cd /opt/app-root/src
+pip install -r deploy/openshift/requirements.txt
+
+# Local database URLs, sessions and virtualenvs must never enter a runtime image.
+rm -f conf/database.yaml tuxcmdb-api/conf/api.yaml tuxcmdb.db
+rm -f tuxcmdb-webui/webui-session.sqlite3
+rm -rf .venv .runtime tuxcmdb-webui/.sessions
+export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"
+DJANGO_SETTINGS_MODULE=webui_settings \
+TUXCMDB_WEBUI_SECRET_KEY=collectstatic-build-only \
+TUXCMDB_WEBUI_HOST=localhost \
+python tuxcmdb-webui/manage.py collectstatic --noinput
+mkdir -p /opt/app-root/src/webui-data
+chmod -R g=u /opt/app-root/src

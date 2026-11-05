@@ -1,0 +1,6 @@
+[mariadb]
+name=MariaDB 11.8 for Enterprise Linux 10
+baseurl=https://dlm.mariadb.com/repo/mariadb-server/11.8/yum/rhel/10/$basearch
+gpgkey=https://supplychain.mariadb.com/MariaDB-Server-GPG-KEY
+gpgcheck=1
+enabled=1

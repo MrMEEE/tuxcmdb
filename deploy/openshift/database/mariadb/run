@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+if [[ ! -f "$PGDATA/.tuxcmdb-initialized" ]]; then
+    if [[ -d "$PGDATA/mysql" ]]; then
+        echo "Incomplete MariaDB initialization; inspect/restore the PVC before retrying" >&2
+        exit 1
+    fi
+    mariadb-install-db --no-defaults --datadir="$PGDATA" \
+        --auth-root-authentication-method=normal --skip-test-db
+    mariadbd --no-defaults --datadir="$PGDATA" --skip-networking \
+        --socket=/tmp/mysql.sock --pid-file=/tmp/mysql.pid &
+    server_pid=$!
+    trap 'kill "$server_pid"; wait "$server_pid"' EXIT
+    ready=false
+    for attempt in {1..60}; do
+        if mariadb-admin --no-defaults --socket=/tmp/mysql.sock -u root ping >/dev/null 2>&1; then
+            ready=true
+            break
+        fi
+        kill -0 "$server_pid"
+        sleep 1
+    done
+    if [[ "$ready" != true ]]; then
+        echo "MariaDB bootstrap timed out" >&2
+        exit 1
+    fi
+    mariadb --no-defaults --socket=/tmp/mysql.sock -u root <<SQL
+DELETE FROM mysql.global_priv WHERE User = '' OR (User = 'root' AND Host <> 'localhost');
+FLUSH PRIVILEGES;
+CREATE DATABASE \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'%';
+ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ADMIN_PASSWORD';
+SQL
+    kill "$server_pid"
+    wait "$server_pid"
+    trap - EXIT
+    touch "$PGDATA/.tuxcmdb-initialized"
+fi
+exec mariadbd --no-defaults --datadir="$PGDATA" --bind-address=0.0.0.0 \
+    --port=3306 --socket=/tmp/mysql.sock --pid-file=/tmp/mysql.pid \
+    --skip-name-resolve

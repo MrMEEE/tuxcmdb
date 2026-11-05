@@ -1,0 +1,4 @@
+#!/bin/bash
+set -euo pipefail
+cp -a /tmp/src/. /opt/app-root/src/
+chmod -R g=u /opt/app-root/src

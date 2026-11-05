@@ -1,0 +1,200 @@
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: tuxcmdb-database
+  annotations:
+    description: UBI 10 database builder and S2I runtime; choose mariadb or postgresql.
+parameters:
+  - name: SOURCE_REPOSITORY_URL
+    value: https://github.com/MrMEEE/tuxcmdb.git
+    required: true
+  - name: SOURCE_REPOSITORY_REF
+    value: main
+    required: true
+  - name: DB_BACKEND
+    description: mariadb or postgresql (use DB_PORT=5432 for PostgreSQL)
+    value: mariadb
+    required: true
+  - name: DB_PORT
+    value: "3306"
+    required: true
+  - name: DB_USER
+    value: tuxcmdb
+    required: true
+  - name: DB_NAME
+    value: tuxcmdb
+    required: true
+  - name: DB_PASSWORD
+    generate: expression
+    from: "[a-zA-Z0-9]{40}"
+  - name: DB_ADMIN_PASSWORD
+    generate: expression
+    from: "[a-zA-Z0-9]{40}"
+  - name: DATABASE_VOLUME_SIZE
+    value: 10Gi
+    required: true
+objects:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: tuxcmdb-database
+    type: Opaque
+    stringData:
+      DB_BACKEND: ${DB_BACKEND}
+      DB_HOST: tuxcmdb-database
+      DB_PORT: ${DB_PORT}
+      DB_USER: ${DB_USER}
+      DB_NAME: ${DB_NAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: tuxcmdb-database-admin
+    type: Opaque
+    stringData:
+      DB_ADMIN_PASSWORD: ${DB_ADMIN_PASSWORD}
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: tuxcmdb-database
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: ${DATABASE_VOLUME_SIZE}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata:
+      name: tuxcmdb-database-builder
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata:
+      name: tuxcmdb-database
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: tuxcmdb-database-builder
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git:
+          uri: ${SOURCE_REPOSITORY_URL}
+          ref: ${SOURCE_REPOSITORY_REF}
+        contextDir: deploy/openshift/database
+      strategy:
+        type: Docker
+        dockerStrategy:
+          dockerfilePath: ${DB_BACKEND}/Dockerfile
+      output:
+        to:
+          kind: ImageStreamTag
+          name: tuxcmdb-database-builder:latest
+      triggers:
+        - type: ConfigChange
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: tuxcmdb-database
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git:
+          uri: ${SOURCE_REPOSITORY_URL}
+          ref: ${SOURCE_REPOSITORY_REF}
+        contextDir: deploy/openshift/database
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: ImageStreamTag
+            name: tuxcmdb-database-builder:latest
+      output:
+        to:
+          kind: ImageStreamTag
+          name: tuxcmdb-database:latest
+      triggers:
+        - type: ImageChange
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: "1", memory: 1Gi}
+  - apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: tuxcmdb-database
+      annotations:
+        image.openshift.io/triggers: >-
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-database:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"database\")].image"}]
+    spec:
+      replicas: 1
+      strategy:
+        type: Recreate
+      selector:
+        matchLabels: {app: tuxcmdb, component: database}
+      template:
+        metadata:
+          labels: {app: tuxcmdb, component: database}
+          annotations:
+            alpha.image.policy.openshift.io/resolve-names: "*"
+        spec:
+          automountServiceAccountToken: false
+          terminationGracePeriodSeconds: 60
+          containers:
+            - name: database
+              image: tuxcmdb-database:latest
+              imagePullPolicy: Always
+              envFrom:
+                - secretRef: {name: tuxcmdb-database}
+                - secretRef: {name: tuxcmdb-database-admin}
+              ports:
+                - name: database
+                  containerPort: ${{DB_PORT}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+                runAsNonRoot: true
+                seccompProfile: {type: RuntimeDefault}
+              volumeMounts:
+                - name: data
+                  mountPath: /var/lib/tuxcmdb
+              startupProbe:
+                tcpSocket: {port: database}
+                periodSeconds: 5
+                failureThreshold: 120
+              readinessProbe:
+                exec:
+                  command:
+                    - /bin/bash
+                    - -ec
+                    - |
+                      if [[ "$DB_BACKEND" == postgresql ]]; then
+                        PGPASSWORD="$DB_PASSWORD" /usr/pgsql-16/bin/psql -h 127.0.0.1 -U "$DB_USER" -d "$DB_NAME" -c 'SELECT 1' >/dev/null
+                      else
+                        MYSQL_PWD="$DB_PASSWORD" mariadb --no-defaults -h 127.0.0.1 -u "$DB_USER" "$DB_NAME" -e 'SELECT 1' >/dev/null
+                      fi
+                periodSeconds: 10
+                timeoutSeconds: 5
+              livenessProbe:
+                tcpSocket: {port: database}
+                periodSeconds: 10
+                timeoutSeconds: 5
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "2", memory: 1Gi}
+          volumes:
+            - name: data
+              persistentVolumeClaim: {claimName: tuxcmdb-database}
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: tuxcmdb-database
+    spec:
+      selector: {app: tuxcmdb, component: database}
+      ports:
+        - name: database
+          port: ${{DB_PORT}}
+          targetPort: database

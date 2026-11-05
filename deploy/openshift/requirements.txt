@@ -1,0 +1,4 @@
+-r ../../tuxcmdb/requirements.txt
+-r ../../tuxcmdb-api/requirements.txt
+-r ../../tuxcmdb-webui/requirements.txt
+whitenoise>=6.8,<7.0
