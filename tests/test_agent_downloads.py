@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tuxcmdb-webui"))
@@ -14,7 +15,9 @@ import django
 
 django.setup()
 
+from django.conf import settings
 from django.test import Client, override_settings
+import requests
 
 
 class AgentDownloadTests(unittest.TestCase):
@@ -22,7 +25,10 @@ class AgentDownloadTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.agents_dir = Path(self.directory.name)
-        self.settings_override = override_settings(AGENTS_DIR=self.agents_dir)
+        self.settings_override = override_settings(
+            AGENTS_DIR=self.agents_dir, AGENT_RELEASES_DIR="",
+            SESSION_ENGINE="django.contrib.sessions.backends.signed_cookies",
+        )
         self.settings_override.enable()
         self.addCleanup(self.settings_override.disable)
         self.client = Client()
@@ -116,6 +122,102 @@ class AgentDownloadTests(unittest.TestCase):
                 response = self.client.get("/agents/download/" + alias)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(b"".join(response.streaming_content), b"0.2.26.10")
+
+    def test_retained_versions_remain_downloadable_but_metadata_is_private(self):
+        root = self.agents_dir / "releases"
+        root.mkdir()
+        for number in (4, 5):
+            release = root / str(number)
+            release.mkdir()
+            release.joinpath(".agent-version").write_text(f"0.2.26.{number}")
+            release.joinpath(f"tuxcmdb-agent-0.2.26.{number}.ps1").write_bytes(str(number).encode())
+        current = self.agents_dir / "current"
+        current.symlink_to(root / "5")
+        with override_settings(AGENTS_DIR=current, AGENT_RELEASES_DIR=str(root)):
+            listing = self.client.get("/agents/").content.decode()
+            self.assertIn("0.2.26.4.ps1", listing)
+            self.assertIn("0.2.26.5.ps1", listing)
+            self.assertNotIn(".agent-version", listing)
+            result = self.client.get("/agents/download/tuxcmdb-agent-0.2.26.4.ps1")
+            self.assertEqual(b"".join(result.streaming_content), b"4")
+            result = self.client.get("/agents/download/tuxcmdb-agent-latest.ps1")
+            self.assertEqual(b"".join(result.streaming_content), b"5")
+            self.assertEqual(self.client.get("/agents/download/.agent-version").status_code, 404)
+
+    def login(self, client=None, readonly=False):
+        client = client or self.client
+        session = client.session
+        session["api_username"] = "writer"
+        session["api_readonly"] = readonly
+        session.save()
+        client.cookies[settings.SESSION_COOKIE_NAME] = session.session_key
+
+    @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
+                       AGENT_UPDATER_TOKEN="secret")
+    @patch("webui.agent_builds.requests.request")
+    def test_build_controls_only_visible_for_writers_with_available_openshift_updater(self, request):
+        request.return_value = Mock(json=Mock(return_value={"state": "up-to-date", "versions_to_keep": 3}))
+        self.assertNotIn("Build agents now", self.client.get("/agents/").content.decode())
+        request.assert_not_called()
+        self.login(readonly=True)
+        self.assertNotIn("Build agents now", self.client.get("/agents/").content.decode())
+        request.assert_not_called()
+        self.login()
+        with override_settings(INSTALLATION_MODE="standard"):
+            content = self.client.get("/agents/").content.decode()
+            self.assertNotIn("Build agents now", content)
+            self.assertNotIn("Agent build settings", content)
+            self.assertEqual(self.client.get("/agents/settings/").status_code, 403)
+            self.assertEqual(
+                self.client.post("/agents/settings/", {"versions_to_keep": "5"}).status_code, 403
+            )
+            request.assert_not_called()
+        response = self.client.get("/agents/")
+        self.assertIn("Build agents now", response.content.decode())
+        self.assertIn("Agent build settings", response.content.decode())
+        self.assertNotIn("secret", response.content.decode())
+        self.assertEqual(request.call_args.kwargs["headers"]["Authorization"], "Bearer secret")
+        request.side_effect = requests.ConnectionError("not deployed")
+        with self.assertLogs("webui.views", level="WARNING"):
+            response = self.client.get("/agents/")
+        self.assertNotIn("Build agents now", response.content.decode())
+        self.assertIn("updater is unavailable", response.content.decode())
+
+    @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
+                       AGENT_UPDATER_TOKEN="secret")
+    @patch("webui.agent_builds.requests.request")
+    def test_build_trigger_enforces_auth_permissions_post_and_csrf(self, request):
+        request.return_value = Mock(json=Mock(return_value={"state": "queued"}))
+        self.assertEqual(self.client.post("/agents/build/").status_code, 302)
+        self.login(readonly=True)
+        self.assertEqual(self.client.post("/agents/build/").status_code, 403)
+        self.login()
+        self.assertEqual(self.client.get("/agents/build/").status_code, 405)
+        with override_settings(INSTALLATION_MODE="standard"):
+            self.assertEqual(self.client.post("/agents/build/").status_code, 403)
+        request.assert_not_called()
+        protected = Client(enforce_csrf_checks=True)
+        self.login(protected)
+        self.assertEqual(protected.post("/agents/build/").status_code, 403)
+        protected.get("/agents/")
+        token = protected.cookies["csrftoken"].value
+        self.assertEqual(protected.post("/agents/build/", {"csrfmiddlewaretoken": token}).status_code, 302)
+        self.assertEqual(request.call_args.args[:2], ("POST", "http://updater:8080/build"))
+
+    @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
+                       AGENT_UPDATER_TOKEN="secret")
+    @patch("webui.agent_builds.requests.request")
+    def test_agent_settings_default_validation_and_save(self, request):
+        request.return_value = Mock(json=Mock(return_value={"state": "idle", "versions_to_keep": 3}))
+        self.login()
+        response = self.client.get("/agents/settings/")
+        self.assertIn('value="3"', response.content.decode())
+        self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "0"}).status_code, 200)
+        self.assertTrue(all(call.args[0] == "GET" for call in request.call_args_list))
+        self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "5"}).status_code, 302)
+        self.assertEqual(request.call_args.kwargs["json"], {"versions_to_keep": 5})
+        self.login(readonly=True)
+        self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "1"}).status_code, 403)
 
 
 if __name__ == "__main__":

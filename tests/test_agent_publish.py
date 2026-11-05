@@ -49,7 +49,8 @@ class AgentPublishTests(unittest.TestCase):
         current = self.storage / "current"
         previous = current.resolve()
         self.assertTrue(current.is_symlink())
-        self.assertEqual({file.name for file in current.iterdir()}, set(self.names))
+        self.assertEqual({file.name for file in current.iterdir() if not file.name.startswith(".")}, set(self.names))
+        self.assertEqual((current / ".agent-commit").read_text().strip(), self.commit)
         for name in self.names:
             self.assertEqual((current / name).read_bytes(), (self.source / name).read_bytes())
         self.artifacts("0.2.26.5")
@@ -57,8 +58,8 @@ class AgentPublishTests(unittest.TestCase):
         self.assertEqual(second.returncode, 0, second.stderr)
         self.assertNotEqual(current.resolve(), previous)
         self.assertTrue(previous.is_dir())
-        self.assertEqual({file.name for file in current.iterdir()}, set(self.names))
-        self.assertEqual(current.resolve().stat().st_mode & 0o777, 0o755)
+        self.assertEqual({file.name for file in current.iterdir() if not file.name.startswith(".")}, set(self.names))
+        self.assertEqual(current.resolve().stat().st_mode & 0o777, 0o775)
         self.assertFalse(any(self.storage.glob(".current-*")))
 
     def test_corrupt_or_missing_artifacts_leave_current_unchanged(self):

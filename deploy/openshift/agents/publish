@@ -10,8 +10,11 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || ! "$commit" =~ ^[0-9a-
     exit 1
 fi
 
-umask 022
-mkdir -p "$storage/releases"
+umask 002
+mkdir -p "$storage"
+if [[ ! -d "$storage/releases" ]]; then
+    mkdir -m 2775 "$storage/releases"
+fi
 release="$(mktemp -d "$storage/releases/${version}-${commit}.XXXXXX")"
 next_link="$storage/.current-$(basename "$release")"
 trap 'rm -f "$next_link"' EXIT
@@ -30,8 +33,11 @@ for package in \
     cp --no-preserve=ownership,timestamps "$source_dir/$package" "$release/"
 done
 (cd "$release" && sha256sum --check "$source_dir/SHA256SUMS")
+cp "$source_dir/agent-commit" "$release/.agent-commit"
+cp "$source_dir/agent-version" "$release/.agent-version"
 chmod 644 "$release/"*
-chmod 755 "$release"
+chmod 644 "$release/.agent-commit" "$release/.agent-version"
+chmod 2775 "$release"
 # Rename a relative symlink on the same filesystem to publish a complete set.
 ln -s "releases/$(basename "$release")" "$next_link"
 mv -Tf "$next_link" "$storage/current"

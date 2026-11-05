@@ -3,7 +3,7 @@ kind: Template
 metadata:
   name: tuxcmdb-agents
   annotations:
-    description: Optional agent package build, shared RWX storage and independent updater pod.
+    description: Optional reusable agent toolchains, periodic build Jobs and shared RWX downloads.
 parameters:
   - name: SOURCE_REPOSITORY_URL
     value: https://github.com/MrMEEE/tuxcmdb.git
@@ -17,7 +17,63 @@ parameters:
   - name: AGENTS_VOLUME_SIZE
     value: 5Gi
     required: true
+  - name: AGENT_CHECK_INTERVAL
+    description: Seconds between source checks (minimum 60)
+    value: "3600"
+    required: true
+  - name: AGENT_UPDATER_TOKEN
+    description: Shared credential for WebUI-to-updater requests; preserve on upgrades
+    generate: expression
+    from: "[a-zA-Z0-9]{40}"
 objects:
+  - apiVersion: v1
+    kind: Secret
+    metadata:
+      name: tuxcmdb-agents-updater
+    stringData:
+      token: ${AGENT_UPDATER_TOKEN}
+  - apiVersion: v1
+    kind: ServiceAccount
+    metadata:
+      name: tuxcmdb-agents-updater
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      name: tuxcmdb-agents-updater
+    rules:
+      - apiGroups: [batch]
+        resources: [jobs]
+        verbs: [get, list, create]
+      - apiGroups: [image.openshift.io]
+        resources: [imagestreamtags]
+        resourceNames:
+          - tuxcmdb-agents:latest
+          - tuxcmdb-agent-builder-el8:latest
+          - tuxcmdb-agent-builder-el9:latest
+          - tuxcmdb-agent-builder-el10:latest
+          - tuxcmdb-agent-builder-debian:latest
+        verbs: [get]
+  - apiVersion: rbac.authorization.k8s.io/v1
+    kind: RoleBinding
+    metadata:
+      name: tuxcmdb-agents-updater
+    subjects:
+      - kind: ServiceAccount
+        name: tuxcmdb-agents-updater
+    roleRef:
+      apiGroup: rbac.authorization.k8s.io
+      kind: Role
+      name: tuxcmdb-agents-updater
+  - apiVersion: v1
+    kind: Service
+    metadata:
+      name: tuxcmdb-agents-updater
+    spec:
+      selector: {app: tuxcmdb, component: agents-updater}
+      ports:
+        - name: http
+          port: 8080
+          targetPort: http
   - apiVersion: image.openshift.io/v1
     kind: ImageStream
     metadata:
@@ -37,15 +93,92 @@ objects:
         type: Docker
         dockerStrategy:
           dockerfilePath: deploy/openshift/agents/Dockerfile
-          buildArgs:
-            - name: SOURCE_REPOSITORY_URL
-              value: ${SOURCE_REPOSITORY_URL}
       output:
         to:
           kind: ImageStreamTag
           name: tuxcmdb-agents:latest
       triggers:
         - type: ConfigChange
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata: {name: tuxcmdb-agent-builder-el8}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata: {name: tuxcmdb-agent-builder-el9}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata: {name: tuxcmdb-agent-builder-el10}
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata: {name: tuxcmdb-agent-builder-debian}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata: {name: tuxcmdb-agent-builder-el8}
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
+      strategy:
+        type: Docker
+        dockerStrategy: {dockerfilePath: deploy/openshift/agents/el8.Dockerfile}
+      output:
+        to: {kind: ImageStreamTag, name: "tuxcmdb-agent-builder-el8:latest"}
+      triggers: [{type: ConfigChange}]
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata: {name: tuxcmdb-agent-builder-el9}
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
+      strategy:
+        type: Docker
+        dockerStrategy: {dockerfilePath: deploy/openshift/agents/el9.Dockerfile}
+      output:
+        to: {kind: ImageStreamTag, name: "tuxcmdb-agent-builder-el9:latest"}
+      triggers: [{type: ConfigChange}]
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata: {name: tuxcmdb-agent-builder-el10}
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
+      strategy:
+        type: Docker
+        dockerStrategy: {dockerfilePath: deploy/openshift/agents/el10.Dockerfile}
+      output:
+        to: {kind: ImageStreamTag, name: "tuxcmdb-agent-builder-el10:latest"}
+      triggers: [{type: ConfigChange}]
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata: {name: tuxcmdb-agent-builder-debian}
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git: {uri: "${SOURCE_REPOSITORY_URL}", ref: "${SOURCE_REPOSITORY_REF}"}
+      strategy:
+        type: Docker
+        dockerStrategy: {dockerfilePath: deploy/openshift/agents/debian.Dockerfile}
+      output:
+        to: {kind: ImageStreamTag, name: "tuxcmdb-agent-builder-debian:latest"}
+      triggers: [{type: ConfigChange}]
       resources:
         requests: {cpu: 100m, memory: 512Mi}
         limits: {cpu: "2", memory: 2Gi}
@@ -78,12 +211,28 @@ objects:
           annotations:
             alpha.image.policy.openshift.io/resolve-names: "*"
         spec:
-          automountServiceAccountToken: false
+          serviceAccountName: tuxcmdb-agents-updater
           containers:
             - name: updater
               image: tuxcmdb-agents:latest
               imagePullPolicy: Always
-              command: ["/bin/bash", "/usr/local/bin/run-updater"]
+              command: ["/usr/bin/python3", "-u", "/usr/local/lib/agent-controller.py"]
+              env:
+                - name: POD_NAMESPACE
+                  valueFrom:
+                    fieldRef: {fieldPath: metadata.namespace}
+                - name: SOURCE_REPOSITORY_URL
+                  value: ${SOURCE_REPOSITORY_URL}
+                - name: SOURCE_REPOSITORY_REF
+                  value: ${SOURCE_REPOSITORY_REF}
+                - name: AGENT_CHECK_INTERVAL
+                  value: ${AGENT_CHECK_INTERVAL}
+                - name: AGENT_UPDATER_TOKEN
+                  valueFrom:
+                    secretKeyRef: {name: tuxcmdb-agents-updater, key: token}
+              ports:
+                - name: http
+                  containerPort: 8080
               securityContext:
                 allowPrivilegeEscalation: false
                 capabilities: {drop: [ALL]}
@@ -93,14 +242,14 @@ objects:
                 - name: agent-downloads
                   mountPath: /var/lib/tuxcmdb-agents
               readinessProbe:
-                exec:
-                  command:
-                    - /bin/bash
-                    - -ec
-                    - test -f /tmp/agents-published && test -d /var/lib/tuxcmdb-agents/current
+                httpGet: {path: /health, port: http}
                 periodSeconds: 10
+              livenessProbe:
+                httpGet: {path: /health, port: http}
+                initialDelaySeconds: 15
+                periodSeconds: 30
               resources:
-                requests: {cpu: 10m, memory: 32Mi}
+                requests: {cpu: 10m, memory: 64Mi}
                 limits: {cpu: 500m, memory: 256Mi}
           volumes:
             - name: agent-downloads

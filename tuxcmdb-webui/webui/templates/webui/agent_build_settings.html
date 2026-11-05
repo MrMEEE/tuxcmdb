@@ -1,0 +1,16 @@
+{% extends 'webui/base.html' %}
+{% block title %}Agent Build Settings · TuxCMDB{% endblock %}
+{% block page_title %}Agent Build Settings{% endblock %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <p>The current version is always kept. Lowering this value removes older downloads on the next updater reconciliation.</p>
+      <button type="submit" class="btn btn-primary">Save settings</button>
+      <a class="btn btn-outline-secondary" href="{% url 'agents' %}">Cancel</a>
+    </form>
+  </div>
+</div>
+{% endblock %}

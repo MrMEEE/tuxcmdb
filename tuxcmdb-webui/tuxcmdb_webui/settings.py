@@ -6,6 +6,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Populated by the optional tuxcmdb-webui-agents package with installer
 # artifacts (RPM/DEB/PowerShell script) for download from /agents/.
 AGENTS_DIR = Path(os.environ.get("TUXCMDB_AGENTS_DIR", "/opt/tuxcmdb-webui-agents"))
+AGENT_RELEASES_DIR = os.environ.get("TUXCMDB_AGENT_RELEASES_DIR", "")
+AGENT_UPDATER_URL = os.environ.get("TUXCMDB_AGENT_UPDATER_URL", "")
+AGENT_UPDATER_TOKEN = os.environ.get("TUXCMDB_AGENT_UPDATER_TOKEN", "")
+INSTALLATION_MODE = "standard"
 SECRET_KEY = "tuxcmdb-webui-dev-secret-key-change-me"
 DEBUG = True
 ALLOWED_HOSTS = ["*"]

@@ -2,6 +2,23 @@
 {% block title %}Agents · TuxCMDB{% endblock %}
 {% block page_title %}Agents{% endblock %}
 {% block content %}
+{% if agent_build_error %}
+<div class="alert alert-warning">{{ agent_build_error }}</div>
+{% endif %}
+{% if agent_build_status %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5>OpenShift Agent Builds</h5>
+    <p>Status: {{ agent_build_status.state }}{% if agent_build_status.job %} ({{ agent_build_status.job }}){% endif %}</p>
+    {% if agent_build_status.error %}<div class="alert alert-danger">{{ agent_build_status.error }}</div>{% endif %}
+    <form method="post" action="{% url 'agents-build' %}" class="d-inline">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-primary">Build agents now</button>
+    </form>
+    <a class="btn btn-outline-secondary" href="{% url 'agents-settings' %}">Agent build settings</a>
+  </div>
+</div>
+{% endif %}
 <div class="card shadow-sm">
   <div class="card-header py-2"><h5 class="mb-0">Agent Downloads</h5></div>
   <div class="card-body">
@@ -30,7 +47,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="mb-0">No agent packages are currently available. Install the <code>tuxcmdb-webui-agents</code> package on this server to make agent downloads available here.</p>
+    <p class="mb-0">No agent packages are currently available. Enable agent builds on OpenShift, or install the <code>tuxcmdb-webui-agents</code> package on a standalone server.</p>
     {% endif %}
   </div>
 </div>

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shlex
 import fnmatch
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -17,9 +18,12 @@ from django.contrib import messages
 from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.http import require_POST
 
+from . import agent_builds
 from .auth import login_required
 from .forms import (
+    AgentBuildSettingsForm,
     APIUserForm,
     AssetCreateForm,
     AssetUpdateForm,
@@ -2742,7 +2746,12 @@ _AGENT_WINDOWS_NAME = re.compile(r"^tuxcmdb-agent-(?P<version>\d+\.\d+\.\d+(?:\.
 def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
     """Resolve each stable download name to the highest packaged version."""
     latest: dict[str, tuple[tuple[int, ...], Path]] = {}
-    for entry in agents_dir.iterdir():
+    try:
+        entries = list(agents_dir.iterdir())
+    except FileNotFoundError:
+        logging.getLogger(__name__).debug("Agent release retired during discovery: %s", agents_dir)
+        return {}
+    for entry in entries:
         if not entry.is_file() or entry.resolve().parent != agents_dir.resolve():
             continue
         rpm = _AGENT_RPM_NAME.fullmatch(entry.name)
@@ -2772,21 +2781,64 @@ def _latest_agent_files(agents_dir: Path) -> dict[str, Path]:
     return {alias: entry for alias, (_version, entry) in latest.items()}
 
 
+def _agent_directories() -> list[Path]:
+    directories = [settings.AGENTS_DIR.resolve()]
+    if settings.AGENT_RELEASES_DIR:
+        root = Path(settings.AGENT_RELEASES_DIR).resolve()
+        if root.is_dir():
+            releases = []
+            for path in root.iterdir():
+                if not path.is_symlink() and path.is_dir() and (path / ".agent-version").is_file():
+                    try:
+                        releases.append((path.stat().st_mtime, path))
+                    except FileNotFoundError:
+                        logging.getLogger(__name__).debug("Agent release retired during discovery: %s", path)
+            directories.extend(path for _, path in sorted(releases, reverse=True)
+                               if path != directories[0])
+    return directories
+
+
 def _list_agent_files() -> list[dict[str, Any]]:
-    agents_dir = settings.AGENTS_DIR.resolve()
+    directories = _agent_directories()
+    agents_dir = directories[0]
     if not agents_dir.is_dir():
         return []
-    files = []
-    for entry in sorted(agents_dir.iterdir()):
-        if entry.is_file() and entry.resolve().parent == agents_dir.resolve():
-            files.append({"name": entry.name, "size": entry.stat().st_size})
+    files = {}
+    for directory in directories:
+        try:
+            entries = sorted(directory.iterdir())
+        except FileNotFoundError:
+            logging.getLogger(__name__).debug("Agent release retired during listing: %s", directory)
+            continue
+        for entry in entries:
+            if not entry.name.startswith(".") and entry.is_file() and entry.resolve().parent == directory:
+                try:
+                    files.setdefault(entry.name, {"name": entry.name, "size": entry.stat().st_size})
+                except FileNotFoundError:
+                    logging.getLogger(__name__).debug("Agent file retired during listing: %s", entry)
     for alias, entry in sorted(_latest_agent_files(agents_dir).items()):
-        files.append({"name": alias, "size": entry.stat().st_size, "latest_of": entry.name})
-    return files
+        try:
+            files[alias] = {"name": alias, "size": entry.stat().st_size, "latest_of": entry.name}
+        except FileNotFoundError:
+            logging.getLogger(__name__).debug("Agent file retired during listing: %s", entry)
+    return list(files.values())
+
+
+def _can_manage_agent_builds(request: HttpRequest) -> bool:
+    return (agent_builds.enabled() and getattr(request.user, "is_authenticated", False)
+            and not getattr(request.user, "readonly", True))
 
 
 def agents_view(request: HttpRequest) -> HttpResponse:
     agent_files = _list_agent_files()
+    build_status = None
+    build_error = ""
+    if _can_manage_agent_builds(request):
+        try:
+            build_status = agent_builds.request("GET", "/status")
+        except agent_builds.AgentUpdaterError as exc:
+            logging.getLogger(__name__).warning("Agent build status unavailable: %s", exc)
+            build_error = str(exc)
     return render(
         request,
         "webui/agents_list.html",
@@ -2794,19 +2846,65 @@ def agents_view(request: HttpRequest) -> HttpResponse:
             "agent_files": agent_files,
             "agents_available": settings.AGENTS_DIR.is_dir(),
             "use_agents_static": True,
+            "agent_build_status": build_status,
+            "agent_build_error": build_error,
         },
     )
 
+@login_required
+@require_POST
+def agents_build_view(request: HttpRequest) -> HttpResponse:
+    if not _can_manage_agent_builds(request):
+        return HttpResponse("Agent builds are not permitted.", status=403)
+    try:
+        agent_builds.request("POST", "/build")
+    except agent_builds.AgentUpdaterError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Agent build requested. An active build will be reused.")
+    return redirect("agents")
+
+
+@login_required
+def agents_settings_view(request: HttpRequest) -> HttpResponse:
+    if not _can_manage_agent_builds(request):
+        return HttpResponse("Agent build settings are not permitted.", status=403)
+    try:
+        status = agent_builds.request("GET", "/status")
+    except agent_builds.AgentUpdaterError as exc:
+        messages.error(request, str(exc))
+        return redirect("agents")
+    form = AgentBuildSettingsForm(request.POST if request.method == "POST" else None,
+                                  initial={"versions_to_keep": status.get("versions_to_keep", 3)})
+    if request.method == "POST" and form.is_valid():
+        try:
+            agent_builds.request("POST", "/settings", form.cleaned_data)
+        except agent_builds.AgentUpdaterError as exc:
+            form.add_error(None, str(exc))
+        else:
+            messages.success(request, "Agent build settings saved.")
+            return redirect("agents")
+    return render(request, "webui/agent_build_settings.html", {"form": form})
+
 
 def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:
-    agents_dir = settings.AGENTS_DIR.resolve()
-    if filename != Path(filename).name or not agents_dir.is_dir():
+    directories = _agent_directories()
+    agents_dir = directories[0]
+    if filename.startswith(".") or filename != Path(filename).name or not agents_dir.is_dir():
         raise Http404("Agent file not found")
     latest = _latest_agent_files(agents_dir)
-    requested = (latest.get(filename) or (agents_dir / filename)).resolve()
-    if requested.parent != agents_dir or not requested.is_file():
+    requested = latest.get(filename)
+    if requested is None:
+        requested = next((directory / filename for directory in directories
+                          if (directory / filename).is_file()
+                          and (directory / filename).resolve().parent == directory), None)
+    if requested is None or requested.resolve().parent not in directories or not requested.is_file():
         raise Http404("Agent file not found")
-    response = FileResponse(requested.open("rb"), as_attachment=True, filename=filename, content_type="application/octet-stream")
+    try:
+        stream = requested.open("rb")
+    except FileNotFoundError as exc:
+        raise Http404("Agent version was retired; refresh the downloads page.") from exc
+    response = FileResponse(stream, as_attachment=True, filename=filename, content_type="application/octet-stream")
     response["X-Content-Type-Options"] = "nosniff"
     if filename in latest:
         response["Cache-Control"] = "no-store"

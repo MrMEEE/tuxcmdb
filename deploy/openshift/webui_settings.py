@@ -6,6 +6,7 @@ from tuxcmdb_webui.settings import *  # noqa: F403
 
 SECRET_KEY = os.environ["TUXCMDB_WEBUI_SECRET_KEY"]
 DEBUG = False
+INSTALLATION_MODE = "openshift"
 ALLOWED_HOSTS = [os.environ["TUXCMDB_WEBUI_HOST"]]
 CSRF_TRUSTED_ORIGINS = [f"https://{os.environ['TUXCMDB_WEBUI_HOST']}"]
 SESSION_COOKIE_SECURE = True

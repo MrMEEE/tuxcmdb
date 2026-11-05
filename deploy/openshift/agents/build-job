@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 002
+case "${1:?Expected checkout or publish}" in
+    checkout)
+        git clone --no-checkout "$SOURCE_REPOSITORY_URL" /work/src
+        cd /work/src
+        git checkout --detach "$AGENT_COMMIT"
+        bash /usr/local/bin/agent-version > /work/agent-version
+        git rev-parse HEAD > /work/agent-commit
+        # Source from Git can have a restrictive umask; all builder UIDs share a group.
+        chmod -R g=u /work/src
+        ;;
+    publish)
+        mkdir -p /work/artifacts
+        cp /work/src/dist/*/* /work/artifacts/
+        cp /work/agent-version /work/agent-commit /work/artifacts/
+        version="$(cat /work/agent-version)"
+        cp /work/src/agent/windows/tuxcmdb-agent.ps1 /work/artifacts/tuxcmdb-agent.ps1
+        cp /work/artifacts/tuxcmdb-agent.ps1 "/work/artifacts/tuxcmdb-agent-${version}.ps1"
+        (cd /work/artifacts && sha256sum tuxcmdb-agent* > SHA256SUMS)
+        TUXCMDB_AGENT_SOURCE=/work/artifacts bash /usr/local/bin/publish-agents
+        ;;
+    *) echo "Unsupported build-job action: $1" >&2; exit 1 ;;
+esac

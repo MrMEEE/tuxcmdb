@@ -186,23 +186,18 @@ class OpenShiftTemplateTests(unittest.TestCase):
         objects = self.render(
             "agents.yaml", "SOURCE_REPOSITORY_REF=agent-test", "AGENTS_STORAGE_CLASS=shared-rwx"
         )
-        self.assertEqual(
-            {(obj["kind"], obj["metadata"]["name"]) for obj in objects},
-            {("ImageStream", "tuxcmdb-agents"), ("BuildConfig", "tuxcmdb-agents"),
-             ("PersistentVolumeClaim", "tuxcmdb-agents"), ("Deployment", "tuxcmdb-agents-updater")},
-        )
         builds = {obj["metadata"]["name"]: obj for obj in objects if obj["kind"] == "BuildConfig"}
-        self.assertEqual(set(builds), {"tuxcmdb-agents"})
+        self.assertEqual(set(builds), {"tuxcmdb-agents", *(
+            f"tuxcmdb-agent-builder-{target}" for target in ("el8", "el9", "el10", "debian")
+        )})
+        self.assertFalse(any(obj["kind"] == "Job" for obj in objects))
         agents = builds["tuxcmdb-agents"]
         self.assertEqual(agents["spec"]["strategy"]["type"], "Docker")
         self.assertEqual(
             agents["spec"]["strategy"]["dockerStrategy"]["dockerfilePath"],
             "deploy/openshift/agents/Dockerfile",
         )
-        self.assertEqual(
-            agents["spec"]["strategy"]["dockerStrategy"]["buildArgs"],
-            [{"name": "SOURCE_REPOSITORY_URL", "value": "https://github.com/MrMEEE/tuxcmdb.git"}],
-        )
+        self.assertNotIn("buildArgs", agents["spec"]["strategy"]["dockerStrategy"])
         self.assertEqual(agents["spec"]["triggers"], [{"type": "ConfigChange"}])
         image_tag = agents["spec"]["output"]["to"]
         updater = next(obj for obj in objects if obj["kind"] == "Deployment")
@@ -212,13 +207,21 @@ class OpenShiftTemplateTests(unittest.TestCase):
         self.assertEqual(updater["spec"]["replicas"], 1)
         self.assertEqual(
             updater["spec"]["template"]["spec"]["containers"][0]["command"],
-            ["/bin/bash", "/usr/local/bin/run-updater"],
+            ["/usr/bin/python3", "-u", "/usr/local/lib/agent-controller.py"],
         )
+        self.assertEqual(updater["spec"]["template"]["spec"]["serviceAccountName"], "tuxcmdb-agents-updater")
+        role = next(obj for obj in objects if obj["kind"] == "Role")
+        self.assertEqual(role["rules"][0]["verbs"], ["get", "list", "create"])
+        self.assertEqual(role["rules"][0]["resources"], ["jobs"])
         claim = next(obj for obj in objects if obj["kind"] == "PersistentVolumeClaim")
         self.assertEqual(claim["spec"]["accessModes"], ["ReadWriteMany"])
         self.assertEqual(claim["spec"]["storageClassName"], "shared-rwx")
         for build in builds.values():
             self.assertEqual(build["spec"]["source"]["git"]["ref"], "agent-test")
+            dockerfile = ROOT / build["spec"]["strategy"]["dockerStrategy"]["dockerfilePath"]
+            content = dockerfile.read_text()
+            self.assertNotIn("build-agent-package.sh", content)
+            self.assertNotIn("COPY agent/", content)
         server = self.render(
             "server.yaml", "WEBUI_HOST=cmdb.apps.example.com", "API_HOST=api.apps.example.com"
         )
@@ -235,6 +238,9 @@ class OpenShiftTemplateTests(unittest.TestCase):
         self.assertTrue(mount["readOnly"])
         self.assertEqual(mount["mountPath"], "/opt/app-root/src/agent-artifacts")
         self.assertEqual(spec["volumes"][0]["persistentVolumeClaim"]["claimName"], "tuxcmdb-agents")
+        env = {entry["name"]: entry for entry in spec["containers"][0]["env"]}
+        self.assertEqual(env["TUXCMDB_AGENT_UPDATER_TOKEN"]["valueFrom"]["secretKeyRef"]["name"],
+                         "tuxcmdb-agents-updater")
 
 
 if __name__ == "__main__":

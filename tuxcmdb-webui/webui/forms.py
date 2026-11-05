@@ -193,3 +193,9 @@ class LDAPGroupRoleMappingForm(forms.Form):
     def __init__(self, *args, source_choices: list[tuple[str, str]] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["source_id"].choices = source_choices or []
+class AgentBuildSettingsForm(forms.Form):
+    versions_to_keep = forms.IntegerField(
+        label="Versions to keep", min_value=1, initial=3,
+        help_text="Includes the current version. Older versions are removed by the updater when no build is active.",
+        widget=forms.NumberInput(attrs={"class": "form-control", "min": "1"}),
+    )

@@ -6,6 +6,15 @@ spec:
           env:
             - name: TUXCMDB_AGENTS_DIR
               value: /opt/app-root/src/agent-artifacts/current
+            - name: TUXCMDB_AGENT_RELEASES_DIR
+              value: /opt/app-root/src/agent-artifacts/releases
+            - name: TUXCMDB_AGENT_UPDATER_URL
+              value: http://tuxcmdb-agents-updater:8080
+            - name: TUXCMDB_AGENT_UPDATER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tuxcmdb-agents-updater
+                  key: token
           volumeMounts:
             - name: agent-downloads
               mountPath: /opt/app-root/src/agent-artifacts
