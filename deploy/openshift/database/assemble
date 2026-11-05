@@ -1,4 +1,5 @@
 #!/bin/bash
 set -euo pipefail
-cp -a /tmp/src/. /opt/app-root/src/
-chmod -R g=u /opt/app-root/src
+cp -R --no-preserve=ownership,timestamps /tmp/src/. /opt/app-root/src/
+# The builder's root-owned work directory is writable, but not chmod-able.
+find /opt/app-root/src -mindepth 1 -exec chmod g=u {} +

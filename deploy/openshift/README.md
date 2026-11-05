@@ -97,6 +97,13 @@ oc rollout status deployment/tuxcmdb-database --timeout=10m
 
 ### Recovering failed initial builds
 
+If database S2I assembly fails with `cp: preserving times ... Operation not
+permitted`, update to the corrected assemble script and rebuild
+`tuxcmdb-database-builder` first. The builder embeds that script, so retrying
+only `tuxcmdb-database` would still use the old copy operation. The corrected
+script copies without preserving metadata and changes permissions only on
+the copied contents, not the root-owned work directory.
+
 `provided context directory does not exist: deploy/openshift/database` means
 the Git commit cloned by the build does not contain these deployment files.
 Processing a local template does not upload the local source tree. Commit and
