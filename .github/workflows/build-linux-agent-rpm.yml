@@ -20,19 +20,10 @@ jobs:
         include:
           - el: 8
             container: registry.access.redhat.com/ubi8/ubi:latest
-            agent_source: agent/linux/el8/tuxcmdb_agent.py
-            python: python3
-            runtime: python3
           - el: 9
             container: registry.access.redhat.com/ubi9/ubi:latest
-            agent_source: agent/linux/tuxcmdb_agent.py
-            python: python3
-            runtime: python3
           - el: 10
             container: registry.access.redhat.com/ubi10/ubi:latest
-            agent_source: agent/linux/tuxcmdb_agent.py
-            python: python3
-            runtime: python3
 
     container:
       image: ${{ matrix.container }}
@@ -55,58 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          ITERATION="1.el${{ matrix.el }}"
-          mkdir -p buildroot/opt/tuxcmdb-agent
-          mkdir -p buildroot/opt/tuxcmdb-agent/lib
-          mkdir -p buildroot/usr/bin
-          mkdir -p buildroot/usr/lib/systemd/system
-
-          if [[ "${{ matrix.el }}" == "8" ]]; then
-            echo "Building deprecated EL8-only agent with system Python and RPM-managed requests"
-          else
-            ${{ matrix.python }} -m pip install --upgrade pip
-            ${{ matrix.python }} -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
-          fi
-
-          cp "${{ matrix.agent_source }}" buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-          sed -i "s/^AGENT_VERSION = .*/AGENT_VERSION = \"$VERSION\"/" buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-          chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-          if [[ "${{ matrix.el }}" == "8" ]]; then
-            python3 buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py --help >/dev/null
-          else
-            PYTHONPATH="$PWD/buildroot/opt/tuxcmdb-agent/lib" \
-              ${{ matrix.python }} buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py --help >/dev/null
-          fi
-
-          cat > buildroot/usr/bin/tuxcmdb-agent <<EOF
-          #!/usr/bin/env bash
-          export PYTHONPATH="/opt/tuxcmdb-agent/lib\${PYTHONPATH:+:\$PYTHONPATH}"
-          exec /usr/bin/${{ matrix.python }} /opt/tuxcmdb-agent/tuxcmdb_agent.py "\$@"
-          EOF
-          chmod +x buildroot/usr/bin/tuxcmdb-agent
-
-          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/usr/lib/systemd/system/tuxcmdb-agent.service
-          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/usr/lib/systemd/system/tuxcmdb-agent.timer
-
-          chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
-
-          RUNTIME_DEPENDENCIES=(--depends "${{ matrix.runtime }}")
-          if [[ "${{ matrix.el }}" == "8" ]]; then
-            RUNTIME_DEPENDENCIES+=(--depends python3-requests)
-          fi
-
-          fpm -s dir -t rpm \
-            -n tuxcmdb-agent \
-            -v "$VERSION" \
-            --iteration "$ITERATION" \
-            --architecture noarch \
-            "${RUNTIME_DEPENDENCIES[@]}" \
-            --after-install packaging/scripts/postinstall.sh \
-            --before-remove packaging/scripts/preuninstall.sh \
-            -C buildroot .
-
-          mkdir -p dist/el${{ matrix.el }}
-          mv ./*.rpm dist/el${{ matrix.el }}/
+          bash tools/build-agent-package.sh "el${{ matrix.el }}" "$VERSION"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -137,56 +77,18 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
-          ITERATION="1.debian"
-          DIST_DIR="dist/deb"
-
-          rm -rf buildroot "$DIST_DIR"
-          mkdir -p "$DIST_DIR"
-          mkdir -p buildroot/opt/tuxcmdb-agent/lib
-          mkdir -p buildroot/usr/bin
-          mkdir -p buildroot/lib/systemd/system
-
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r agent/linux/requirements.txt -t buildroot/opt/tuxcmdb-agent/lib
-
-          cp agent/linux/tuxcmdb_agent.py buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-          sed -i "s/^AGENT_VERSION = .*/AGENT_VERSION = \"$VERSION\"/" buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-          chmod +x buildroot/opt/tuxcmdb-agent/tuxcmdb_agent.py
-
-          cat > buildroot/usr/bin/tuxcmdb-agent <<'EOF'
-          #!/usr/bin/env bash
-          export PYTHONPATH="/opt/tuxcmdb-agent/lib${PYTHONPATH:+:$PYTHONPATH}"
-          exec /usr/bin/python3 /opt/tuxcmdb-agent/tuxcmdb_agent.py "$@"
-          EOF
-          chmod +x buildroot/usr/bin/tuxcmdb-agent
-
-          cp agent/linux/systemd/tuxcmdb-agent.service buildroot/lib/systemd/system/tuxcmdb-agent.service
-          cp agent/linux/systemd/tuxcmdb-agent.timer buildroot/lib/systemd/system/tuxcmdb-agent.timer
-
-          chmod +x packaging/scripts/postinstall.sh packaging/scripts/preuninstall.sh
-
-          fpm -s dir -t deb \
-            -n tuxcmdb-agent \
-            -v "$VERSION" \
-            --iteration "$ITERATION" \
-            --architecture all \
-            --depends 'python3 >= 3.9' \
-            --after-install packaging/scripts/postinstall.sh \
-            --before-remove packaging/scripts/preuninstall.sh \
-            -C buildroot .
-
-          mv ./*.deb "$DIST_DIR"/
+          bash tools/build-agent-package.sh debian "$VERSION"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: tuxcmdb-agent-deb
-          path: dist/deb/*.deb
+          path: dist/debian/*.deb
 
       - name: Attach DEB to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/deb/*.deb
+          files: dist/debian/*.deb
 
   build-webui-agents-package:
     needs: [build-linux-packages, build-linux-deb]
@@ -243,4 +145,3 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/webui-agents/*
-

@@ -1,0 +1,11 @@
+.git
+.venv
+.runtime
+**/__pycache__
+**/*.pyc
+**/*.db
+**/*.sqlite3
+tuxcmdb-webui/.sessions
+conf/database.yaml
+tuxcmdb-api/conf/api.yaml
+dist

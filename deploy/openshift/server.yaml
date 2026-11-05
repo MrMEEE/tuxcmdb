@@ -3,7 +3,7 @@ kind: Template
 metadata:
   name: tuxcmdb-server
   annotations:
-    description: UBI 10 Python S2I build, API, Daphne WebUI, persistent sessions and TLS routes.
+    description: Independent UBI 10 Python S2I builds for API and Daphne WebUI, persistent sessions and TLS routes.
 parameters:
   - name: SOURCE_REPOSITORY_URL
     value: https://github.com/MrMEEE/tuxcmdb.git
@@ -58,11 +58,15 @@ objects:
   - apiVersion: image.openshift.io/v1
     kind: ImageStream
     metadata:
-      name: tuxcmdb-server
+      name: tuxcmdb-api
+  - apiVersion: image.openshift.io/v1
+    kind: ImageStream
+    metadata:
+      name: tuxcmdb-webui
   - apiVersion: build.openshift.io/v1
     kind: BuildConfig
     metadata:
-      name: tuxcmdb-server
+      name: tuxcmdb-api
     spec:
       runPolicy: Serial
       source:
@@ -77,12 +81,45 @@ objects:
             kind: DockerImage
             name: ${PYTHON_IMAGE}
           env:
+            - name: TUXCMDB_COMPONENT
+              value: api
             - name: DISABLE_COLLECTSTATIC
               value: "1"
       output:
         to:
           kind: ImageStreamTag
-          name: tuxcmdb-server:latest
+          name: tuxcmdb-api:latest
+      triggers:
+        - type: ConfigChange
+      resources:
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: "2", memory: 2Gi}
+  - apiVersion: build.openshift.io/v1
+    kind: BuildConfig
+    metadata:
+      name: tuxcmdb-webui
+    spec:
+      runPolicy: Serial
+      source:
+        type: Git
+        git:
+          uri: ${SOURCE_REPOSITORY_URL}
+          ref: ${SOURCE_REPOSITORY_REF}
+      strategy:
+        type: Source
+        sourceStrategy:
+          from:
+            kind: DockerImage
+            name: ${PYTHON_IMAGE}
+          env:
+            - name: TUXCMDB_COMPONENT
+              value: webui
+            - name: DISABLE_COLLECTSTATIC
+              value: "1"
+      output:
+        to:
+          kind: ImageStreamTag
+          name: tuxcmdb-webui:latest
       triggers:
         - type: ConfigChange
       resources:
@@ -94,7 +131,7 @@ objects:
       name: tuxcmdb-api
       annotations:
         image.openshift.io/triggers: >-
-          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-server:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"api\")].image"}]
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-api:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"api\")].image"}]
     spec:
       replicas: 1
       strategy:
@@ -110,7 +147,7 @@ objects:
           automountServiceAccountToken: false
           containers:
             - name: api
-              image: tuxcmdb-server:latest
+              image: tuxcmdb-api:latest
               imagePullPolicy: Always
               env:
                 - name: TUXCMDB_COMPONENT
@@ -145,7 +182,7 @@ objects:
       name: tuxcmdb-webui
       annotations:
         image.openshift.io/triggers: >-
-          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-server:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"webui\")].image"}]
+          [{"from":{"kind":"ImageStreamTag","name":"tuxcmdb-webui:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"webui\")].image"}]
     spec:
       replicas: 1
       strategy:
@@ -161,13 +198,15 @@ objects:
           automountServiceAccountToken: false
           containers:
             - name: webui
-              image: tuxcmdb-server:latest
+              image: tuxcmdb-webui:latest
               imagePullPolicy: Always
               env:
                 - name: TUXCMDB_COMPONENT
                   value: webui
                 - name: TUXCMDB_WEBUI_HOST
                   value: ${WEBUI_HOST}
+                - name: TUXCMDB_AGENTS_DIR
+                  value: /opt/app-root/src/agent-artifacts
               envFrom:
                 - secretRef: {name: tuxcmdb-database}
                 - secretRef: {name: tuxcmdb-server}

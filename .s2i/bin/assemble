@@ -2,18 +2,43 @@
 set -euo pipefail
 
 export DISABLE_COLLECTSTATIC=1
+case "${TUXCMDB_COMPONENT:?Set TUXCMDB_COMPONENT to api or webui}" in
+    api|webui) ;;
+    *) echo "Unsupported TUXCMDB_COMPONENT: $TUXCMDB_COMPONENT" >&2; exit 1 ;;
+esac
 /usr/libexec/s2i/assemble
 cd /opt/app-root/src
-pip install -r deploy/openshift/requirements.txt
+pip install -r "deploy/openshift/${TUXCMDB_COMPONENT}-requirements.txt"
 
 # Local database URLs, sessions and virtualenvs must never enter a runtime image.
 rm -f conf/database.yaml tuxcmdb-api/conf/api.yaml tuxcmdb.db
 rm -f tuxcmdb-webui/webui-session.sqlite3
 rm -rf .venv .runtime tuxcmdb-webui/.sessions
-export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"
-DJANGO_SETTINGS_MODULE=webui_settings \
-TUXCMDB_WEBUI_SECRET_KEY=collectstatic-build-only \
-TUXCMDB_WEBUI_HOST=localhost \
-python tuxcmdb-webui/manage.py collectstatic --noinput
-mkdir -p /opt/app-root/src/webui-data
+if [[ "$TUXCMDB_COMPONENT" == webui && "${TUXCMDB_INCLUDE_AGENTS:-false}" == true ]]; then
+    version="$(sed -n 's/^VERSION = "\(.*\)"/\1/p' version.py)"
+    test -n "$version"
+    for package in \
+        "tuxcmdb-agent-${version}-1.el8.noarch.rpm" \
+        "tuxcmdb-agent-${version}-1.el9.noarch.rpm" \
+        "tuxcmdb-agent-${version}-1.el10.noarch.rpm" \
+        "tuxcmdb-agent_${version}-1.debian_all.deb" \
+        "tuxcmdb-agent-${version}.ps1" \
+        tuxcmdb-agent.ps1; do
+        if [[ ! -s "agent-artifacts/$package" ]]; then
+            echo "Missing agent artifact: $package. Rebuild tuxcmdb-agents from the same source version." >&2
+            exit 1
+        fi
+    done
+    chmod 644 agent-artifacts/*
+else
+    rm -rf agent-artifacts
+fi
+if [[ "$TUXCMDB_COMPONENT" == webui ]]; then
+    export PYTHONPATH="/opt/app-root/src/deploy/openshift:/opt/app-root/src/tuxcmdb-webui:/opt/app-root/src"
+    DJANGO_SETTINGS_MODULE=webui_settings \
+    TUXCMDB_WEBUI_SECRET_KEY=collectstatic-build-only \
+    TUXCMDB_WEBUI_HOST=localhost \
+    python tuxcmdb-webui/manage.py collectstatic --noinput
+    mkdir -p /opt/app-root/src/webui-data
+fi
 chmod -R g=u /opt/app-root/src

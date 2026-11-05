@@ -2,13 +2,15 @@
 
 These namespace-scoped OpenShift Templates deploy the server components only:
 
-- [server.yaml](server.yaml): a UBI 10 Python 3.12 S2I build, API and WebUI
+- [server.yaml](server.yaml): independent UBI 10 Python 3.12 S2I builds, API and WebUI
   Deployments, Services, edge-TLS Routes, generated application secrets and a
   WebUI PVC.
 - [database.yaml](database.yaml): either MariaDB 11.8 or PostgreSQL 16, a
   database PVC, generated database credentials and database builds.
+- [agents.yaml](agents.yaml) (optional): containerized agent package builds and
+  an updated WebUI BuildConfig that embeds their downloads.
 
-All runtime images and builders are based on **UBI 10**. The public UBI
+All deployed runtime images and database builders are based on **UBI 10**. The public UBI
 repositories do not include the database server packages. Therefore a
 Docker-strategy bootstrap build installs signed packages from the upstream
 MariaDB or PostgreSQL RPM repositories into UBI 10. A subsequent **S2I build**
@@ -17,13 +19,22 @@ images, Red Hat subscriptions, `anyuid` SCC, or root runtime containers are
 required. The PostgreSQL repository must support the cluster's architecture;
 the database builders have been smoke-tested on x86_64.
 
-The API and WebUI share one S2I image with the dependencies of both services;
-they run as separate pods. Their container-only settings leave local/RPM
+The API and WebUI have separate S2I BuildConfigs, ImageStreams, Deployments and
+pods: `tuxcmdb-api` and `tuxcmdb-webui`. Each image installs its own component's
+dependencies plus shared core dependencies. Only the WebUI collects static
+files. Building one component updates only its own Deployment.
+Their container-only settings leave local/RPM
 configuration unchanged. WebUI runs Daphne (including WebSockets), with
 `DEBUG=False`, a generated Django secret, explicit allowed host/CSRF origin,
 secure cookies, and pre-collected static files served by WhiteNoise.
 Compressed, non-manifest static storage accommodates the bundled vendor files'
 missing source maps.
+
+Agent downloads are **disabled by default**. The optional agent build uses
+matching distribution stages: UBI 8/9/10 for RPMs and Debian 12 for the DEB,
+then collects the packages and Windows PowerShell scripts in a UBI 10 artifact
+image. Those build stages are not deployed services. API/WebUI runtime images
+remain UBI 10 whether or not agent downloads are enabled.
 
 ## Prerequisites
 
@@ -38,6 +49,8 @@ missing source maps.
   certificate; install your own route certificates if using other domains.
 - Build egress to Git, `registry.access.redhat.com`, PyPI, the UBI repositories,
   and the selected upstream database RPM repository.
+- If enabling agent downloads, build egress also needs the UBI 8/9 registries
+  and repositories, Docker Hub (Debian), Debian package repositories and RubyGems.
 - Commit/push these files to the Git branch used for the builds. Set
   `SOURCE_REPOSITORY_URL` to your fork and `SOURCE_REPOSITORY_REF` to that branch
   or a commit SHA in **both** templates. `main` is only suitable after these
@@ -154,7 +167,8 @@ oc process --local -f deploy/openshift/server.yaml \
   -p API_HOST=cmdb-api.apps.example.com \
   | oc create -f -
 
-oc logs -f bc/tuxcmdb-server
+oc logs -f bc/tuxcmdb-api
+oc logs -f bc/tuxcmdb-webui
 oc rollout status deployment/tuxcmdb-api --timeout=10m
 oc rollout status deployment/tuxcmdb-webui --timeout=10m
 oc get routes
@@ -186,6 +200,86 @@ curl --fail --user admin https://cmdb-api.apps.example.com/v1/assets
 The second command prompts for the password. Agents should use the API Route.
 The WebUI talks to the API's internal Service, not the public Route.
 
+### 3. Optional agent downloads
+
+Skip this step to opt out. The default WebUI will report that no agent
+downloads are available; it has no dependency on agent builds.
+
+To include the contents of `tuxcmdb-webui-agents`, apply the optional template
+**after** installing the server. Use the same repository/ref and `PYTHON_IMAGE`
+as the server:
+
+```bash
+oc process --local -f deploy/openshift/agents.yaml \
+  -p SOURCE_REPOSITORY_URL=https://github.com/MrMEEE/tuxcmdb.git \
+  -p SOURCE_REPOSITORY_REF=main \
+  | oc apply -f -
+
+oc logs -f bc/tuxcmdb-agents
+# A successful artifact image triggers the WebUI S2I build:
+oc get builds -w
+oc rollout status deployment/tuxcmdb-webui --timeout=10m
+```
+
+This template creates the `tuxcmdb-agents` ImageStream/BuildConfig and replaces
+the configuration of the existing `tuxcmdb-webui` BuildConfig. It does not
+modify Secrets, PVCs or the API. It builds:
+
+- `tuxcmdb-agent-VERSION-1.el8.noarch.rpm` (legacy EL8 source, system requests).
+- `tuxcmdb-agent-VERSION-1.el9.noarch.rpm`.
+- `tuxcmdb-agent-VERSION-1.el10.noarch.rpm`.
+- `tuxcmdb-agent_VERSION-1.debian_all.deb`.
+- `tuxcmdb-agent.ps1` and `tuxcmdb-agent-VERSION.ps1`.
+
+Packages use [the shared packaging helper](../../tools/build-agent-package.sh),
+also used by the Linux agent release workflow. The version comes from
+`version.py`; CI can override it with the release version. RPMs and DEBs
+preserve the existing launcher, systemd units and installation/removal scripts.
+EL9/10 and Debian vendor pure-Python dependencies so the packages remain
+architecture-independent.
+
+The WebUI build copies `/opt/tuxcmdb-webui-agents` from the artifact image
+into its S2I source and checks that every package matches the source version.
+Missing or mismatched artifacts fail the build explicitly. Downloads are
+embedded in the WebUI image, not generated at startup or stored on a PVC.
+They are served through `/agents/` and the existing stable `latest` aliases.
+
+To rebuild agent packages, including after a version change:
+
+```bash
+oc start-build tuxcmdb-agents --follow
+# This automatically starts a new WebUI build, but not an API build.
+```
+
+Keep the source refs in both BuildConfigs aligned. With agent downloads
+enabled, apply `agents.yaml` last when updating build configuration so that
+the base server template does not overwrite the optional WebUI build settings.
+For routine WebUI-only changes with the same version, `oc start-build
+tuxcmdb-webui --follow` reuses the existing artifacts.
+
+#### Disabling agent downloads after enabling them
+
+Reapply only the base WebUI BuildConfig using your existing source/image
+parameters (replace the example hostnames):
+
+```bash
+oc process --local -f deploy/openshift/server.yaml \
+  -p SOURCE_REPOSITORY_REF=main \
+  -p WEBUI_HOST=cmdb.apps.example.com \
+  -p API_HOST=cmdb-api.apps.example.com \
+  | jq '{apiVersion:"v1",kind:"List",items:[.items[] |
+      select(.kind == "BuildConfig" and .metadata.name == "tuxcmdb-webui")]}' \
+  | oc apply -f -
+
+oc get builds -w
+oc rollout status deployment/tuxcmdb-webui --timeout=10m
+```
+
+This removes the artifact input/requirement and restores the configuration
+trigger, rebuilding the WebUI without downloads. After that rollout, optionally
+remove `bc/tuxcmdb-agents` and `is/tuxcmdb-agents`. Do **not** delete all objects
+from the optional template: that would also delete the WebUI BuildConfig.
+
 ## Updates and operation
 
 **Do not re-process and apply templates with fresh generated secrets to an
@@ -198,8 +292,43 @@ separately. Never commit rendered secrets to Git.
 After publishing application changes to the configured source ref:
 
 ```bash
-oc start-build tuxcmdb-server --follow
+oc start-build tuxcmdb-api --follow
+oc start-build tuxcmdb-webui --follow
 ```
+
+Either component can be rebuilt independently; running both commands is not
+required when only one component changed.
+
+### Migrating from the shared application build
+
+Publish these changes first. Render the updated template using the same source
+ref and route hostnames, but apply only BuildConfigs, ImageStreams and
+Deployments so existing Secrets and PVCs are preserved:
+
+```bash
+oc process --local -f deploy/openshift/server.yaml \
+  -p SOURCE_REPOSITORY_REF=main \
+  -p WEBUI_HOST=cmdb.apps.example.com \
+  -p API_HOST=cmdb-api.apps.example.com \
+  | jq '{apiVersion:"v1",kind:"List",items:[.items[] |
+      select(.kind == "BuildConfig" or .kind == "ImageStream" or .kind == "Deployment")]}' \
+  | oc apply -f -
+
+oc logs -f bc/tuxcmdb-api
+oc logs -f bc/tuxcmdb-webui
+oc rollout status deployment/tuxcmdb-api --timeout=10m
+oc rollout status deployment/tuxcmdb-webui --timeout=10m
+```
+
+Set `SOURCE_REPOSITORY_URL` as well if using a fork. Once both Deployments
+successfully use their new images, the obsolete shared build and image stream
+can be removed (the `tuxcmdb-server` Secret must be kept):
+
+```bash
+oc delete bc/tuxcmdb-server is/tuxcmdb-server
+```
+
+### Database rebuilds
 
 To pick up database script changes without changing packages:
 
