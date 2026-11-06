@@ -126,7 +126,9 @@
           <tbody>
             {% for assignment in asset.attributes %}
             <tr>
-              <td>{{ assignment.name }}</td>
+              <td>{{ assignment.name }}
+                {% if assignment.invalid_result %}<span class="badge bg-warning text-dark" title="{{ assignment.invalid_result.reason }}">Invalid result</span>{% endif %}
+              </td>
               <td>{{ assignment.value|default:'-' }}</td>
               <td>{{ assignment.assigned_at }}</td>
               <td>
@@ -159,7 +161,17 @@
               </td>
             </tr>
             {% empty %}
+            {% if not asset.unassigned_invalid_attributes %}
             <tr><td colspan="4">No active assignments.</td></tr>
+            {% endif %}
+            {% endfor %}
+            {% for invalid in asset.unassigned_invalid_attributes %}
+            <tr>
+              <td>{{ invalid.attribute_name }} <span class="badge bg-warning text-dark" title="{{ invalid.reason }}">Invalid result</span></td>
+              <td>No valid value</td>
+              <td>{{ invalid.reported_at }}</td>
+              <td></td>
+            </tr>
             {% endfor %}
           </tbody>
         </table>

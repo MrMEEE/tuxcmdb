@@ -426,7 +426,8 @@ def _normalize_asset_list_fields(raw_fields: list[str], attribute_catalog: list[
     return selected
 
 
-def _asset_custom_field_values(asset: dict[str, Any], selected_fields: list[str]) -> list[dict[str, str]]:
+def _asset_custom_field_values(asset: dict[str, Any], selected_fields: list[str]) -> list[dict[str, Any]]:
+    invalid_names = {item["attribute_name"] for item in asset.get("invalid_attributes", [])}
     values_by_name: dict[str, list[str]] = {name: [] for name in selected_fields}
     for item in asset.get("attributes") or []:
         if not isinstance(item, dict):
@@ -438,7 +439,8 @@ def _asset_custom_field_values(asset: dict[str, Any], selected_fields: list[str]
         if value is not None and str(value).strip():
             values_by_name[name].append(str(value).strip())
     return [
-        {"name": name, "value": " · ".join(values_by_name[name]) or "-"}
+        {"name": name, "value": " · ".join(values_by_name[name]) or ("No valid value" if name in invalid_names else "-"),
+         "invalid_result": name in invalid_names}
         for name in selected_fields
     ]
 
@@ -1474,6 +1476,14 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
         return redirect("assets")
 
     asset_agent_version = _asset_agent_version(asset)
+    invalid_attributes = {item["attribute_name"]: item for item in asset.get("invalid_attributes", [])}
+    assigned_names = set()
+    for assignment in asset.get("attributes", []):
+        assigned_names.add(assignment["name"])
+        assignment["invalid_result"] = invalid_attributes.get(assignment["name"])
+    asset["unassigned_invalid_attributes"] = [
+        item for name, item in invalid_attributes.items() if name not in assigned_names
+    ]
     asset_os_value = _asset_os_value(asset)
     asset_os_mismatch = bool(asset_os_value) and _find_matching_operatingsystem(operating_systems, asset_os_value) is None
 

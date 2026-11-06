@@ -186,6 +186,15 @@ assignments = Table(
     Column("changed_at", DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()),
 )
 
+agent_attribute_errors = Table(
+    "agent_attribute_errors",
+    metadata,
+    Column("asset_id", Integer, primary_key=True),
+    Column("attribute_id", Integer, primary_key=True),
+    Column("reason", Text, nullable=False),
+    Column("reported_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
 audit_log = Table(
     "audit_log",
     metadata,
@@ -686,6 +695,13 @@ class AuditLogOut(BaseModel):
     created_at: datetime
 
 
+class AgentAttributeErrorOut(BaseModel):
+    attribute_id: int
+    attribute_name: str
+    reason: str
+    reported_at: datetime
+
+
 class AssetOut(BaseModel):
     id: int
     assetname: str
@@ -695,6 +711,7 @@ class AssetOut(BaseModel):
     created_at: datetime
     changed_at: datetime
     attributes: list[AssignedAttributeOut] = Field(default_factory=list)
+    invalid_attributes: list[AgentAttributeErrorOut] = Field(default_factory=list)
 
 
 class AssetMergeCandidateOut(BaseModel):
@@ -783,6 +800,19 @@ class AgentReportRequest(BaseModel):
     asset_id: int
     systempass: str = Field(min_length=1, max_length=255)
     values: list[AgentAttributeValueIn] = Field(default_factory=list)
+
+
+class AgentReportError(BaseModel):
+    index: int
+    attribute_name: str
+    reason: str
+
+
+class AgentReportResponse(MessageResponse):
+    updated_count: int
+    unchanged_count: int
+    rejected_count: int
+    errors: list[AgentReportError] = Field(default_factory=list)
 
 
 def _load_tuxcmdb_database_url(path: Path) -> str | None:
@@ -2221,6 +2251,19 @@ def log_audit_entry(
 def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
     asset_ids = [row.id for row in rows]
     attrs_by_asset = fetch_current_attributes_for_assets(conn, asset_ids)
+    errors_by_asset: dict[int, list[AgentAttributeErrorOut]] = {}
+    if asset_ids:
+        for error in conn.execute(
+            select(
+                agent_attribute_errors.c.asset_id, agent_attribute_errors.c.attribute_id,
+                attributes.c.name, agent_attribute_errors.c.reason, agent_attribute_errors.c.reported_at,
+            ).join(attributes, attributes.c.id == agent_attribute_errors.c.attribute_id)
+            .where(agent_attribute_errors.c.asset_id.in_(asset_ids))
+        ):
+            errors_by_asset.setdefault(error.asset_id, []).append(AgentAttributeErrorOut(
+                attribute_id=error.attribute_id, attribute_name=error.name,
+                reason=error.reason, reported_at=error.reported_at,
+            ))
     return [
         AssetOut(
             id=row.id,
@@ -2231,6 +2274,7 @@ def build_asset_out(rows: list[Any], conn: Connection) -> list[AssetOut]:
             created_at=row.created_at,
             changed_at=row.changed_at,
             attributes=attrs_by_asset.get(row.id, []),
+            invalid_attributes=errors_by_asset.get(row.id, []),
         )
         for row in rows
     ]
@@ -2540,6 +2584,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             hypervisor_clusters,
             apiusers,
             datatypes,
+            agent_attribute_errors,
             audit_log,
             ldap_sources,
             ldap_user_access,
@@ -4111,6 +4156,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             if in_use is not None:
                 raise HTTPException(status_code=409, detail="Attribute is in use and cannot be deleted")
 
+            conn.execute(agent_attribute_errors.delete().where(agent_attribute_errors.c.attribute_id == attribute_id))
             conn.execute(attributes.delete().where(attributes.c.id == attribute_id))
             log_audit_entry(conn, _.username, "attribute", row.name, "delete")
 
@@ -4469,8 +4515,8 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 tasks=tasks,
             )
 
-    @app.post("/v1/agent/report", response_model=MessageResponse)
-    def agent_report(payload: AgentReportRequest) -> MessageResponse:
+    @app.post("/v1/agent/report", response_model=AgentReportResponse)
+    def agent_report(payload: AgentReportRequest) -> AgentReportResponse:
         with engine.begin() as conn:
             asset_row = verify_agent_credentials(conn, payload.asset_id, payload.systempass)
             if not asset_row.active:
@@ -4485,17 +4531,44 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
             )
 
             updated_count = 0
-            for item in payload.values:
+            unchanged_count = 0
+            errors: list[AgentReportError] = []
+            for index, item in enumerate(payload.values):
                 normalized_name = item.attribute_name.strip().lower()
                 attribute_row = conn.execute(
                     select(attributes.c.id, attributes.c.data_type, attributes.c.allow_multiple)
                     .where(attributes.c.name == normalized_name)
                 ).one_or_none()
                 if attribute_row is None:
+                    errors.append(AgentReportError(
+                        index=index, attribute_name=normalized_name, reason="Unknown attribute",
+                    ))
                     continue
 
-                validate_attribute_value(conn, attribute_row.data_type, item.value)
+                try:
+                    validate_attribute_value(conn, attribute_row.data_type, item.value)
+                except HTTPException as exc:
+                    if exc.status_code != 400:
+                        raise
+                    errors.append(AgentReportError(
+                        index=index, attribute_name=normalized_name,
+                        reason=f"Value does not satisfy data_type '{attribute_row.data_type}'",
+                    ))
+                    conn.execute(agent_attribute_errors.delete().where(
+                        agent_attribute_errors.c.asset_id == asset_row.id,
+                        agent_attribute_errors.c.attribute_id == attribute_row.id,
+                    ))
+                    conn.execute(agent_attribute_errors.insert().values(
+                        asset_id=asset_row.id, attribute_id=attribute_row.id,
+                        reason=errors[-1].reason,
+                    ))
+                    continue
+                conn.execute(agent_attribute_errors.delete().where(
+                    agent_attribute_errors.c.asset_id == asset_row.id,
+                    agent_attribute_errors.c.attribute_id == attribute_row.id,
+                ))
                 if has_same_active_assignment(conn, asset_row.id, attribute_row.id, item.value):
+                    unchanged_count += 1
                     continue
                 apply_assignment_policy(conn, asset_row.id, attribute_row)
                 conn.execute(
@@ -4514,9 +4587,25 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                 "asset",
                 asset_row.assetname,
                 "agent_report",
-                {"updated_count": updated_count},
+                {
+                    "updated_count": updated_count,
+                    "unchanged_count": unchanged_count,
+                    "rejected_count": len(errors),
+                    "errors": [error.model_dump() for error in errors],
+                },
             )
-        return MessageResponse(status="ok", message=f"Assignments updated: {updated_count}")
+        if errors:
+            logger.warning(
+                "Agent report for asset %s rejected %s of %s values (attributes: %s)",
+                asset_row.id, len(errors), len(payload.values),
+                ", ".join(sorted({error.attribute_name for error in errors})),
+            )
+        return AgentReportResponse(
+            status="partial" if errors else "ok",
+            message=f"Assignments updated: {updated_count}; unchanged: {unchanged_count}; rejected: {len(errors)}",
+            updated_count=updated_count, unchanged_count=unchanged_count,
+            rejected_count=len(errors), errors=errors,
+        )
 
     @app.post("/v1/assets/{asset_ref}/attributes", response_model=MessageResponse)
     def add_asset_attribute(asset_ref: str, payload: dict[str, Any], _: AuthenticatedUser = Depends(require_write_access)) -> MessageResponse:

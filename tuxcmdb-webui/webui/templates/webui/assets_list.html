@@ -110,7 +110,7 @@
             <span class="text-muted">Loading…</span>
           </td>
           {% for field in asset.custom_fields %}
-          <td>{{ field.value }}</td>
+          <td>{{ field.value }}{% if field.invalid_result %} <span class="badge bg-warning text-dark">Invalid result</span>{% endif %}</td>
           {% endfor %}
           <td class="d-flex gap-2 align-items-center">
             <a class="btn btn-sm btn-default" href="{% url 'asset-detail' asset.id %}">Open</a>

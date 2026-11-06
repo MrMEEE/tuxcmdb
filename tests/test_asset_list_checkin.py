@@ -124,6 +124,25 @@ class AssetListCheckinTests(unittest.TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertIn("Pending", detail.content.decode())
 
+    def test_invalid_result_badges_keep_old_values_and_show_never_valid_attributes(self):
+        asset = self.asset("reported")
+        asset["attributes"] = [{"name": "old-boolean", "value": "true", "history_count": 1}]
+        asset["invalid_attributes"] = [
+            {"attribute_name": name, "reason": "Invalid boolean", "reported_at": "2026-11-06"}
+            for name in ("old-boolean", "new-boolean")
+        ]
+        def api_response(_username, _password, _method, path, **_kwargs):
+            return asset if path == "/v1/assets/1" else []
+        with patch("webui.views.api_request", side_effect=api_response), \
+                patch("webui.views._get_vm_mappings", return_value={}):
+            html = asset_detail_view(self.request, "1").content.decode()
+        self.assertEqual(html.count(">Invalid result</span>"), 2)
+        self.assertIn("<td>true</td>", html)
+        self.assertIn("<td>No valid value</td>", html)
+        from webui.views import _asset_custom_field_values
+        fields = _asset_custom_field_values(asset, ["old-boolean", "new-boolean"])
+        self.assertTrue(all(field["invalid_result"] for field in fields))
+        self.assertEqual([field["value"] for field in fields], ["true", "No valid value"])
 
 if __name__ == "__main__":
     unittest.main()

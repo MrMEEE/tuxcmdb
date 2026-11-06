@@ -53,6 +53,31 @@ For a hardened production rollout, move credentials to DPAPI-protected storage o
 
 ## Downloading agents from the WebUI
 
+### Report validation
+
+The agent submits collected values in one request. The API validates each value
+independently: invalid datatype values and unknown attributes are rejected without
+discarding other valid updates. An invalid value does not remove the attribute's
+previous assignment. Successful authenticated reports update the last-checkin
+time even if all submitted values are rejected.
+
+The HTTP 200 response retains `status` and `message` and includes `updated_count`,
+`unchanged_count`, `rejected_count`, and `errors` (zero-based input `index`,
+`attribute_name`, and `reason`). `status` is `partial` when any values are rejected,
+otherwise `ok`. Rejections are also recorded in the API warning log and the
+`agent_report` audit entry, without logging submitted values. Existing agents
+can use this behavior without an update, but do not display the rejection details.
+The WebUI marks known rejected attributes with an **Invalid result** badge,
+preserving their last valid values. Attributes with no valid assignment show
+**No valid value**. Status is persisted separately from assignment history and
+cleared by the next valid result for that attribute, even if its value is
+unchanged. Attributes omitted from later reports retain their status. Badges
+appear on asset details and selected attribute columns in the inventory list.
+Unknown attribute names are reported as rejections but cannot receive a badge
+until an attribute definition exists.
+Authentication, asset approval/decommissioning checks, malformed request bodies,
+and unexpected server/database errors still fail the request as a whole.
+
 ### Remote Linux installation
 
 Signed-in users with write access can use **Agents → Install agent** above the
