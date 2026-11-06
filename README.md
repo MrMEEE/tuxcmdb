@@ -93,6 +93,16 @@ python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
 
+### Virtual machine asset matching
+
+Select the asset UUID attribute on the hypervisor cluster to link discovered VMs
+to inventory assets. Both the cluster details and Virtual Machines pages accept
+standard UUIDs and the SMBIOS mixed-endian representation (the first three UUID
+fields byte-swapped). Exact UUID matches take priority, with byte-swapped matches
+used only as a fallback. UUID case and formatting are normalized for comparison;
+stored inventory values are unchanged. Ambiguous matches are left unlinked and
+logged rather than selecting an arbitrary asset.
+
 ## OKD / OpenShift
 
 See the [OpenShift deployment guide](deploy/openshift/README.md) for UBI 10

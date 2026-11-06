@@ -23,6 +23,7 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.debug import sensitive_post_parameters
 
 from . import agent_builds, agent_install
+from .vm_matching import match_vm_asset
 from .auth import login_required
 from .forms import (
     AgentBuildSettingsForm,
@@ -1960,8 +1961,8 @@ def hypervisor_detail_view(request: HttpRequest, cluster_id: int) -> HttpRespons
     for vm in vms:
         if isinstance(vm, dict):
             vm_uuid = vm.get("uuid")
-            if vm_uuid in uuid_to_asset:
-                asset_info = uuid_to_asset[vm_uuid]
+            asset_info = match_vm_asset(vm_uuid, uuid_to_asset)
+            if asset_info is not None:
                 vm["asset_id"] = asset_info["id"]
                 vm["asset_name"] = asset_info["name"]
     
@@ -2121,8 +2122,8 @@ def virtual_machines_view(request: HttpRequest) -> HttpResponse:
                         vm_dict["cluster_id"] = cluster_id
                         vm_dict["cluster_name"] = cluster_name
                         vm_uuid = vm.get("uuid")
-                        if vm_uuid in uuid_to_asset:
-                            asset_info = uuid_to_asset[vm_uuid]
+                        asset_info = match_vm_asset(vm_uuid, uuid_to_asset)
+                        if asset_info is not None:
                             vm_dict["asset_id"] = asset_info["id"]
                             vm_dict["asset_name"] = asset_info["name"]
                         all_vms.append(vm_dict)
