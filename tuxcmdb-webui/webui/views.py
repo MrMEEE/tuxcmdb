@@ -2900,7 +2900,7 @@ def agents_install_status_view(request: HttpRequest, job_id: str) -> HttpRespons
         return JsonResponse({"error": "Agent installation requires write access."}, status=403)
     data = agent_install.status(job_id, request.user.username)
     if data is None:
-        raise Http404("Installation not found")
+        return JsonResponse({"error": "Installation not found."}, status=404)
     response = JsonResponse(data)
     response["Cache-Control"] = "no-store"
     return response
@@ -2910,25 +2910,24 @@ def agents_install_status_view(request: HttpRequest, job_id: str) -> HttpRespons
 @require_POST
 def agents_build_view(request: HttpRequest) -> HttpResponse:
     if not _can_manage_agent_builds(request):
-        return HttpResponse("Agent builds are not permitted.", status=403)
+        return JsonResponse({"error": "Agent builds are not permitted."}, status=403)
     try:
         agent_builds.request("POST", "/build")
     except agent_builds.AgentUpdaterError as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, "Agent build requested. An active build will be reused.")
-    return redirect("agents")
+        return JsonResponse({"error": str(exc)}, status=502)
+    return JsonResponse({"message": "Agent build requested. An active build will be reused."})
 
 
 @login_required
 def agents_settings_view(request: HttpRequest) -> HttpResponse:
     if not _can_manage_agent_builds(request):
-        return HttpResponse("Agent build settings are not permitted.", status=403)
+        return JsonResponse({"error": "Agent build settings are not permitted."}, status=403)
+    if request.method == "GET" and "application/json" not in request.headers.get("Accept", ""):
+        return redirect(reverse("agents") + "?agent-settings=1")
     try:
         status = agent_builds.request("GET", "/status")
     except agent_builds.AgentUpdaterError as exc:
-        messages.error(request, str(exc))
-        return redirect("agents")
+        return JsonResponse({"error": str(exc)}, status=502)
     form = AgentBuildSettingsForm(request.POST if request.method == "POST" else None,
                                   initial={"versions_to_keep": status.get("versions_to_keep", 3)})
     if request.method == "POST" and form.is_valid():
@@ -2937,9 +2936,13 @@ def agents_settings_view(request: HttpRequest) -> HttpResponse:
         except agent_builds.AgentUpdaterError as exc:
             form.add_error(None, str(exc))
         else:
-            messages.success(request, "Agent build settings saved.")
-            return redirect("agents")
-    return render(request, "webui/agent_build_settings.html", {"form": form})
+            return JsonResponse({"message": "Agent build settings saved."})
+    if request.method == "POST":
+        return JsonResponse({"errors": form.errors.get_json_data()}, status=400)
+    return JsonResponse({
+        "versions_to_keep": form.initial["versions_to_keep"],
+        "build_status": {key: status.get(key, "") for key in ("state", "job", "error")},
+    })
 
 
 def agents_download_view(request: HttpRequest, filename: str) -> HttpResponse | FileResponse:

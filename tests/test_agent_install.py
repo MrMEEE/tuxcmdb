@@ -59,7 +59,7 @@ class AgentInstallTests(unittest.TestCase):
         self.assertEqual(form.cleaned_data["hosts"], ["192.0.2.1", "2001:db8::1"])
         self.assertEqual(form.cleaned_data["server_url"], "https://api.example.test:8443")
         for field, value in (
-            ("hosts", "example.test"), ("hosts", "192.0.2.1;id"), ("hosts", "0.0.0.0"),
+            ("hosts", "192.0.2.1;id"), ("hosts", "0.0.0.0"),
             ("hosts", "ff02::1"), ("hosts", "fe80::1%eth0"),
             ("hosts", " ".join(f"192.0.2.{number}" for number in range(1, 52))),
             ("username", "-oProxyCommand=id"), ("password", "pass\nid"),
@@ -70,6 +70,35 @@ class AgentInstallTests(unittest.TestCase):
             with self.subTest(field=field, value=value):
                 invalid = AgentInstallForm({**data, field: value})
                 self.assertFalse(invalid.is_valid())
+
+    def test_form_accepts_mixed_hostnames_and_ips_and_normalizes_duplicates(self):
+        form = AgentInstallForm({
+            **self.options,
+            "hosts": "HOST-01,host-01. server.example.test\n192.0.2.1 2001:db8::1 SERVER.EXAMPLE.TEST.",
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data["hosts"],
+                         ["host-01", "server.example.test", "192.0.2.1", "2001:db8::1"])
+        for value in ("https://host.test", "host.test:22", "user@host.test", "-host",
+                      "host-", "host..test", "host_name", "host/test", "$(id)",
+                      "999.1.1.1", "123", "a" * 64 + ".test",
+                      ".".join(["a" * 63] * 4)):
+            with self.subTest(value=value):
+                self.assertFalse(AgentInstallForm({**self.options, "hosts": value}).is_valid())
+
+    @patch("webui.agent_install.paramiko.SSHClient")
+    def test_hostname_is_passed_to_ssh_for_resolution(self, ssh):
+        ssh.return_value.connect.side_effect = socket.gaierror("DNS lookup failed")
+        updates = []
+        with self.assertLogs("webui.agent_install", level="WARNING"):
+            agent_install._install_host(
+                {"host": "server.example.test"}, self.options, {},
+                lambda *values: updates.append(values),
+            )
+        self.assertEqual(ssh.return_value.connect.call_args.args[0], "server.example.test")
+        self.assertTrue(any(step == "connect" and state == "failed"
+                            for step, state, message in updates))
+        self.assertTrue(any("could not be resolved" in message for _, _, message in updates))
 
     def test_detects_supported_distributions_without_executing_os_release(self):
         for text, expected in (

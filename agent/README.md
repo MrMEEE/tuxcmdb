@@ -56,11 +56,14 @@ For a hardened production rollout, move credentials to DPAPI-protected storage o
 ### Remote Linux installation
 
 Signed-in users with write access can use **Agents → Install agent** above the
-downloads list. Supply up to 50 literal IP addresses (comma/space/newline
+downloads list. Supply up to 50 hostnames or IPv4/IPv6 addresses (comma/space/newline
 separated), an SSH username/password, and the server's API hostname or URL.
 The default is the current WebUI server; OpenShift uses its separate API Route
 when `TUXCMDB_AGENT_INSTALL_SERVER_URL` is configured. A bare hostname uses
 HTTPS. Targets must reach the API address and their package repositories.
+Short hostnames and fully qualified DNS names are supported, and names are
+resolved from the WebUI server/pod, not from your browser. Duplicate names are
+compared case-insensitively; a trailing DNS dot is optional.
 
 The WebUI server connects over SSH port 22, detects EL8/9/10 or Debian/Ubuntu,
 uploads the corresponding currently published package over SFTP, verifies its
@@ -76,11 +79,15 @@ agent's registration and future requests. It does not disable SSH host-key
 checks. First-seen SSH keys are trusted and recorded; changed keys are rejected.
 Verify host identity independently on first use, and manage changed keys manually.
 
-The page shows live per-host steps: SSH, OS detection, transfer, installation,
+An on-page modal shows live per-host steps: SSH, OS detection, transfer, installation,
 account verification, registration, timer activation and cleanup. Hosts are
 processed sequentially; one host's failure does not stop the next. Only one
 installation batch can run at a time. Progress is visible only to its initiating
 user, and polling resumes on page refresh in the same browser tab.
+Closing the modal does not cancel the installation; use **View installation
+progress** to reopen it. Validation, request failures and download errors appear
+in modals without leaving the Agents page. If a status request fails, use
+**Retry status** before starting another batch.
 
 Credentials are used in worker memory only, never persisted in progress records,
 shell commands or logs. Browser-side passwords are cleared after successful

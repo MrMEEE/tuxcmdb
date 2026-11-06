@@ -263,6 +263,8 @@ test "$(systemctl show tuxcmdb-agent.service -p User --value)" = tuxcmdb-agent
             message = str(exc)
             if current == "register":
                 message += " Check API reachability, certificate trust, and any existing agent server/TLS configuration."
+        elif isinstance(exc, socket.gaierror):
+            message = "Hostname could not be resolved from the WebUI server. Check DNS and the hostname."
         elif isinstance(exc, (socket.timeout, TimeoutError)):
             message = "SSH connection or operation timed out."
         else:

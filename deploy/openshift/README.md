@@ -299,6 +299,9 @@ when the optional updater responds. The POST action is CSRF-protected and uses
 the same Job path as automatic checks; an already active Job is reused. A
 manual request rebuilds even an unchanged source commit. Anonymous/read-only
 users retain public download access but cannot trigger builds or change settings.
+Build status, build-request results and errors are shown in on-page modals.
+**Agent build settings** opens a modal to edit version retention; validation
+errors stay in that modal and saving does not navigate away from Agents.
 
 Inspect builds and failures:
 
@@ -411,7 +414,7 @@ oc get builds -w
 The Agents page includes **Install agent** for signed-in users with write access,
 independently of the optional build controls. Published Linux packages are
 required. See the [remote installation guide](../../agent/README.md#remote-linux-installation).
-The WebUI pod needs network access to the target IPs on TCP 22; target hosts need
+The WebUI pod must resolve target hostnames and reach the targets on TCP 22; target hosts need
 API Route and package-repository access. Restrict WebUI egress to authorized
 management networks as appropriate.
 

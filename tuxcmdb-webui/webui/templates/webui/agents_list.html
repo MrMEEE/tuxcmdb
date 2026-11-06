@@ -2,20 +2,54 @@
 {% block title %}Agents · TuxCMDB{% endblock %}
 {% block page_title %}Agents{% endblock %}
 {% block content %}
+<div id="agents-page">
 {% if agent_build_error %}
-<div class="alert alert-warning">{{ agent_build_error }}</div>
+<p id="agent-build-error" hidden>{{ agent_build_error }}</p>
+<button type="button" class="btn btn-warning mb-3" data-open-modal="agent-feedback-modal">View updater error</button>
 {% endif %}
 {% if agent_build_status %}
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <h5>OpenShift Agent Builds</h5>
-    <p>Status: {{ agent_build_status.state }}{% if agent_build_status.job %} ({{ agent_build_status.job }}){% endif %}</p>
-    {% if agent_build_status.error %}<div class="alert alert-danger">{{ agent_build_status.error }}</div>{% endif %}
-    <form method="post" action="{% url 'agents-build' %}" class="d-inline">
+    <button type="button" class="btn btn-outline-secondary" id="agent-build-status-open" data-url="{% url 'agents-settings' %}">View build status</button>
+    <form method="post" action="{% url 'agents-build' %}" class="d-inline" id="agent-build-form">
       {% csrf_token %}
       <button type="submit" class="btn btn-primary">Build agents now</button>
     </form>
-    <a class="btn btn-outline-secondary" href="{% url 'agents-settings' %}">Agent build settings</a>
+    <button type="button" class="btn btn-outline-secondary" id="agent-settings-open" data-url="{% url 'agents-settings' %}">Agent build settings</button>
+  </div>
+</div>
+<div id="agent-build-status-modal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" role="dialog" aria-modal="true" aria-labelledby="agent-build-status-title">
+    <div class="tuxcmdb-modal-header">
+      <h5 id="agent-build-status-title">Agent build status</h5>
+      <button type="button" class="tuxcmdb-modal-close" data-close-modal="agent-build-status-modal" aria-label="Close">&times;</button>
+    </div>
+    <div class="tuxcmdb-modal-body">
+      <p id="agent-build-state">Status: {{ agent_build_status.state }}{% if agent_build_status.job %} ({{ agent_build_status.job }}){% endif %}</p>
+      <p id="agent-build-status-error" class="text-danger" {% if not agent_build_status.error %}hidden{% endif %}>{{ agent_build_status.error|default:"" }}</p>
+    </div>
+  </div>
+</div>
+<div id="agent-settings-modal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" role="dialog" aria-modal="true" aria-labelledby="agent-settings-title">
+    <div class="tuxcmdb-modal-header">
+      <h5 id="agent-settings-title">Agent build settings</h5>
+      <button type="button" class="tuxcmdb-modal-close" data-close-modal="agent-settings-modal" aria-label="Close">&times;</button>
+    </div>
+    <form id="agent-settings-form" method="post" action="{% url 'agents-settings' %}" novalidate>
+      <div class="tuxcmdb-modal-body">
+        {% csrf_token %}
+        <label for="agent-versions-to-keep">Versions to keep</label>
+        <input id="agent-versions-to-keep" name="versions_to_keep" type="number" class="form-control" min="1" required>
+        <p>The current version is always kept. Lowering this value removes older downloads on the next updater reconciliation.</p>
+        <p id="agent-settings-error" class="text-danger" role="alert" hidden></p>
+      </div>
+      <div class="tuxcmdb-modal-footer">
+        <button type="submit" class="btn btn-primary">Save settings</button>
+        <button type="button" class="btn btn-outline-secondary" data-close-modal="agent-settings-modal">Cancel</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endif %}
@@ -26,97 +60,30 @@
     <p>Install on Linux hosts over SSH (port 22). Requires root login or sudo with the same password.
       New SSH host keys are trusted and recorded; changed keys are rejected.
       “Ignore SSL verification” affects HTTPS registration only.</p>
-    <form method="post" action="{% url 'agents-install' %}" id="agent-install-form">
+    <form method="post" action="{% url 'agents-install' %}" id="agent-install-form" novalidate>
       {% csrf_token %}
       {{ install_form.as_p }}
       <button type="submit" class="btn btn-primary" id="agent-install-submit">Install agents</button>
     </form>
-    <div id="agent-install-error" class="alert alert-danger mt-3" role="alert" hidden></div>
-    <div id="agent-install-progress" class="mt-3" aria-live="polite"></div>
+    <button type="button" class="btn btn-outline-secondary mt-3" data-open-modal="agent-install-modal" id="agent-install-show" hidden>View installation progress</button>
   </div>
 </div>
-<script>
-(() => {
-  const form = document.getElementById("agent-install-form");
-  const button = document.getElementById("agent-install-submit");
-  const error = document.getElementById("agent-install-error");
-  const progress = document.getElementById("agent-install-progress");
-  const storageKey = "tuxcmdb-agent-install-status";
-  function showError(message) {
-    error.textContent = message;
-    error.hidden = false;
-  }
-  function render(data) {
-    progress.replaceChildren();
-    const heading = document.createElement("h5");
-    heading.textContent = "Installation: " + data.state;
-    progress.append(heading);
-    for (const host of data.hosts) {
-      const title = document.createElement("h6");
-      title.textContent = host.host + " — " + host.state;
-      progress.append(title);
-      const list = document.createElement("ul");
-      for (const step of host.steps) {
-        const item = document.createElement("li");
-        item.textContent = step.label + ": " + step.state + (step.message ? " — " + step.message : "");
-        if (step.state === "failed" || step.state === "interrupted") item.className = "text-danger";
-        else if (step.state === "success") item.className = "text-success";
-        list.append(item);
-      }
-      progress.append(list);
-    }
-  }
-  async function poll(url) {
-    try {
-      const response = await fetch(url, {headers: {"Accept": "application/json"}, cache: "no-store"});
-      if (!response.ok || !response.headers.get("content-type")?.includes("application/json")) {
-        throw new Error("Cannot read installation status. Check your login and refresh this page.");
-      }
-      const data = await response.json();
-      render(data);
-      if (data.state === "running") {
-        button.disabled = true;
-        setTimeout(() => poll(url), 2000);
-      } else {
-        button.disabled = false;
-        sessionStorage.removeItem(storageKey);
-      }
-    } catch (failure) {
-      button.disabled = false;
-      showError(failure.message);
-    }
-  }
-  form.addEventListener("submit", async event => {
-    event.preventDefault();
-    button.disabled = true;
-    error.hidden = true;
-    const body = new FormData(form);
-    try {
-      const response = await fetch(form.action, {method: "POST", body, headers: {"Accept": "application/json"}});
-      if (!response.headers.get("content-type")?.includes("application/json")) {
-        throw new Error("Installation request failed. Check your login and refresh the page.");
-      }
-      const data = await response.json();
-      if (!response.ok) {
-        const fields = Object.entries(data.errors || {}).map(([name, errors]) =>
-          name + ": " + errors.map(value => value.message).join("; "));
-        throw new Error(data.error || fields.join("\n") || "Installation request failed.");
-      }
-      form.elements.password.value = "";
-      body.delete("password");
-      sessionStorage.setItem(storageKey, data.status_url);
-      poll(data.status_url);
-    } catch (failure) {
-      button.disabled = false;
-      showError(failure.message);
-    } finally {
-      body.delete("password");
-    }
-  });
-  const saved = sessionStorage.getItem(storageKey);
-  if (saved && /^\/agents\/install\/[a-f0-9]{32}\/$/.test(saved)) poll(saved);
-})();
-</script>
+<div id="agent-install-modal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" role="dialog" aria-modal="true" aria-labelledby="agent-install-title">
+    <div class="tuxcmdb-modal-header">
+      <h5 id="agent-install-title">Agent installation</h5>
+      <button type="button" class="tuxcmdb-modal-close" data-close-modal="agent-install-modal" aria-label="Close">&times;</button>
+    </div>
+    <div class="tuxcmdb-modal-body">
+      <p id="agent-install-error" class="text-danger" role="alert" hidden></p>
+      <div id="agent-install-progress" aria-live="polite"></div>
+    </div>
+    <div class="tuxcmdb-modal-footer">
+      <button type="button" class="btn btn-outline-secondary" id="agent-install-retry" hidden>Retry status</button>
+      <button type="button" class="btn btn-outline-secondary" data-close-modal="agent-install-modal">Close (installation continues)</button>
+    </div>
+  </div>
+</div>
 {% endif %}
 <div class="card shadow-sm">
   <div class="card-header py-2"><h5 class="mb-0">Agent Downloads</h5></div>
@@ -149,5 +116,18 @@
     <p class="mb-0">No agent packages are currently available. Enable agent builds on OpenShift, or install the <code>tuxcmdb-webui-agents</code> package on a standalone server.</p>
     {% endif %}
   </div>
+</div>
+<div id="agent-feedback-modal" class="tuxcmdb-modal-overlay" hidden>
+  <div class="tuxcmdb-modal" role="dialog" aria-modal="true" aria-labelledby="agent-feedback-title">
+    <div class="tuxcmdb-modal-header">
+      <h5 id="agent-feedback-title">Agents</h5>
+      <button type="button" class="tuxcmdb-modal-close" data-close-modal="agent-feedback-modal" aria-label="Close">&times;</button>
+    </div>
+    <div class="tuxcmdb-modal-body"><p id="agent-feedback-message" role="status" style="white-space:pre-line"></p></div>
+    <div class="tuxcmdb-modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-close-modal="agent-feedback-modal">Close</button>
+    </div>
+  </div>
+</div>
 </div>
 {% endblock %}

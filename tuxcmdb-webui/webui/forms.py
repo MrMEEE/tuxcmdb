@@ -206,8 +206,8 @@ class AgentBuildSettingsForm(forms.Form):
 
 class AgentInstallForm(forms.Form):
     hosts = forms.CharField(
-        label="Host IP addresses", max_length=4000,
-        help_text="Separate IPv4 or IPv6 addresses with spaces, commas or new lines (up to 50).",
+        label="Hostnames or IP addresses", max_length=13000,
+        help_text="Separate hostnames, IPv4 or IPv6 addresses with spaces, commas or new lines (up to 50).",
         widget=forms.Textarea(attrs={"class": "form-control", "rows": 3}),
     )
     username = forms.CharField(max_length=128, widget=forms.TextInput(attrs=TEXT_INPUT))
@@ -228,12 +228,20 @@ class AgentInstallForm(forms.Form):
         for value in re.split(r"[\s,]+", self.cleaned_data["hosts"].strip()):
             try:
                 address = ipaddress.ip_address(value)
-            except ValueError as exc:
-                raise forms.ValidationError(f"Invalid IP address: {value}") from exc
-            if address.is_unspecified or address.is_multicast or "%" in value:
-                raise forms.ValidationError("Use unicast IP addresses without scope identifiers.")
-            if str(address) not in hosts:
-                hosts.append(str(address))
+            except ValueError:
+                hostname = value.removesuffix(".").lower()
+                labels = hostname.split(".")
+                if (len(hostname) > 253 or re.fullmatch(r"[0-9.]+", hostname)
+                        or any(not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                               for label in labels)):
+                    raise forms.ValidationError(f"Invalid hostname or IP address: {value}")
+                host = hostname
+            else:
+                if address.is_unspecified or address.is_multicast or "%" in value:
+                    raise forms.ValidationError("Use unicast IP addresses without scope identifiers.")
+                host = str(address)
+            if host not in hosts:
+                hosts.append(host)
         if len(hosts) > 50:
             raise forms.ValidationError("Install on at most 50 hosts per request.")
         return hosts

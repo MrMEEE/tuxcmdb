@@ -201,7 +201,9 @@ class AgentDownloadTests(unittest.TestCase):
         self.assertEqual(protected.post("/agents/build/").status_code, 403)
         protected.get("/agents/")
         token = protected.cookies["csrftoken"].value
-        self.assertEqual(protected.post("/agents/build/", {"csrfmiddlewaretoken": token}).status_code, 302)
+        result = protected.post("/agents/build/", {"csrfmiddlewaretoken": token})
+        self.assertEqual(result.status_code, 200)
+        self.assertIn("Agent build requested", result.json()["message"])
         self.assertEqual(request.call_args.args[:2], ("POST", "http://updater:8080/build"))
 
     @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
@@ -211,13 +213,55 @@ class AgentDownloadTests(unittest.TestCase):
         request.return_value = Mock(json=Mock(return_value={"state": "idle", "versions_to_keep": 3}))
         self.login()
         response = self.client.get("/agents/settings/")
-        self.assertIn('value="3"', response.content.decode())
-        self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "0"}).status_code, 200)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, "/agents/?agent-settings=1")
+        response = self.client.get("/agents/settings/", HTTP_ACCEPT="application/json")
+        self.assertEqual(response.json()["versions_to_keep"], 3)
+        self.assertEqual(response.json()["build_status"], {"state": "idle", "job": "", "error": ""})
+        invalid = self.client.post("/agents/settings/", {"versions_to_keep": "0"})
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn("versions_to_keep", invalid.json()["errors"])
         self.assertTrue(all(call.args[0] == "GET" for call in request.call_args_list))
-        self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "5"}).status_code, 302)
+        result = self.client.post("/agents/settings/", {"versions_to_keep": "5"})
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()["message"], "Agent build settings saved.")
         self.assertEqual(request.call_args.kwargs["json"], {"versions_to_keep": 5})
         self.login(readonly=True)
         self.assertEqual(self.client.post("/agents/settings/", {"versions_to_keep": "1"}).status_code, 403)
+
+    @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
+                       AGENT_UPDATER_TOKEN="secret")
+    @patch("webui.agent_builds.requests.request")
+    def test_updater_action_errors_are_json_without_redirects(self, request):
+        self.login()
+        request.side_effect = requests.ConnectionError("unavailable")
+        for path, method in (("/agents/build/", "post"), ("/agents/settings/", "post"),
+                             ("/agents/settings/", "get")):
+            with self.subTest(path=path, method=method):
+                result = getattr(self.client, method)(path, HTTP_ACCEPT="application/json")
+                self.assertEqual(result.status_code, 502)
+                self.assertIn("unavailable", result.json()["error"])
+        self.login(readonly=True)
+        self.assertIn("not permitted", self.client.post("/agents/build/").json()["error"])
+        self.assertIn("not permitted", self.client.post("/agents/settings/").json()["error"])
+
+    @override_settings(INSTALLATION_MODE="openshift", AGENT_UPDATER_URL="http://updater:8080",
+                       AGENT_UPDATER_TOKEN="secret")
+    @patch("webui.agent_builds.requests.request")
+    def test_agents_page_contains_modal_controls_and_shared_script(self, request):
+        request.return_value = Mock(json=Mock(return_value={"state": "idle", "versions_to_keep": 3}))
+        self.login()
+        content = self.client.get("/agents/").content.decode()
+        for identifier in ("agent-settings-modal", "agent-install-modal",
+                           "agent-feedback-modal", "agent-build-status-modal"):
+            self.assertIn(f'id="{identifier}" class="tuxcmdb-modal-overlay" hidden', content)
+        self.assertIn("webui/js/agents.js", content)
+        self.assertNotIn('href="/agents/settings/"', content)
+        with override_settings(INSTALLATION_MODE="standard"):
+            content = self.client.get("/agents/").content.decode()
+            self.assertNotIn('id="agent-settings-modal"', content)
+            self.assertNotIn('id="agent-build-status-modal"', content)
+            self.assertIn('id="agent-install-modal"', content)
 
 
 if __name__ == "__main__":
