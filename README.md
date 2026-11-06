@@ -103,6 +103,17 @@ used only as a fallback. UUID case and formatting are normalized for comparison;
 stored inventory values are unchanged. Ambiguous matches are left unlinked and
 logged rather than selecting an arbitrary asset.
 
+The Asset Inventory table loads without waiting for virtualization servers.
+Its **VM Mapped** badges arrive in a separate background request. Successful
+matches are cached in WebUI memory for one hour, and confirmed no-match results
+for 60 seconds, scoped to the API,
+user credentials and access mode; inventory itself remains uncached. API access
+is revalidated on cache hits. Each WebUI worker maintains its own cache, which
+is cleared on restart. Failed or unreachable hypervisor lookups are not cached;
+the page displays an error with **Retry VM mappings** rather than treating a
+failed lookup as an unmapped asset. Background badge loading also works after
+filtering, sorting and live-page refreshes.
+
 ## OKD / OpenShift
 
 See the [OpenShift deployment guide](deploy/openshift/README.md) for UBI 10

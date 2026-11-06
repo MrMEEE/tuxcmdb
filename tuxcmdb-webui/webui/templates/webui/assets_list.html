@@ -61,7 +61,9 @@
         <small class="text-muted">Examples: <code>cpus=4</code>, <code>cpus</code>, <code>active=false</code>, <code>assetname=web*</code>, <code>*prod*</code></small>
       </div>
     </form>
-    <div class="table-responsive">
+    <p id="asset-vm-status" role="status">VM mappings load separately. Matches are cached for one hour; no match for 60 seconds.</p>
+    <button type="button" class="btn btn-default btn-sm mb-2" id="asset-vm-retry" hidden>Retry VM mappings</button>
+    <div class="table-responsive" id="asset-vm-table" data-mappings-url="{% url 'asset-vm-mappings' %}">
     <table class="table table-hover align-middle mb-0">
       <thead>
         <tr>
@@ -104,10 +106,8 @@
           {% if show_last_checkin %}<td>{{ asset.last_checkin_at|default:'Never' }}</td>{% endif %}
           {% if show_agent_version %}<td>{{ asset.agent_version|default:'-' }}</td>{% endif %}
           <td>{{ asset.attributes|length }}</td>
-          <td>
-            {% if asset.vm_info %}
-            <span class="badge bg-info-subtle text-info-emphasis">Mapped to VM</span>
-            {% endif %}
+          <td data-vm-asset-id="{{ asset.id }}" aria-live="polite">
+            <span class="text-muted">Loading…</span>
           </td>
           {% for field in asset.custom_fields %}
           <td>{{ field.value }}</td>

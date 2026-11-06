@@ -14,12 +14,14 @@ from urllib.parse import urlencode
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib import messages
 from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.utils.crypto import salted_hmac
+from django.views.decorators.http import require_GET, require_POST
 from django.views.decorators.debug import sensitive_post_parameters
 
 from . import agent_builds, agent_install
@@ -46,6 +48,7 @@ from .models import AssetListPreference
 from .services import (
     ServiceError,
     api_request,
+    api_base_url,
     authenticate_apiuser,
     create_apiuser,
     create_hypervisor_cluster,
@@ -973,56 +976,87 @@ def logout_view(request: HttpRequest) -> HttpResponse:
     return redirect("login")
 
 
-def _get_vm_mappings(api_username: str, api_password: str) -> dict[str, tuple[str, int]]:
+def _get_vm_mappings(
+    api_username: str, api_password: str, asset_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, tuple[str, int]]:
     """Build UUID→(asset_name, cluster_id) mapping for all VMs from all hypervisors."""
     vm_mapping: dict[str, tuple[str, int]] = {}
-    try:
-        clusters = api_request(api_username, api_password, "GET", "/v1/hypervisors")
-        if isinstance(clusters, list):
-            for cluster in clusters:
-                if not isinstance(cluster, dict):
-                    continue
-                cluster_id = cluster.get("id")
-                if not cluster_id:
-                    continue
-                try:
-                    # Fetch full cluster data with attribute_name and VMs
-                    full_cluster = get_hypervisor_cluster(api_username, api_password, cluster_id)
-                    if full_cluster is None:
-                        continue
-                    
-                    attribute_name = full_cluster.get("attribute_name")
-                    if not attribute_name:
-                        continue
-                    
-                    # Get VMs and build mapping
-                    stats = full_cluster.get("stats") or {}
-                    vms = stats.get("vms") or []
-                    
-                    # Build UUID→asset mapping for this cluster
-                    try:
-                        assets = api_request(api_username, api_password, "GET", "/v1/assets")
-                        if isinstance(assets, list):
-                            for asset in assets:
-                                if not isinstance(asset, dict):
-                                    continue
-                                attributes = asset.get("attributes") or []
-                                for attr in attributes:
-                                    if isinstance(attr, dict) and attr.get("name") == attribute_name:
-                                        attr_value = attr.get("value", "").strip()
-                                        if attr_value:
-                                            asset_name = asset.get("assetname")
-                                            if asset_name:
-                                                # Only add to mapping if this UUID matches a VM in the cluster
-                                                if any(vm.get("uuid") == attr_value for vm in vms if isinstance(vm, dict)):
-                                                    vm_mapping[attr_value] = (asset_name, cluster_id)
-                    except ServiceError:
-                        pass
-                except ServiceError:
-                    pass
-    except ServiceError:
-        pass
+    clusters = api_request(api_username, api_password, "GET", "/v1/hypervisors")
+    if not isinstance(clusters, list):
+        raise ServiceError("Invalid hypervisor list response.")
+    if asset_rows is None and clusters:
+        asset_rows = api_request(api_username, api_password, "GET", "/v1/assets")
+    for cluster in clusters:
+        if not isinstance(cluster, dict) or not cluster.get("id"):
+            continue
+        cluster_id = cluster["id"]
+        full_cluster = get_hypervisor_cluster(api_username, api_password, cluster_id)
+        if full_cluster is None:
+            raise ServiceError("Hypervisor cluster no longer exists. Retry VM mappings.")
+        stats = full_cluster.get("stats") or {}
+        if stats.get("status") == "unreachable":
+            raise ServiceError("A hypervisor is unreachable. Retry VM mappings when connectivity is restored.")
+        attribute_name = full_cluster.get("attribute_name")
+        if not attribute_name:
+            continue
+        uuid_to_value = {}
+        for asset in asset_rows or []:
+            for attr in asset.get("attributes") or []:
+                if isinstance(attr, dict) and attr.get("name") == attribute_name:
+                    value = str(attr.get("value") or "").strip()
+                    if value and asset.get("assetname"):
+                        uuid_to_value[value] = (value, asset["assetname"])
+        for vm in stats.get("vms") or []:
+            if not isinstance(vm, dict):
+                continue
+            match = match_vm_asset(vm.get("uuid"), uuid_to_value)
+            if match is not None:
+                value, asset_name = match
+                vm_mapping[value] = (asset_name, cluster_id)
     return vm_mapping
+
+
+@login_required
+@require_GET
+def asset_vm_mappings_view(request: HttpRequest) -> HttpResponse:
+    try:
+        credentials = _creds(request)
+        key = "asset-vm-mappings:" + salted_hmac(
+            "asset-vm-mappings", json.dumps([api_base_url(), *credentials, request.user.readonly]),
+        ).hexdigest()
+        # Revalidate access even when inventory enrichment is cached.
+        api_request(*credentials, "GET", "/ok")
+        assets = []
+        while True:
+            batch = api_request(
+                *credentials, "GET", "/v1/assets", params={"limit": 1000, "offset": len(assets)},
+            )
+            if not isinstance(batch, list):
+                raise ServiceError("Invalid asset list response.")
+            assets.extend(batch)
+            if len(batch) < 1000:
+                break
+        keys = {str(asset["id"]): key + ":" + str(asset["id"]) for asset in assets}
+        cached = cache.get_many(keys.values())
+        result = {asset_id: cached[item_key] for asset_id, item_key in keys.items() if item_key in cached}
+        pending = [asset for asset in assets if str(asset["id"]) not in result]
+        if pending:
+            mapping = _get_vm_mappings(*credentials, asset_rows=pending)
+            for asset in pending:
+                asset_id = str(asset["id"])
+                matched = any(
+                    str(attr.get("value") or "").strip() in mapping
+                    for attr in asset.get("attributes") or [] if isinstance(attr, dict)
+                )
+                result[asset_id] = matched
+                cache.set(keys[asset_id], matched, timeout=3600 if matched else 60)
+    except ServiceError as exc:
+        logging.getLogger(__name__).warning("Asset VM mappings unavailable: %s", exc)
+        response = JsonResponse({"error": str(exc)}, status=502)
+    else:
+        response = JsonResponse({"mapped_assets": result})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @login_required
@@ -1245,15 +1279,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     show_last_checkin = any(asset.get("last_checkin_at") for asset in assets)
     show_agent_version = any(asset["agent_version"] for asset in assets)
 
-    # Get VM mappings for reverse linking
-    vm_mapping = _get_vm_mappings(*_creds(request))
     for asset in assets:
-        for attr in asset.get("attributes") or []:
-            if isinstance(attr, dict):
-                attr_value = str(attr.get("value") or "").strip()
-                if attr_value in vm_mapping:
-                    asset["vm_info"] = vm_mapping[attr_value]
-                    break
         asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
 
     active_count = sum(1 for item in assets if item.get("active"))
@@ -1453,7 +1479,12 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
 
     # Get VM info for this asset
     vm_info = None
-    vm_mapping = _get_vm_mappings(*_creds(request))
+    try:
+        vm_mapping = _get_vm_mappings(*_creds(request))
+    except ServiceError as exc:
+        logging.getLogger(__name__).warning("Asset VM mappings unavailable: %s", exc)
+        messages.warning(request, "VM mapping unavailable: " + str(exc))
+        vm_mapping = {}
     for attr in asset.get("attributes") or []:
         if isinstance(attr, dict):
             attr_value = attr.get("value", "").strip()
