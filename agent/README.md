@@ -22,7 +22,38 @@ Some attribute fetch commands are marked "needs privilege" in the webui. The unp
 tuxcmdb-agent sudo
 ```
 
-This lists attribute commands that require privilege for the current host, shows which already have a rule installed under `/etc/sudoers.d/tuxcmdb-agent-<attribute>`, and lets you add (`a <number>`) or remove (`r <name>`) rules. Each rule is validated with `visudo -cf` before being installed. Running `sudo` as a non-root user prints an error and exits, since it cannot edit `/etc/sudoers.d`.
+This lists privileged commands for the current host using the actual CMDB
+attribute IDs (not list positions). Add with `a <id>` or remove with `r <id>`;
+legacy rule names are also accepted for interactive removal.
+
+For non-interactive management, use exactly one of `--all` or `--ids`
+(`--id` is an alias):
+
+```sh
+tuxcmdb-agent sudo add --all
+tuxcmdb-agent sudo add --ids 5,12
+tuxcmdb-agent sudo add --id 5
+tuxcmdb-agent sudo remove --ids 5,12
+tuxcmdb-agent sudo remove --all
+```
+
+`add --all` enables every privileged command returned for this host's OS.
+Selecting ID 5 enables **all privileged fetch commands for attribute ID 5**,
+not fetch method ID 5 or the fifth item in the list. Unprivileged commands
+are never granted sudo access. Unknown/ineligible IDs fail before any changes.
+`remove --all` deletes only agent-managed rules, including obsolete and legacy
+name-based rules, and works without config or API connectivity.
+ID-based operations use the registered agent config and bootstrap API.
+
+New rules are stored under `/etc/sudoers.d/tuxcmdb-agent-<attribute-id>`.
+Adding an attribute replaces its legacy name-based rule only after successful
+validation; removing by ID also removes its matching legacy rule. Install the
+updated API before the updated agent: bootstrap tasks must include `attribute_id`.
+Each rule is validated with `visudo -cf` before atomic installation; failed
+validation leaves any existing rule intact and returns a nonzero exit status.
+`visudo` must be installed. Running `sudo` as a non-root user prints an error
+and exits, since it cannot edit `/etc/sudoers.d`. These commands are available
+in both the standard Linux agent and the deprecated EL8 agent.
 
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 The Linux agent normally requires Python 3.9 or newer. The EL8 RPM temporarily supports the system Python 3 runtime and depends on the distribution's `python3-requests` package. This EL8 compatibility path is deprecated and will be removed in a future release; use Python 3.9 or newer on EL8 where available.

@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -215,7 +216,14 @@ def ensure_config(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> int:
-    args = build_arg_parser().parse_args()
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    if args.sudo_action and args.action != "sudo":
+        parser.error("add/remove are only valid with sudo")
+    if args.sudo_action and not (args.all or args.ids):
+        parser.error("sudo add/remove requires --all or --ids")
+    if (args.all or args.ids) and not args.sudo_action:
+        parser.error("--all/--ids requires sudo add/remove")
     if args.action == "sudo":
         return cmd_sudo(args)
     return cmd_report(args)
@@ -324,13 +332,21 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
-def find_privileged_commands(bootstrap: dict[str, Any]) -> list[dict[str, str]]:
-    privileged: list[dict[str, str]] = []
+def find_privileged_commands(bootstrap: dict[str, Any]) -> list[dict[str, Any]]:
+    privileged: list[dict[str, Any]] = []
     for task in bootstrap.get("tasks", []):
-        attribute_name = task.get("attribute_name")
-        for command_entry in task.get("commands", []):
-            if command_entry.get("needs_privilege"):
-                privileged.append({"attribute_name": attribute_name, "command": command_entry["command"]})
+        commands = [
+            entry["command"] for entry in task.get("commands", []) if entry.get("needs_privilege")
+        ]
+        if commands:
+            attribute_id = task.get("attribute_id")
+            if type(attribute_id) is not int or attribute_id <= 0:
+                raise BootstrapError("Bootstrap lacks valid attribute IDs; upgrade the API server first.")
+            privileged.append({
+                "attribute_id": attribute_id,
+                "attribute_name": task["attribute_name"],
+                "commands": list(dict.fromkeys(commands)),
+            })
     return privileged
 
 
@@ -363,20 +379,39 @@ def _validate_sudoers(rule_path: Path) -> bool:
     try:
         result = subprocess.run(["visudo", "-cf", str(rule_path)], capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        return True
+        print("visudo is required to validate sudo rules; no rule installed.", file=sys.stderr)
+        return False
+    if result.returncode != 0:
+        print(result.stderr.strip() or result.stdout.strip(), file=sys.stderr)
     return result.returncode == 0
 
 
-def _add_sudo_rule(attribute_name: str, command: str) -> None:
-    rule_path = _sudoers_rule_path(attribute_name)
-    line = f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c {_escape_for_sudoers(command)}\n'
-    rule_path.write_text(line, encoding="utf-8")
-    os.chmod(rule_path, 0o440)
-    if not _validate_sudoers(rule_path):
-        rule_path.unlink(missing_ok=True)
-        print(f"Generated sudoers rule for '{attribute_name}' failed validation; not installed", file=sys.stderr)
-        return
+def _add_sudo_rule(item: dict[str, Any]) -> bool:
+    rule_path = _sudoers_rule_path(str(item["attribute_id"]))
+    lines = "".join(
+        f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c {_escape_for_sudoers(command)}\n'
+        for command in item["commands"]
+    )
+    # A dotted temporary name is ignored by sudo's includedir while being validated.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=SUDOERS_DIR,
+                                     prefix=".tuxcmdb-agent-", delete=False) as handle:
+        staged_path = Path(handle.name)
+        handle.write(lines)
+    try:
+        os.chmod(staged_path, 0o440)
+        if not _validate_sudoers(staged_path):
+            print(f"Generated sudoers rule for '{item['attribute_name']}' failed validation; not installed",
+                  file=sys.stderr)
+            return False
+        staged_path.replace(rule_path)
+    finally:
+        if staged_path.exists():
+            staged_path.unlink()
+    legacy_path = _sudoers_rule_path(item["attribute_name"])
+    if legacy_path != rule_path and legacy_path.exists():
+        legacy_path.unlink()
     print(f"Added sudo rule: {rule_path}")
+    return True
 
 
 def _remove_sudo_rule(attribute_name: str) -> None:
@@ -393,6 +428,11 @@ def cmd_sudo(args: argparse.Namespace) -> int:
         print(f"The 'sudo' command must be run as root to manage {SUDOERS_DIR} rules.", file=sys.stderr)
         return 1
 
+    if args.sudo_action == "remove" and args.all:
+        for name in _existing_sudo_rules():
+            _remove_sudo_rule(name)
+        return 0
+
     config_path = Path(args.config)
     if not config_path.exists():
         print(f"No agent config found at {config_path}; register the agent first.", file=sys.stderr)
@@ -404,12 +444,40 @@ def cmd_sudo(args: argparse.Namespace) -> int:
 
     try:
         bootstrap, _selected_match, _os_info = fetch_bootstrap(config, verify_ssl)
-    except BootstrapError as exc:
+        privileged_commands = find_privileged_commands(bootstrap)
+    except (BootstrapError, requests.RequestException) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    privileged_commands = find_privileged_commands(bootstrap)
     existing_rules = _existing_sudo_rules()
+
+    if args.sudo_action:
+        by_id = {item["attribute_id"]: item for item in privileged_commands}
+        selected_ids = list(by_id) if args.all else args.ids
+        unknown_ids = [
+            value for value in selected_ids
+            if value not in by_id and not (
+                args.sudo_action == "remove" and str(value) in existing_rules
+            )
+        ]
+        if unknown_ids:
+            print("No privileged rule for attribute ID(s): " + ", ".join(map(str, unknown_ids)),
+                  file=sys.stderr)
+            return 1
+        success = True
+        for value in selected_ids:
+            if args.sudo_action == "add":
+                if not _add_sudo_rule(by_id[value]):
+                    success = False
+            else:
+                _remove_sudo_rule(str(value))
+                if value in by_id:
+                    legacy_name = _sudoers_rule_path(by_id[value]["attribute_name"]).name[len(SUDOERS_PREFIX):]
+                    if legacy_name != str(value) and legacy_name in existing_rules:
+                        _remove_sudo_rule(legacy_name)
+        if not selected_ids:
+            print("No attribute commands require privilege escalation for this host.")
+        return 0 if success else 1
 
     if not privileged_commands and not existing_rules:
         print("No attribute commands require privilege escalation for this host.")
@@ -418,12 +486,14 @@ def cmd_sudo(args: argparse.Namespace) -> int:
     print("Privileged attribute commands:")
     print("-" * 60)
     known_names: set[str] = set()
-    for index, item in enumerate(privileged_commands, start=1):
-        safe_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
-        known_names.add(safe_name)
-        status = "[configured]" if safe_name in existing_rules else "[not configured]"
-        print(f"  {index:>2}. {item['attribute_name']:<24} {status}")
-        print(f"      $ {item['command']}")
+    for item in privileged_commands:
+        rule_id = str(item["attribute_id"])
+        legacy_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
+        known_names.update((rule_id, legacy_name))
+        status = "[configured]" if rule_id in existing_rules or legacy_name in existing_rules else "[not configured]"
+        print(f"  {rule_id:>2}. {item['attribute_name']:<24} {status}")
+        for command in item["commands"]:
+            print(f"      $ {command}")
 
     unmatched_rules = [name for name in existing_rules if name not in known_names]
     if unmatched_rules:
@@ -434,8 +504,8 @@ def cmd_sudo(args: argparse.Namespace) -> int:
 
     print("-" * 60)
     print("Commands:")
-    print("  a <number>   add sudo rule for a listed command")
-    print("  r <name>     remove an existing sudo rule")
+    print("  a <id>       add all privileged commands for an attribute ID")
+    print("  r <id/name>  remove an existing sudo rule (legacy names accepted)")
     print("  q            quit")
     while True:
         choice = ask("\ntuxcmdb-agent sudo> ")
@@ -445,18 +515,29 @@ def cmd_sudo(args: argparse.Namespace) -> int:
         action = parts[0].lower()
         arg = parts[1].strip() if len(parts) > 1 else ""
         if action == "a" and arg.isdigit():
-            index = int(arg)
-            if 1 <= index <= len(privileged_commands):
-                item = privileged_commands[index - 1]
-                _add_sudo_rule(item["attribute_name"], item["command"])
+            item = next((item for item in privileged_commands if item["attribute_id"] == int(arg)), None)
+            if item is not None:
+                _add_sudo_rule(item)
                 existing_rules = _existing_sudo_rules()
             else:
                 print("Invalid selection")
         elif action == "r" and arg:
             _remove_sudo_rule(arg)
+            item = next((item for item in privileged_commands if str(item["attribute_id"]) == arg), None)
+            if item is not None:
+                legacy_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
+                if legacy_name != arg and legacy_name in existing_rules:
+                    _remove_sudo_rule(legacy_name)
             existing_rules = _existing_sudo_rules()
         else:
             print("Unrecognized command")
+
+
+def _parse_sudo_ids(value: str) -> list[int]:
+    parts = value.split(",")
+    if not all(re.fullmatch(r"[0-9]+", part.strip()) and int(part) > 0 for part in parts):
+        raise argparse.ArgumentTypeError("IDs must be comma-separated positive attribute IDs")
+    return list(dict.fromkeys(int(part) for part in parts))
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -472,6 +553,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "'sudo' manages NOPASSWD sudo rules for privileged attribute commands"
         ),
     )
+    parser.add_argument("sudo_action", nargs="?", choices=["add", "remove"],
+                        help="Non-interactive sudo rule management")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--all", action="store_true", help="Select all agent sudo rules")
+    selection.add_argument("--ids", "--id", type=_parse_sudo_ids,
+                           help="Comma-separated attribute IDs (--id is an alias)")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--server-url")
     parser.add_argument("--assetid")

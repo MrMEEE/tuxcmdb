@@ -773,6 +773,7 @@ class AgentAuthRequest(BaseModel):
 
 
 class AgentAttributeTaskOut(BaseModel):
+    attribute_id: int
     attribute_name: str
     data_type: str
     allow_multiple: bool
@@ -2518,6 +2519,7 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
         method = attr_methods.get(row.fetchmethod_id)
         if method is None:
             method = {
+                "attribute_id": row.attribute_id,
                 "attribute_name": row.name,
                 "data_type": row.data_type,
                 "allow_multiple": row.allow_multiple,
@@ -2545,6 +2547,7 @@ def fetch_agent_tasks(conn: Connection, operating_system: str) -> list[AgentAttr
             key = item["attribute_name"]
             if key not in grouped:
                 grouped[key] = AgentAttributeTaskOut(
+                    attribute_id=item["attribute_id"],
                     attribute_name=item["attribute_name"],
                     data_type=item["data_type"],
                     allow_multiple=item["allow_multiple"],
