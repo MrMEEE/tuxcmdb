@@ -365,6 +365,20 @@ def _existing_sudo_rules() -> Dict[str, str]:
     return rules
 
 
+def _sudo_rule_names(item: Dict[str, Any]) -> List[str]:
+    rule_id = str(item["attribute_id"])
+    legacy_path = _sudoers_rule_path(item["attribute_name"])
+    legacy_name = legacy_path.name[len(SUDOERS_PREFIX):]
+    names = [rule_id]
+    # A numeric attribute name can collide with another attribute's ID-based file.
+    if legacy_name != rule_id and not (
+        legacy_path.is_file()
+        and legacy_path.read_text(encoding="utf-8").startswith("# tuxcmdb-agent attribute-id:")
+    ):
+        names.append(legacy_name)
+    return names
+
+
 # Characters sudoers allows to be backslash-escaped inside an unquoted command
 # word; every other character (quotes, pipes, wildcards, etc.) must stay literal
 # or visudo rejects the rule with "illegal escape sequence".
@@ -394,7 +408,7 @@ def _validate_sudoers(rule_path: Path) -> bool:
 
 def _add_sudo_rule(item: Dict[str, Any]) -> bool:
     rule_path = _sudoers_rule_path(str(item["attribute_id"]))
-    lines = "".join(
+    lines = f"# tuxcmdb-agent attribute-id: {item['attribute_id']}\n" + "".join(
         f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c {_escape_for_sudoers(command)}\n'
         for command in item["commands"]
     )
@@ -413,9 +427,10 @@ def _add_sudo_rule(item: Dict[str, Any]) -> bool:
     finally:
         if staged_path.exists():
             staged_path.unlink()
-    legacy_path = _sudoers_rule_path(item["attribute_name"])
-    if legacy_path != rule_path and legacy_path.exists():
-        legacy_path.unlink()
+    for legacy_name in _sudo_rule_names(item)[1:]:
+        legacy_path = _sudoers_rule_path(legacy_name)
+        if legacy_path.exists():
+            legacy_path.unlink()
     print(f"Added sudo rule: {rule_path}")
     return True
 
@@ -478,9 +493,9 @@ def cmd_sudo(args: argparse.Namespace) -> int:
             else:
                 _remove_sudo_rule(str(value))
                 if value in by_id:
-                    legacy_name = _sudoers_rule_path(by_id[value]["attribute_name"]).name[len(SUDOERS_PREFIX):]
-                    if legacy_name != str(value) and legacy_name in existing_rules:
-                        _remove_sudo_rule(legacy_name)
+                    for legacy_name in _sudo_rule_names(by_id[value])[1:]:
+                        if legacy_name in existing_rules:
+                            _remove_sudo_rule(legacy_name)
         if not selected_ids:
             print("No attribute commands require privilege escalation for this host.")
         return 0 if success else 1
@@ -494,9 +509,9 @@ def cmd_sudo(args: argparse.Namespace) -> int:
     known_names: Set[str] = set()
     for item in privileged_commands:
         rule_id = str(item["attribute_id"])
-        legacy_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
-        known_names.update((rule_id, legacy_name))
-        status = "[configured]" if rule_id in existing_rules or legacy_name in existing_rules else "[not configured]"
+        names = _sudo_rule_names(item)
+        known_names.update(names)
+        status = "[configured]" if any(name in existing_rules for name in names) else "[not configured]"
         print(f"  {rule_id:>2}. {item['attribute_name']:<24} {status}")
         for command in item["commands"]:
             print(f"      $ {command}")
@@ -531,9 +546,9 @@ def cmd_sudo(args: argparse.Namespace) -> int:
             _remove_sudo_rule(arg)
             item = next((item for item in privileged_commands if str(item["attribute_id"]) == arg), None)
             if item is not None:
-                legacy_name = _sudoers_rule_path(item["attribute_name"]).name[len(SUDOERS_PREFIX):]
-                if legacy_name != arg and legacy_name in existing_rules:
-                    _remove_sudo_rule(legacy_name)
+                for legacy_name in _sudo_rule_names(item)[1:]:
+                    if legacy_name in existing_rules:
+                        _remove_sudo_rule(legacy_name)
             existing_rules = _existing_sudo_rules()
         else:
             print("Unrecognized command")

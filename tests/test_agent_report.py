@@ -49,6 +49,23 @@ class AgentReportTests(unittest.TestCase):
             "asset_id": self.asset_id, "systempass": "agent-secret", "values": values, **kwargs,
         })
 
+    def test_bootstrap_exposes_database_attribute_ids_for_sudo_selection(self):
+        with self.engine.begin() as conn:
+            for name in ("report-last", "report-first"):
+                conn.execute(api.attribute_fetchmethods.insert().values(
+                    attribute_id=self.ids[name], command="id -u",
+                    is_default=True, needs_privilege=True,
+                ))
+        response = self.client.post("/v1/agent/bootstrap", json={
+            "asset_id": self.asset_id, "systempass": "agent-secret", "operating_system": "linux",
+        })
+        self.assertEqual(response.status_code, 200)
+        tasks = response.json()["tasks"]
+        self.assertEqual({task["attribute_name"]: task["attribute_id"] for task in tasks}, {
+            name: self.ids[name] for name in ("report-first", "report-last")
+        })
+        self.assertTrue(all(task["commands"][0]["needs_privilege"] for task in tasks))
+
     def active_values(self):
         with self.engine.connect() as conn:
             rows = conn.execute(api.select(
