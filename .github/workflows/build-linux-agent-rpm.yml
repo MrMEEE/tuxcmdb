@@ -95,6 +95,9 @@ jobs:
   build-webui-agents-package:
     needs: [build-linux-packages, build-linux-deb]
     runs-on: ubuntu-latest
+    container:
+      image: registry.access.redhat.com/ubi10/ubi:latest
+      options: --user 0
 
     steps:
       - name: Checkout
@@ -103,9 +106,10 @@ jobs:
       - name: Install build dependencies
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y ca-certificates ruby ruby-dev
-          sudo gem install --no-document fpm -v 1.15.1
+          # ubi10 base images ship a newer rpm-libs/rpm-plugin-syslog than the repo's rpm-build
+          # depends on; --allowerasing lets dnf reconcile that version mismatch.
+          dnf install -y --allowerasing git ca-certificates ruby ruby-devel rpm-build findutils
+          gem install --no-document fpm -v 1.15.1
 
       - name: Download agent artifacts
         uses: actions/download-artifact@v4
