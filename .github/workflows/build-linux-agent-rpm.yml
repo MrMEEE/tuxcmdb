@@ -36,7 +36,9 @@ jobs:
       - name: Install fpm
         run: |
           set -euo pipefail
-          dnf install -y git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
+          # ubi10 base images ship a newer rpm-libs/rpm-plugin-syslog than the repo's rpm-build
+          # depends on; --allowerasing lets dnf reconcile that version mismatch.
+          dnf install -y --allowerasing git ca-certificates python3 python3-pip ruby ruby-devel rpm-build findutils
           if [[ "${{ matrix.el }}" == "8" ]]; then
             dnf install -y python3-requests
           fi
