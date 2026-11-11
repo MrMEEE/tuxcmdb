@@ -55,6 +55,7 @@ class SudoTests:
             patch.object(self.agent, "fetch_bootstrap", return_value=(self.bootstrap, "linux", {})),
             patch.object(self.agent, "_validate_sudoers", return_value=True),
             patch.object(self.agent, "_sh_path", return_value="/bin/sh"),
+            patch.object(self.agent.shutil, "which", side_effect=lambda name: "/usr/bin/" + name),
             patch.object(self.agent, "ask", side_effect=AssertionError("Non-interactive command prompted")),
             contextlib.redirect_stdout(self.output),
             contextlib.redirect_stderr(self.output),
@@ -76,8 +77,8 @@ class SudoTests:
         self.assertFalse(self.rule(12).exists())
         content = self.rule(5).read_text()
         self.assertEqual(content.count("NOPASSWD:"), 2)
-        self.assertIn("echo\\ first", content)
-        self.assertIn("echo\\ second", content)
+        self.assertIn("/usr/bin/echo first", content)
+        self.assertIn("/usr/bin/echo second", content)
         self.assertNotIn("unprivileged", content)
         self.assertEqual(stat.S_IMODE(self.rule(5).stat().st_mode), 0o440)
 

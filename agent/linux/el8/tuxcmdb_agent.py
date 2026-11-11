@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import secrets
+import shlex
 import shutil
 import socket
 import subprocess
@@ -124,9 +125,36 @@ def _sh_path() -> str:
     return shutil.which("sh") or "/bin/sh"
 
 
+# Characters that force full shell interpretation (pipes, redirection, substitution,
+# globbing, etc.). Commands without any of these can be exec'd directly, which keeps
+# them working on hosts where sudoers enforces `noexec`: that restriction blocks a
+# wrapper shell from exec'ing the real binary, but not a direct sudo-invoked exec.
+_SHELL_METACHARACTERS = set("|&;<>()$`*?[]{}~\n")
+
+
+def _command_argv(command: str) -> Optional[List[str]]:
+    if any(ch in _SHELL_METACHARACTERS for ch in command):
+        return None
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        return None
+    if not argv:
+        return None
+    resolved = shutil.which(argv[0])
+    if not resolved:
+        return None
+    argv[0] = resolved
+    return argv
+
+
 def run_command(command: str, needs_privilege: bool = False) -> Optional[str]:
     if needs_privilege and os.geteuid() != 0:
-        argv: Union[str, List[str]] = ["sudo", "-n", _sh_path(), "-c", command]
+        direct_argv = _command_argv(command)
+        if direct_argv is not None:
+            argv: Union[str, List[str]] = ["sudo", "-n"] + direct_argv
+        else:
+            argv = ["sudo", "-n", _sh_path(), "-c", command]
         use_shell = False
     else:
         argv = command
@@ -389,6 +417,13 @@ def _escape_for_sudoers(command: str) -> str:
     return "".join(("\\" + ch) if ch in _SUDOERS_ESCAPE_CHARS else ch for ch in command)
 
 
+def _sudoers_command_spec(command: str) -> str:
+    argv = _command_argv(command)
+    if argv is not None:
+        return " ".join(_escape_for_sudoers(part) for part in argv)
+    return f"{_sh_path()} -c {_escape_for_sudoers(command)}"
+
+
 def _validate_sudoers(rule_path: Path) -> bool:
     try:
         result = subprocess.run(
@@ -409,7 +444,7 @@ def _validate_sudoers(rule_path: Path) -> bool:
 def _add_sudo_rule(item: Dict[str, Any]) -> bool:
     rule_path = _sudoers_rule_path(str(item["attribute_id"]))
     lines = f"# tuxcmdb-agent attribute-id: {item['attribute_id']}\n" + "".join(
-        f'{AGENT_USER} ALL=(root) NOPASSWD: {_sh_path()} -c {_escape_for_sudoers(command)}\n'
+        f'{AGENT_USER} ALL=(root) NOPASSWD: {_sudoers_command_spec(command)}\n'
         for command in item["commands"]
     )
     # A dotted temporary name is ignored by sudo's includedir while being validated.

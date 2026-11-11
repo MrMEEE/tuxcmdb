@@ -55,6 +55,15 @@ validation leaves any existing rule intact and returns a nonzero exit status.
 and exits, since it cannot edit `/etc/sudoers.d`. These commands are available
 in both the standard Linux agent and the deprecated EL8 agent.
 
+Privileged commands that don't need shell features (pipes, redirection,
+globbing, etc.) are granted sudo access and executed directly (e.g.
+`/usr/sbin/dmidecode -s system-uuid`) instead of through a `/bin/sh -c`
+wrapper. This keeps them working on hosts where sudoers enforces
+`Defaults noexec`, which blocks a wrapper shell from exec'ing the real
+binary (seen as `Permission denied` from `/bin/sh`) but not a direct
+sudo-invoked exec. Commands that do need shell features still fall back
+to the `sh -c` wrapper and are incompatible with `noexec`.
+
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 The Linux agent normally requires Python 3.9 or newer. The EL8 RPM temporarily supports the system Python 3 runtime and depends on the distribution's `python3-requests` package. This EL8 compatibility path is deprecated and will be removed in a future release; use Python 3.9 or newer on EL8 where available.
 
