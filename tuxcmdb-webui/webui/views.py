@@ -2051,7 +2051,10 @@ def hypervisor_form_view(request: HttpRequest, cluster_id: int | None = None) ->
             "verify_ssl": cluster.get("verify_ssl", True),
         }
 
-    form = HypervisorClusterForm(request.POST or None, initial=initial, attribute_choices=attribute_choices)
+    form = HypervisorClusterForm(
+        request.POST or None, initial=initial, attribute_choices=attribute_choices,
+        require_password=cluster_id is None,
+    )
     if request.method == "POST":
         if request.user.readonly:
             messages.error(request, "This user has readonly access.")
@@ -2062,10 +2065,11 @@ def hypervisor_form_view(request: HttpRequest, cluster_id: int | None = None) ->
                 "cluster_type": form.cleaned_data["cluster_type"],
                 "management_hostname": form.cleaned_data["management_hostname"],
                 "username": form.cleaned_data["username"],
-                "password": form.cleaned_data["password"],
                 "attribute_id": int(form.cleaned_data["attribute_id"]) if form.cleaned_data.get("attribute_id") else None,
                 "verify_ssl": form.cleaned_data["verify_ssl"],
             }
+            if form.cleaned_data["password"]:
+                payload["password"] = form.cleaned_data["password"]
             try:
                 if cluster_id is None:
                     create_hypervisor_cluster(*_creds(request), payload)

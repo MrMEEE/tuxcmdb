@@ -95,6 +95,11 @@ Default attribute rows are seeded automatically (if missing), with descriptions:
 
 ### Virtual machine asset matching
 
+When editing a hypervisor cluster, leave the password blank to retain its existing
+password, or enter a new password to replace it. A password is still required
+when creating a cluster. The API's `PATCH /v1/hypervisors/{id}` likewise retains
+the stored password when `password` is omitted, null, or empty.
+
 Select the asset UUID attribute on the hypervisor cluster to link discovered VMs
 to inventory assets. Both the cluster details and Virtual Machines pages accept
 standard UUIDs and the SMBIOS mixed-endian representation (the first three UUID

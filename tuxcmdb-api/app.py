@@ -558,6 +558,10 @@ class HypervisorClusterCreate(BaseModel):
     verify_ssl: bool = True
 
 
+class HypervisorClusterUpdate(HypervisorClusterCreate):
+    password: str | None = None
+
+
 class AssetCreate(BaseModel):
     assetname: str = Field(min_length=1, max_length=255)
 
@@ -3565,7 +3569,7 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     @app.patch("/v1/hypervisors/{cluster_id}", response_model=dict[str, Any])
     def update_hypervisor_cluster(
         cluster_id: int,
-        payload: HypervisorClusterCreate,
+        payload: HypervisorClusterUpdate,
         _: AuthenticatedUser = Depends(require_write_access),
     ) -> dict[str, Any]:
         cluster_name = payload.name.strip()
@@ -3573,6 +3577,15 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         hostname = payload.management_hostname.strip()
         username = payload.username.strip()
         password = payload.password
+
+        with engine.connect() as conn:
+            stored = conn.execute(
+                select(hypervisor_clusters.c.password).where(hypervisor_clusters.c.id == cluster_id)
+            ).one_or_none()
+        if stored is None:
+            raise HTTPException(status_code=404, detail="Hypervisor cluster not found")
+        if not password:
+            password = stored.password
 
         try:
             probe_hypervisor_connection(

@@ -118,8 +118,12 @@ class HypervisorClusterForm(forms.Form):
     attribute_id = forms.ChoiceField(choices=(), required=False, widget=forms.Select(attrs=TEXT_INPUT))
     verify_ssl = forms.BooleanField(required=False, initial=True)
 
-    def __init__(self, *args, attribute_choices: list[tuple[str, str]] | None = None, **kwargs):
+    def __init__(self, *args, attribute_choices: list[tuple[str, str]] | None = None,
+                 require_password: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["password"].required = require_password
+        if not require_password:
+            self.fields["password"].help_text = "Leave blank to keep the existing password."
         choices = [(item["key"], item["label"]) for item in list_supported_hypervisor_types()]
         if not choices:
             choices = [("vmware", "VMware"), ("xenserver", "XenServer/XCP-ng")]
