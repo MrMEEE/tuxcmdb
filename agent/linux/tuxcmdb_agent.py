@@ -248,10 +248,14 @@ def main() -> int:
     args = parser.parse_args()
     if args.sudo_action and args.action != "sudo":
         parser.error("add/remove are only valid with sudo")
+    if args.update and args.action != "sudo":
+        parser.error("--update is only valid with sudo")
     if args.sudo_action and not (args.all or args.ids):
         parser.error("sudo add/remove requires --all or --ids")
     if (args.all or args.ids) and not args.sudo_action:
         parser.error("--all/--ids requires sudo add/remove")
+    if args.update and (args.sudo_action or args.all or args.ids):
+        parser.error("--update cannot be combined with add/remove or --all/--ids")
     if args.action == "sudo":
         return cmd_sudo(args)
     return cmd_report(args)
@@ -435,12 +439,27 @@ def _validate_sudoers(rule_path: Path) -> bool:
     return result.returncode == 0
 
 
-def _add_sudo_rule(item: dict[str, Any]) -> bool:
-    rule_path = _sudoers_rule_path(str(item["attribute_id"]))
-    lines = f"# tuxcmdb-agent attribute-id: {item['attribute_id']}\n" + "".join(
-        f'{AGENT_USER} ALL=(root) NOPASSWD: {_sudoers_command_spec(command)}\n'
+def _sudo_rule_body(item: dict[str, Any]) -> str:
+    # EXEC overrides a host-wide `Defaults noexec`, which would otherwise block a
+    # sh -c wrapper (or any wrapper script) from exec'ing the real command.
+    return f"# tuxcmdb-agent attribute-id: {item['attribute_id']}\n" + "".join(
+        f'{AGENT_USER} ALL=(root) NOPASSWD: EXEC: {_sudoers_command_spec(command)}\n'
         for command in item["commands"]
     )
+
+
+def _sudo_rule_status(item: dict[str, Any], existing_rules: dict[str, str]) -> str:
+    if not any(name in existing_rules for name in _sudo_rule_names(item)):
+        return "not configured"
+    current = existing_rules.get(str(item["attribute_id"]))
+    if current is None or current != _sudo_rule_body(item).strip():
+        return "needs update"
+    return "configured"
+
+
+def _add_sudo_rule(item: dict[str, Any]) -> bool:
+    rule_path = _sudoers_rule_path(str(item["attribute_id"]))
+    lines = _sudo_rule_body(item)
     # A dotted temporary name is ignored by sudo's includedir while being validated.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=SUDOERS_DIR,
                                      prefix=".tuxcmdb-agent-", delete=False) as handle:
@@ -501,6 +520,20 @@ def cmd_sudo(args: argparse.Namespace) -> int:
 
     existing_rules = _existing_sudo_rules()
 
+    if args.update:
+        enabled_items = [
+            item for item in privileged_commands
+            if any(name in existing_rules for name in _sudo_rule_names(item))
+        ]
+        if not enabled_items:
+            print("No enabled sudo rules to update.")
+            return 0
+        success = True
+        for item in enabled_items:
+            if not _add_sudo_rule(item):
+                success = False
+        return 0 if success else 1
+
     if args.sudo_action:
         by_id = {item["attribute_id"]: item for item in privileged_commands}
         selected_ids = list(by_id) if args.all else args.ids
@@ -540,8 +573,8 @@ def cmd_sudo(args: argparse.Namespace) -> int:
         rule_id = str(item["attribute_id"])
         names = _sudo_rule_names(item)
         known_names.update(names)
-        status = "[configured]" if any(name in existing_rules for name in names) else "[not configured]"
-        print(f"  {rule_id:>2}. {item['attribute_name']:<24} {status}")
+        status = _sudo_rule_status(item, existing_rules)
+        print(f"  {rule_id:>2}. {item['attribute_name']:<24} [{status}]")
         for command in item["commands"]:
             print(f"      $ {command}")
 
@@ -609,6 +642,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     selection.add_argument("--all", action="store_true", help="Select all agent sudo rules")
     selection.add_argument("--ids", "--id", type=_parse_sudo_ids,
                            help="Comma-separated attribute IDs (--id is an alias)")
+    parser.add_argument("--update", action="store_true",
+                        help="Refresh sudo rule files for already-enabled privileged commands")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--server-url")
     parser.add_argument("--assetid")

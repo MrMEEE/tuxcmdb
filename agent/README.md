@@ -23,7 +23,10 @@ tuxcmdb-agent sudo
 ```
 
 This lists privileged commands for the current host using the actual CMDB
-attribute IDs (not list positions). Add with `a <id>` or remove with `r <id>`;
+attribute IDs (not list positions), each tagged `[configured]`,
+`[not configured]`, or `[needs update]` (an enabled rule whose file on disk
+no longer matches what would be generated now, e.g. the fetch command
+changed or the agent was upgraded). Add with `a <id>` or remove with `r <id>`;
 legacy rule names are also accepted for interactive removal.
 
 For non-interactive management, use exactly one of `--all` or `--ids`
@@ -35,7 +38,13 @@ tuxcmdb-agent sudo add --ids 5,12
 tuxcmdb-agent sudo add --id 5
 tuxcmdb-agent sudo remove --ids 5,12
 tuxcmdb-agent sudo remove --all
+tuxcmdb-agent sudo --update
 ```
+
+`--update` regenerates the rule file for every currently **enabled** (already
+configured or legacy) rule using the latest bootstrap commands, without
+enabling any rule that isn't already configured. It cannot be combined with
+`add`/`remove` or `--all`/`--ids`.
 
 `add --all` enables every privileged command returned for this host's OS.
 Selecting ID 5 enables **all privileged fetch commands for attribute ID 5**,
@@ -55,14 +64,14 @@ validation leaves any existing rule intact and returns a nonzero exit status.
 and exits, since it cannot edit `/etc/sudoers.d`. These commands are available
 in both the standard Linux agent and the deprecated EL8 agent.
 
-Privileged commands that don't need shell features (pipes, redirection,
-globbing, etc.) are granted sudo access and executed directly (e.g.
-`/usr/sbin/dmidecode -s system-uuid`) instead of through a `/bin/sh -c`
-wrapper. This keeps them working on hosts where sudoers enforces
-`Defaults noexec`, which blocks a wrapper shell from exec'ing the real
-binary (seen as `Permission denied` from `/bin/sh`) but not a direct
-sudo-invoked exec. Commands that do need shell features still fall back
-to the `sh -c` wrapper and are incompatible with `noexec`.
+Every generated rule carries an `EXEC:` tag, which overrides a host-wide
+`Defaults noexec` for that specific rule so it isn't affected by that
+restriction. Privileged commands that don't need shell features (pipes,
+redirection, globbing, etc.) are additionally granted sudo access and
+executed directly (e.g. `/usr/sbin/dmidecode -s system-uuid`) instead of
+through a `/bin/sh -c` wrapper, avoiding an unnecessary extra process.
+Commands that do need shell features fall back to the `sh -c` wrapper,
+which `EXEC:` still permits to exec the real binary under `noexec`.
 
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 The Linux agent normally requires Python 3.9 or newer. The EL8 RPM temporarily supports the system Python 3 runtime and depends on the distribution's `python3-requests` package. This EL8 compatibility path is deprecated and will be removed in a future release; use Python 3.9 or newer on EL8 where available.

@@ -148,6 +148,51 @@ class SudoTests:
         self.assertEqual(self.run_cli("sudo", "remove", "--id", "12"), 0)
         self.assertEqual(self.rule(5).read_text(), content)
 
+    def test_added_rule_includes_exec_tag(self):
+        self.assertEqual(self.run_cli("sudo", "add", "--ids", "5"), 0)
+        self.assertIn("NOPASSWD: EXEC:", self.rule(5).read_text())
+
+    def test_listing_shows_configured_and_not_configured_status(self):
+        self.assertEqual(self.run_cli("sudo", "add", "--ids", "5"), 0)
+        self.agent.ask.side_effect = ["q"]
+        self.assertEqual(self.run_cli("sudo"), 0)
+        output = self.output.getvalue()
+        self.assertIn("[configured]", output)
+        self.assertIn("[not configured]", output)
+
+    def test_stale_rule_needs_update_and_update_flag_refreshes_only_enabled_rules(self):
+        self.assertEqual(self.run_cli("sudo", "add", "--ids", "5"), 0)
+        fresh = self.rule(5).read_text()
+        self.assertIn("EXEC:", fresh)
+        # Simulate a rule installed by a pre-EXEC-tag version of the agent.
+        self.rule(5).chmod(0o640)
+        self.rule(5).write_text(fresh.replace("EXEC: ", ""))
+
+        self.agent.ask.side_effect = ["q"]
+        self.assertEqual(self.run_cli("sudo"), 0)
+        self.assertIn("[needs update]", self.output.getvalue())
+
+        self.assertEqual(self.run_cli("sudo", "--update"), 0)
+        self.assertIn("EXEC:", self.rule(5).read_text())
+        self.assertFalse(self.rule(12).exists())
+
+    def test_update_with_nothing_enabled_is_a_noop(self):
+        self.assertEqual(self.run_cli("sudo", "--update"), 0)
+        self.assertIn("No enabled sudo rules to update.", self.output.getvalue())
+        self.assertEqual(list(self.rules.iterdir()), [])
+
+    def test_update_flag_validation(self):
+        for args in [
+            ("report", "--update"),
+            ("sudo", "add", "--update", "--ids", "5"),
+            ("sudo", "--update", "--all"),
+            ("sudo", "--update", "--ids", "5"),
+        ]:
+            with self.subTest(args=args), self.assertRaises(SystemExit) as exc:
+                self.run_cli(*args)
+            self.assertEqual(exc.exception.code, 2)
+        self.assertEqual(list(self.rules.iterdir()), [])
+
     def test_older_api_fails_explicitly_without_using_list_position(self):
         del self.bootstrap["tasks"][1]["attribute_id"]
         self.assertEqual(self.run_cli("sudo", "add", "--all"), 1)
