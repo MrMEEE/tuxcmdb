@@ -8,6 +8,8 @@ urlpatterns = [
     path("logout/", views.logout_view, name="logout"),
     path("assets/", views.assets_view, name="assets"),
     path("assets/vm-mappings/", views.asset_vm_mappings_view, name="asset-vm-mappings"),
+    path("assets/export/", views.assets_export_view, name="assets-export"),
+    path("assets/inventory/", views.assets_inventory_view, name="assets-inventory"),
     path("assets/<str:asset_ref>/", views.asset_detail_view, name="asset-detail"),
     path(
         "assets/<str:asset_ref>/attributes/<str:attribute_ref>/history/",

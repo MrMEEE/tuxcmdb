@@ -2,6 +2,7 @@
 {% block title %}{{ asset.assetname }} · TuxCMDB{% endblock %}
 {% block page_title %}Asset · {{ asset.assetname }}{% endblock %}
 {% block content %}
+{{ attribute_value_options|json_script:"attribute-value-options" }}
 <div class="row">
   <div class="col-lg-4">
     <div class="card shadow-sm mb-3">

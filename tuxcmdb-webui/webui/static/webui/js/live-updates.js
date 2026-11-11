@@ -107,6 +107,100 @@
     });
   }
 
+  function getAttributeValueOptionsMap() {
+    const el = document.getElementById("attribute-value-options");
+    if (!el) {
+      return {};
+    }
+    try {
+      return JSON.parse(el.textContent) || {};
+    } catch (_err) {
+      return {};
+    }
+  }
+
+  // Swaps a freeform value input for a <select> (and back) based on the target
+  // attribute's datatype (fixed allowed-values list or boolean), in place.
+  function applyAttributeValueField(valueEl, attributeName, optionsMap, placeholder) {
+    if (!valueEl) {
+      return valueEl;
+    }
+    const options = (optionsMap || getAttributeValueOptionsMap())[attributeName];
+
+    if (options && options.length) {
+      if (valueEl.tagName === "SELECT") {
+        const existing = Array.from(valueEl.options)
+          .map(function (opt) { return opt.value; })
+          .filter(function (value) { return value !== ""; });
+        if (existing.length === options.length && existing.every(function (value, i) { return value === options[i]; })) {
+          return valueEl;
+        }
+      }
+    } else if (valueEl.tagName === "INPUT" && valueEl.type === "text") {
+      return valueEl;
+    }
+
+    const cssClass = valueEl.getAttribute("class") || "form-control";
+    const name = valueEl.getAttribute("name");
+    const id = valueEl.id;
+    const currentValue = valueEl.value;
+
+    let widget;
+    if (options && options.length) {
+      widget = document.createElement("select");
+      widget.className = cssClass;
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "Select value";
+      widget.appendChild(blank);
+      options.forEach(function (option) {
+        const opt = document.createElement("option");
+        opt.value = option;
+        opt.textContent = option;
+        widget.appendChild(opt);
+      });
+      widget.value = options.includes(currentValue) ? currentValue : "";
+    } else {
+      widget = document.createElement("input");
+      widget.type = "text";
+      widget.className = cssClass;
+      widget.value = currentValue;
+      const effectivePlaceholder = placeholder != null ? placeholder : valueEl.getAttribute("placeholder");
+      if (effectivePlaceholder) {
+        widget.placeholder = effectivePlaceholder;
+      }
+    }
+    if (name) {
+      widget.setAttribute("name", name);
+    }
+    if (id) {
+      widget.id = id;
+    }
+    valueEl.replaceWith(widget);
+    return widget;
+  }
+
+  function syncAttributeValueFields(root) {
+    const scope = root || document;
+    const optionsMap = getAttributeValueOptionsMap();
+
+    const assignSelect = scope.querySelector("select[name='attribute_name']");
+    if (assignSelect && assignSelect.form) {
+      const valueEl = assignSelect.form.querySelector("[name='value']");
+      if (valueEl) {
+        applyAttributeValueField(valueEl, assignSelect.value, optionsMap);
+      }
+    }
+
+    scope.querySelectorAll("select[name='new_attribute_name']").forEach(function (select) {
+      const row = select.closest(".js-asset-attr-row");
+      const valueEl = row ? row.querySelector("[name='new_attribute_value']") : null;
+      if (valueEl) {
+        applyAttributeValueField(valueEl, select.value, optionsMap, "Value");
+      }
+    });
+  }
+
   function updateDomFromParsed(parsed, responseUrl, historyMode) {
     const root = document.querySelector(rootSelector);
     if (!root || !parsed.root) {
@@ -135,6 +229,7 @@
 
     restoreFocusState(root, focusState);
     syncValidationModeSections(root);
+    syncAttributeValueFields(root);
 
     return true;
   }
@@ -597,10 +692,18 @@
     });
   }
 
+  function resetFormPage(form) {
+    const pageInput = form ? form.querySelector("input[name='page']") : null;
+    if (pageInput) {
+      pageInput.value = "1";
+    }
+  }
+
   function scheduleAutoSubmit(form) {
     if (!form) {
       return;
     }
+    resetFormPage(form);
     window.clearTimeout(autoSubmitTimer);
     autoSubmitTimer = window.setTimeout(function () {
       if (!form.isConnected) {
@@ -650,6 +753,31 @@
       }
       if (sortDirInput) {
         sortDirInput.value = sortDir || "desc";
+      }
+      resetFormPage(form);
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+      }
+      return;
+    }
+
+    const pageButton = event.target.closest(".js-page-trigger");
+    if (pageButton) {
+      event.preventDefault();
+      if (pageButton.disabled) {
+        return;
+      }
+      const formId = pageButton.getAttribute("data-page-form");
+      const targetPage = pageButton.getAttribute("data-page");
+      const form = formId ? document.getElementById(formId) : null;
+      if (!form) {
+        return;
+      }
+      const pageInput = form.querySelector("input[name='page']");
+      if (pageInput) {
+        pageInput.value = targetPage || "1";
       }
       if (typeof form.requestSubmit === "function") {
         form.requestSubmit();
@@ -702,12 +830,12 @@
       const rows = container.querySelectorAll(".js-asset-attr-row");
       if (rows.length <= 1) {
         const nameInput = row.querySelector("select[name='new_attribute_name']");
-        const valueInput = row.querySelector("input[name='new_attribute_value']");
+        const valueInput = row.querySelector("[name='new_attribute_value']");
         if (nameInput) {
           nameInput.value = "";
         }
         if (valueInput) {
-          valueInput.value = "";
+          applyAttributeValueField(valueInput, "", getAttributeValueOptionsMap(), "Value");
         }
       } else {
         row.remove();
@@ -802,7 +930,7 @@
       const modal = document.getElementById("editAssignmentModal");
       const nameInput = document.getElementById("editAssignmentAttributeName");
       const nameLabel = document.getElementById("editAssignmentAttributeLabel");
-      const valueInput = document.getElementById("editAssignmentValue");
+      let valueInput = document.getElementById("editAssignmentValue");
       if (!modal || !nameInput || !nameLabel || !valueInput) {
         return;
       }
@@ -812,6 +940,7 @@
       nameInput.value = attributeName;
       nameLabel.value = attributeName;
       valueInput.value = assignmentValue;
+      valueInput = applyAttributeValueField(valueInput, attributeName, getAttributeValueOptionsMap());
       modal.removeAttribute("hidden");
       valueInput.focus();
       return;
@@ -866,6 +995,15 @@
       updateValidationSections(target.form);
       return;
     }
+    if (target.name === "attribute_name" && target.form) {
+      const valueEl = target.form.querySelector("[name='value']");
+      applyAttributeValueField(valueEl, target.value, getAttributeValueOptionsMap());
+    }
+    if (target.name === "new_attribute_name") {
+      const row = target.closest(".js-asset-attr-row");
+      const valueEl = row ? row.querySelector("[name='new_attribute_value']") : null;
+      applyAttributeValueField(valueEl, target.value, getAttributeValueOptionsMap(), "Value");
+    }
     const form = target && target.form;
     if (!form || !form.hasAttribute("data-auto-submit")) {
       return;
@@ -879,5 +1017,6 @@
 
   bindLiveForms();
   syncValidationModeSections(document);
+  syncAttributeValueFields(document);
   connectWebSocket();
 })();

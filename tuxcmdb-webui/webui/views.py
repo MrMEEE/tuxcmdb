@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import csv
 import shlex
 import fnmatch
+import io
 import json
 import logging
 import mimetypes
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -82,6 +85,8 @@ APPROVAL_PENDING = 1
 APPROVAL_APPROVED = 2
 APPROVAL_REJECTED = 3
 ASSET_LIST_FIXED_FIELDS = {"assetname", "approved", "active", "attributes", "vm mapped", "tuxcmdb-agent-version"}
+ASSET_LIST_PAGE_SIZES = (10, 25, 50, 100, 1000)
+DEFAULT_ASSET_LIST_PAGE_SIZE = 25
 
 
 def notify_ui_update(entity: str, action: str, ref: str = "") -> None:
@@ -404,6 +409,52 @@ def _asset_api_params(filter_query: str, show_inactive: bool = False) -> dict[st
     return params or None
 
 
+def _attribute_value_options(attribute_catalog: list[dict[str, Any]], datatypes: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Map attribute name -> fixed list of acceptable values (enum/boolean datatypes only)."""
+    datatype_options: dict[str, list[str]] = {}
+    for datatype in datatypes:
+        if not isinstance(datatype, dict):
+            continue
+        name = datatype.get("name")
+        if not name:
+            continue
+        allowed_values = datatype.get("allowed_values")
+        if allowed_values:
+            datatype_options[name] = list(allowed_values)
+        elif datatype.get("builtin_validator") == "boolean":
+            datatype_options[name] = ["true", "false"]
+
+    options: dict[str, list[str]] = {}
+    for attribute in attribute_catalog:
+        if not isinstance(attribute, dict) or not attribute.get("name"):
+            continue
+        values = datatype_options.get(attribute.get("data_type"))
+        if values:
+            options[attribute["name"]] = values
+    return options
+
+
+def _resolve_asset_list_fields(
+    preference: AssetListPreference | None, attribute_catalog: list[dict[str, Any]]
+) -> tuple[list[str], list[str]]:
+    """Returns (selected_fields, available_fields) - the user's configured custom asset-list columns."""
+    available_fields = []
+    available_field_names: set[str] = set()
+    for attribute in attribute_catalog:
+        name = str(attribute.get("name") or "").strip().lower()
+        if name and name not in ASSET_LIST_FIXED_FIELDS and name not in available_field_names:
+            available_fields.append(name)
+            available_field_names.add(name)
+
+    selected_fields = [
+        name
+        for name in (preference.selected_attributes if preference is not None else [])
+        if isinstance(name, str) and name.strip().lower() in available_field_names
+    ]
+    selected_fields = list(dict.fromkeys(name.strip().lower() for name in selected_fields))
+    return selected_fields, available_fields
+
+
 def _normalize_asset_list_fields(raw_fields: list[str], attribute_catalog: list[dict[str, Any]]) -> list[str]:
     available = {
         str(item.get("name") or "").strip().lower()
@@ -443,6 +494,57 @@ def _asset_custom_field_values(asset: dict[str, Any], selected_fields: list[str]
          "invalid_result": name in invalid_names}
         for name in selected_fields
     ]
+
+
+def _asset_export_row(asset: dict[str, Any], attribute_columns: list[str]) -> list[str]:
+    values_by_name: dict[str, list[str]] = {name: [] for name in attribute_columns}
+    for item in asset.get("attributes") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "").strip().lower()
+        if name not in values_by_name:
+            continue
+        value = item.get("value")
+        if value is not None and str(value).strip():
+            values_by_name[name].append(str(value).strip())
+    row = [
+        asset.get("assetname", ""),
+        "true" if asset.get("active") else "false",
+        asset.get("created_at", ""),
+        asset.get("changed_at", ""),
+    ]
+    row.extend("; ".join(values_by_name[name]) for name in attribute_columns)
+    return row
+
+
+def _csv_export_response(header: list[str], rows: list[list[str]], filename: str) -> HttpResponse:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(header)
+    writer.writerows(rows)
+    response = HttpResponse(buffer.getvalue(), content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def _xlsx_export_response(header: list[str], rows: list[list[str]], filename: str) -> HttpResponse:
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Assets"
+    sheet.append(header)
+    for row in rows:
+        sheet.append(row)
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 def _matches_logic_text_fields(fields: list[Any], key: str, value: str | None = None) -> bool:
@@ -978,6 +1080,25 @@ def logout_view(request: HttpRequest) -> HttpResponse:
     return redirect("login")
 
 
+def _fetch_all_assets(username: str, password: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    """Fetches every asset matching params, paging past the API's default per-request limit."""
+    assets: list[dict[str, Any]] = []
+    base_params = dict(params or {})
+    offset = 0
+    while True:
+        batch = api_request(
+            username, password, "GET", "/v1/assets",
+            params={**base_params, "limit": 1000, "offset": offset},
+        )
+        if not isinstance(batch, list):
+            raise ServiceError("Invalid asset list response.")
+        assets.extend(batch)
+        if len(batch) < 1000:
+            break
+        offset += 1000
+    return assets
+
+
 def _get_vm_mappings(
     api_username: str, api_password: str, asset_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, tuple[str, int]]:
@@ -1028,16 +1149,7 @@ def asset_vm_mappings_view(request: HttpRequest) -> HttpResponse:
         ).hexdigest()
         # Revalidate access even when inventory enrichment is cached.
         api_request(*credentials, "GET", "/ok")
-        assets = []
-        while True:
-            batch = api_request(
-                *credentials, "GET", "/v1/assets", params={"limit": 1000, "offset": len(assets)},
-            )
-            if not isinstance(batch, list):
-                raise ServiceError("Invalid asset list response.")
-            assets.extend(batch)
-            if len(batch) < 1000:
-                break
+        assets = _fetch_all_assets(*credentials)
         keys = {str(asset["id"]): key + ":" + str(asset["id"]) for asset in assets}
         cached = cache.get_many(keys.values())
         result = {asset_id: cached[item_key] for asset_id, item_key in keys.items() if item_key in cached}
@@ -1070,12 +1182,17 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     create_form = AssetCreateForm(request.POST or None)
 
     attribute_catalog: list[dict[str, Any]] = []
+    datatypes: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
     approval_candidates: list[dict[str, Any]] = []
     try:
         attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
     except ServiceError:
         attribute_catalog = []
+    try:
+        datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
+    except ServiceError:
+        datatypes = []
     try:
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
     except ServiceError:
@@ -1234,25 +1351,28 @@ def assets_view(request: HttpRequest) -> HttpResponse:
                 messages.error(request, str(exc))
 
     preference = AssetListPreference.objects.filter(username=request.user.username).first()
-    available_fields = []
-    available_field_names: set[str] = set()
-    for attribute in attribute_catalog:
-        name = str(attribute.get("name") or "").strip().lower()
-        if name and name not in ASSET_LIST_FIXED_FIELDS and name not in available_field_names:
-            available_fields.append(name)
-            available_field_names.add(name)
 
-    selected_fields = [
-        name
-        for name in (preference.selected_attributes if preference is not None else [])
-        if isinstance(name, str) and name.strip().lower() in available_field_names
-    ]
-    selected_fields = list(dict.fromkeys(name.strip().lower() for name in selected_fields))
+    raw_page_size = _param(request, "page_size")
+    if raw_page_size.isdigit() and int(raw_page_size) in ASSET_LIST_PAGE_SIZES:
+        page_size = int(raw_page_size)
+        if preference is None or preference.page_size != page_size:
+            preference, _created = AssetListPreference.objects.update_or_create(
+                username=request.user.username, defaults={"page_size": page_size},
+            )
+    elif preference is not None and preference.page_size in ASSET_LIST_PAGE_SIZES:
+        page_size = preference.page_size
+    else:
+        page_size = DEFAULT_ASSET_LIST_PAGE_SIZE
+
+    raw_page = _param(request, "page")
+    page = int(raw_page) if raw_page.isdigit() and int(raw_page) > 0 else 1
+
+    selected_fields, available_fields = _resolve_asset_list_fields(preference, attribute_catalog)
     unselected_fields = [name for name in available_fields if name not in selected_fields]
 
     assets: list[dict[str, Any]] = []
     try:
-        assets = api_request(*_creds(request), "GET", "/v1/assets", params=_asset_api_params(filter_query, show_inactive))
+        assets = _fetch_all_assets(*_creds(request), _asset_api_params(filter_query, show_inactive))
     except ServiceError as exc:
         messages.error(request, str(exc))
 
@@ -1281,13 +1401,20 @@ def assets_view(request: HttpRequest) -> HttpResponse:
     show_last_checkin = any(asset.get("last_checkin_at") for asset in assets)
     show_agent_version = any(asset["agent_version"] for asset in assets)
 
-    for asset in assets:
-        asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
-
     active_count = sum(1 for item in assets if item.get("active"))
     decommissioned_count = sum(1 for item in assets if not item.get("active"))
     pending_approval_count = sum(1 for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING)
     pending_assets = [item for item in assets if int(item.get("approved", APPROVAL_NOT_PENDING)) == APPROVAL_PENDING]
+
+    total_items = len(assets)
+    total_pages = max(1, -(-total_items // page_size))
+    page = min(page, total_pages)
+    page_start = (page - 1) * page_size
+    assets = assets[page_start:page_start + page_size]
+
+    for asset in assets:
+        asset["custom_fields"] = _asset_custom_field_values(asset, selected_fields)
+
     base_params = {
         "q": filter_query,
         "show_inactive": "1" if show_inactive else "",
@@ -1299,6 +1426,7 @@ def assets_view(request: HttpRequest) -> HttpResponse:
             "assets": assets,
             "create_form": create_form,
             "attribute_catalog": attribute_catalog,
+            "attribute_value_options": _attribute_value_options(attribute_catalog, datatypes),
             "selected_fields": selected_fields,
             "unselected_fields": unselected_fields,
             "show_last_checkin": show_last_checkin,
@@ -1317,8 +1445,80 @@ def assets_view(request: HttpRequest) -> HttpResponse:
                 "show_inactive": show_inactive,
             },
             "sort_links": _sort_link_data(base_params, sort_by, sort_dir, ["assetname", "active", "attributes_count"]),
+            "export_current_params": _query_string({"q": filter_query, "show_inactive": "1" if show_inactive else ""}),
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total_items": total_items,
+                "total_pages": total_pages,
+                "has_prev": page > 1,
+                "has_next": page < total_pages,
+                "page_size_options": ASSET_LIST_PAGE_SIZES,
+                "start_item": page_start + 1 if total_items else 0,
+                "end_item": min(page_start + page_size, total_items),
+            },
         },
     )
+
+
+@login_required
+@require_GET
+def assets_inventory_view(request: HttpRequest) -> HttpResponse:
+    """Proxies GET /v1/inventory using the caller's session credentials (avoids a separate Basic Auth prompt)."""
+    try:
+        data = api_request(*_creds(request), "GET", "/v1/inventory")
+    except ServiceError as exc:
+        return JsonResponse({"error": str(exc)}, status=502)
+    return JsonResponse(data)
+
+
+@login_required
+@require_GET
+def assets_export_view(request: HttpRequest) -> HttpResponse:
+    export_format = _param(request, "format").lower()
+    if export_format not in {"csv", "xlsx"}:
+        export_format = "csv"
+    scope = _param(request, "scope").lower()
+    if scope not in {"all", "current"}:
+        scope = "all"
+    filter_query = _raw_param(request, "q")
+    show_inactive = _param(request, "show_inactive") in {"1", "true", "on", "yes"}
+
+    try:
+        attribute_catalog = api_request(*_creds(request), "GET", "/v1/attributes")
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("assets")
+    if not isinstance(attribute_catalog, list):
+        attribute_catalog = []
+
+    api_params = _asset_api_params(filter_query, show_inactive) if scope == "current" else None
+    assets: list[dict[str, Any]] = []
+    try:
+        assets = _fetch_all_assets(*_creds(request), api_params)
+    except ServiceError as exc:
+        messages.error(request, str(exc))
+        return redirect("assets")
+
+    if scope == "current":
+        assets = [item for item in assets if _asset_matches_logic_query(item, filter_query)]
+        preference = AssetListPreference.objects.filter(username=request.user.username).first()
+        attribute_columns, _available = _resolve_asset_list_fields(preference, attribute_catalog)
+    else:
+        attribute_columns = sorted({
+            str(attribute.get("name") or "").strip().lower()
+            for attribute in attribute_catalog
+            if isinstance(attribute, dict) and attribute.get("name")
+        })
+
+    header = ["assetname", "active", "created_at", "changed_at"] + attribute_columns
+    rows = [_asset_export_row(asset, attribute_columns) for asset in assets]
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    filename = f"tuxcmdb-assets-{timestamp}.{export_format}"
+    if export_format == "xlsx":
+        return _xlsx_export_response(header, rows, filename)
+    return _csv_export_response(header, rows, filename)
 
 
 @login_required
@@ -1327,6 +1527,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
     update_form = AssetUpdateForm()
     asset: dict[str, Any] | None = None
     attributes: list[dict[str, Any]] = []
+    datatypes: list[dict[str, Any]] = []
     operating_systems: list[dict[str, Any]] = []
     merge_candidates: list[dict[str, Any]] = []
     asset_is_manual = False
@@ -1344,6 +1545,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             raise ServiceError("Asset not found")
         update_form = AssetUpdateForm(initial={"assetname": asset["assetname"]})
         attributes = api_request(*_creds(request), "GET", "/v1/attributes")
+        datatypes = api_request(*_creds(request), "GET", "/v1/datatypes")
         operating_systems = api_request(*_creds(request), "GET", "/v1/operatingsystems")
         manual_assets = api_request(
             *_creds(request),
@@ -1510,6 +1712,7 @@ def asset_detail_view(request: HttpRequest, asset_ref: str) -> HttpResponse:
             "agent_version": asset_agent_version,
             "attributes": attributes,
             "assignment_form": assignment_form,
+            "attribute_value_options": _attribute_value_options(attributes, datatypes),
             "update_form": update_form,
             "operating_systems": operating_systems,
             "asset_os_value": asset_os_value,
