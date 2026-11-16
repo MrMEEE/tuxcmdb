@@ -30,7 +30,11 @@ Reason: these are reusable definitions of possible fields that an asset can have
 
 `assignments` stores the assigned data in a single `value` field. Value formatting and type handling are done in the API layer.
 
-## Quick Start
+## Installation
+
+Three ways to run TuxCMDB: from source, from prebuilt RPMs, or on OKD/OpenShift.
+
+### From Source
 
 1. Create a virtual environment and install dependencies.
 2. Install dependencies:
@@ -93,7 +97,71 @@ python tuxcmdb-webui.py restart --host 127.0.0.1 --port 8000
 
 Default attribute rows are seeded automatically (if missing), with descriptions: `ip_address`, `vmware_uuid`, `environment`, `cpus`, `memory_gb`.
 
-### Virtual machine asset matching
+### RPM Packages
+
+Prebuilt RPMs for RHEL 9/10 (and compatible distributions) are attached to each
+tagged [GitHub release](https://github.com/MrMEEE/tuxcmdb/releases). The server
+is split into three independently installable packages, each with its own
+`-pydeps` dependency package that's pulled in automatically:
+
+| Package | Provides |
+|---|---|
+| `tuxcmdb` | CLI (`/usr/bin/tuxcmdb`) for database setup/migration |
+| `tuxcmdb-api` | FastAPI backend + `tuxcmdb-api.service` |
+| `tuxcmdb-webui` | Django web UI + `tuxcmdb-webui.service` |
+
+Install them (order doesn't matter; dnf/yum resolves the `-pydeps` dependencies):
+
+```bash
+dnf install ./tuxcmdb-pydeps-*.rpm ./tuxcmdb-*.rpm \
+            ./tuxcmdb-api-pydeps-*.rpm ./tuxcmdb-api-*.rpm \
+            ./tuxcmdb-webui-pydeps-*.rpm ./tuxcmdb-webui-*.rpm
+```
+
+#### Choose a database backend
+
+Run `tuxcmdb setup` once to create `/opt/tuxcmdb/conf/database.yaml` and apply
+migrations. `tuxcmdb-api` reads the same file automatically, so no separate
+database configuration is needed for the API.
+
+SQLite:
+
+```bash
+tuxcmdb setup --backend sqlite --database /opt/tuxcmdb/tuxcmdb.db
+```
+
+PostgreSQL:
+
+```bash
+tuxcmdb setup --backend postgresql --host localhost --username tuxcmdb --database tuxcmdb
+```
+
+MySQL/MariaDB:
+
+```bash
+tuxcmdb setup --backend mysql --host localhost --username tuxcmdb --database tuxcmdb
+```
+
+If an admin/root-style user is used (`root`, `admin`, `postgres`), `--database` is optional. The setup command will try to create `tuxcmdb`.
+
+To switch backends later, re-run `tuxcmdb setup` (or edit `/opt/tuxcmdb/conf/database.yaml` directly) and then run `tuxcmdb migrate`.
+
+#### Create an API user and start the services
+
+```bash
+tuxcmdb-api create-user --username admin
+systemctl enable --now tuxcmdb-api tuxcmdb-webui
+```
+
+See [Reverse Proxy Examples](#reverse-proxy-examples) below for nginx/httpd configs to put in front of `tuxcmdb-webui`.
+
+### OKD / OpenShift
+
+See the [OpenShift deployment guide](deploy/openshift/README.md) for UBI 10
+Source-to-Image builds of the server components, TLS routes, and a choice of
+persistent MariaDB or PostgreSQL databases.
+
+## Virtual Machine Asset Matching
 
 When editing a hypervisor cluster, leave the password blank to retain its existing
 password, or enter a new password to replace it. A password is still required
@@ -119,12 +187,6 @@ the page displays an error with **Retry VM mappings** rather than treating a
 failed lookup as an unmapped asset. Background badge loading also works after
 filtering, sorting and live-page refreshes.
 
-## OKD / OpenShift
-
-See the [OpenShift deployment guide](deploy/openshift/README.md) for UBI 10
-Source-to-Image builds of the server components, TLS routes, and a choice of
-persistent MariaDB or PostgreSQL databases.
-
 ## Reverse Proxy Examples
 
 The `tuxcmdb-webui` RPM installs disabled example reverse-proxy configs at:
@@ -135,20 +197,6 @@ The `tuxcmdb-webui` RPM installs disabled example reverse-proxy configs at:
 Copy the one you want into your active web server config, update the TLS certificate paths, and reload the service.
 
 On Apache/httpd systems, disable or replace stock default vhosts such as `/etc/httpd/conf.d/welcome.conf` and `/etc/httpd/conf.d/ssl.conf` if they are still taking precedence over the TuxCMDB proxy vhost.
-
-## Releasing
-
-Use the release script from the repository root:
-
-```bash
-./release.sh
-```
-
-Or call the Python tool directly:
-
-```bash
-python tools/release.py
-```
 
 ## Example Connection URLs
 
