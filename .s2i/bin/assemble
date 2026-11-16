@@ -10,6 +10,20 @@ esac
 cd /opt/app-root/src
 pip install -r "deploy/openshift/${TUXCMDB_COMPONENT}-requirements.txt"
 
+# Stamp VERSION with the number of commits since it was last bumped (e.g.
+# 0.3.8 -> 0.3.8.2), since .git is removed below and won't be available at
+# runtime for the webui to compute this itself.
+if [ -d .git ] && command -v git >/dev/null 2>&1; then
+    base_version=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' version.py)
+    last_version_commit=$(git log -1 --format=%H -- version.py)
+    if [ -n "$last_version_commit" ]; then
+        commits_since=$(git rev-list --count "${last_version_commit}..HEAD")
+        if [ "$commits_since" -gt 0 ]; then
+            sed -i "s/^VERSION = \".*\"/VERSION = \"${base_version}.${commits_since}\"/" version.py
+        fi
+    fi
+fi
+
 # Local database URLs, sessions and virtualenvs must never enter a runtime image.
 rm -f conf/database.yaml tuxcmdb-api/conf/api.yaml tuxcmdb.db
 rm -f tuxcmdb-webui/webui-session.sqlite3

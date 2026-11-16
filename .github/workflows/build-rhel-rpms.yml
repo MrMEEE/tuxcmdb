@@ -105,6 +105,7 @@ jobs:
           cp -r tuxcmdb-webui/tuxcmdb_webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp -r tuxcmdb-webui/webui buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp -r tuxcmdb buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
+          cp version.py buildroot/tuxcmdb-webui/opt/tuxcmdb-webui/
           cp packaging/nginx/tuxcmdb.conf buildroot/tuxcmdb-webui/etc/nginx/conf.d/tuxcmdb.conf.example
           cp packaging/apache/tuxcmdb.conf buildroot/tuxcmdb-webui/etc/httpd/conf.d/tuxcmdb.conf.example
           cat > buildroot/tuxcmdb-webui/usr/bin/tuxcmdb-webui <<'EOF'

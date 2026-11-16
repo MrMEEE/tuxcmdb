@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,21 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from tuxcmdb.db import create_db_engine
+
+VERSION_FILE_CANDIDATES = (
+    REPO_ROOT / "version.py",                      # development
+    Path("/opt/tuxcmdb-webui/version.py"),          # production
+)
+
+
+def get_tuxcmdb_version() -> str | None:
+    for candidate in VERSION_FILE_CANDIDATES:
+        if not candidate.is_file():
+            continue
+        match = re.search(r'^VERSION\s*=\s*["\']([^"\']+)["\']', candidate.read_text(encoding="utf-8"), re.MULTILINE)
+        if match:
+            return match.group(1)
+    return None
 
 API_CONFIG_CANDIDATES = (
     REPO_ROOT / "tuxcmdb-api" / "conf" / "api.yaml",             # development

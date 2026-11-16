@@ -3,6 +3,28 @@
   margin: 1rem;
 }
 
+/* Pin the version footer to the bottom of the sidebar without disturbing
+ * the vendor sidebar's own layout/height rules. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar nav {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.tuxcmdb-sidebar-version {
+  flex-shrink: 0;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.75rem;
+  color: var(--bs-secondary-color, rgba(255, 255, 255, 0.5));
+  text-align: center;
+  border-top: 1px solid var(--bs-secondary-bg);
+}
+
 /* Bootstrap draws table row borders with a per-cell inset box-shadow so
  * variants/hover colors can layer over --bs-table-bg. That box-shadow is
  * painted independently per cell, so rows with mismatched heights (e.g. a

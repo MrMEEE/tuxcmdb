@@ -65,6 +65,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.messages.context_processors.messages",
+                "webui.context_processors.tuxcmdb_version",
             ],
         },
     }

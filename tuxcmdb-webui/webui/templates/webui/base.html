@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TuxCMDB WebUI{% endblock %}</title>
   <link rel="stylesheet" href="{% asset_url 'webui/vendor/vvveb/admin.css' %}">
-  <link rel="stylesheet" href="{% asset_url 'webui/css/vvveb-webui.css' %}?v=20260722-1">
+  <link rel="stylesheet" href="{% asset_url 'webui/css/vvveb-webui.css' %}?v=20261116-1">
 </head>
 <body class="home" data-bs-theme="dark">
   <div id="container">
@@ -127,6 +127,9 @@
           {% endif %}
         </div>
       </nav>
+      {% if tuxcmdb_version %}
+      <div class="tuxcmdb-sidebar-version">v{{ tuxcmdb_version }}</div>
+      {% endif %}
     </div>
 
     <div class="main">
