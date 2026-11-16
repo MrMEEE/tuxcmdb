@@ -73,6 +73,21 @@ through a `/bin/sh -c` wrapper, avoiding an unnecessary extra process.
 Commands that do need shell features fall back to the `sh -c` wrapper,
 which `EXEC:` still permits to exec the real binary under `noexec`.
 
+The `tuxcmdb-agent` invoking `sudo -n` for a privileged command always attaches
+a pseudo-tty to that `sudo` process (merging its stdout/stderr), so it works
+whether the agent runs interactively or from the tty-less systemd
+service/timer, regardless of a host's `Defaults requiretty` setting or how
+that setting's precedence interacts with the rest of its sudoers
+configuration. It also explicitly makes that pty the new session's controlling
+terminal via `ioctl(TIOCSCTTY)`, since some kernels don't auto-assign one just
+from inheriting an already-open pty slave fd. (An earlier agent version instead
+shipped a `Defaults:tuxcmdb-agent !requiretty` override in
+`/etc/sudoers.d/tuxcmdb-agent`; that file is automatically removed the next
+time `tuxcmdb-agent sudo` runs, since sudoers precedence rules mean it isn't
+guaranteed to actually win over a host's own `Defaults requiretty`.)
+
+
+
 Package formats are published for Linux as RPMs for RHEL 8/9/10 and a generic DEB for Debian/Ubuntu.
 The Linux agent normally requires Python 3.9 or newer. The EL8 RPM temporarily supports the system Python 3 runtime and depends on the distribution's `python3-requests` package. This EL8 compatibility path is deprecated and will be removed in a future release; use Python 3.9 or newer on EL8 where available.
 

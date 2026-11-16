@@ -2,17 +2,22 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import platform
+import pty
 import re
 import secrets
+import select
 import shlex
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import termios
+import time
 from pathlib import Path
 from typing import Any
 
@@ -148,32 +153,95 @@ def _command_argv(command: str) -> list[str] | None:
     return argv
 
 
+def _run_with_pty(argv: list[str], timeout: float) -> subprocess.CompletedProcess:
+    """Runs argv attached to a pseudo-tty so `sudo -n` satisfies a host's
+    `Defaults requiretty` regardless of whether our own sudoers `!requiretty`
+    override actually takes precedence there (that depends on sudoers.d parse
+    order, which is outside our control). Merges stdout/stderr (pty behavior).
+
+    Inheriting the pty slave as stdin/stdout/stderr is not enough on its own:
+    some kernels only assign a session's controlling terminal when the tty is
+    freshly open()'d within that session, not when an already-open fd is just
+    inherited - hence the explicit TIOCSCTTY ioctl below."""
+    master_fd, slave_fd = pty.openpty()
+
+    def _make_controlling_tty() -> None:
+        fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+
+    try:
+        proc = subprocess.Popen(argv, stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+                                 start_new_session=True, preexec_fn=_make_controlling_tty)
+    finally:
+        os.close(slave_fd)
+
+    chunks: list[bytes] = []
+    deadline = time.monotonic() + timeout
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                proc.kill()
+                proc.wait()
+                raise subprocess.TimeoutExpired(argv, timeout)
+            ready, _, _ = select.select([master_fd], [], [], remaining)
+            if not ready:
+                continue
+            try:
+                data = os.read(master_fd, 4096)
+            except OSError:
+                # The pty signals EOF as an I/O error once the slave side is closed.
+                break
+            if not data:
+                break
+            chunks.append(data)
+    finally:
+        os.close(master_fd)
+        try:
+            proc.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    output = b"".join(chunks).decode("utf-8", errors="replace")
+    return subprocess.CompletedProcess(argv, proc.returncode, stdout=output, stderr="")
+
+
 def run_command(command: str, needs_privilege: bool = False) -> str | None:
-    if needs_privilege and os.geteuid() != 0:
+    use_sudo = needs_privilege and os.geteuid() != 0
+    if use_sudo:
         direct_argv = _command_argv(command)
         if direct_argv is not None:
             argv: str | list[str] = ["sudo", "-n", *direct_argv]
         else:
             argv = ["sudo", "-n", _sh_path(), "-c", command]
-        use_shell = False
     else:
         argv = command
-        use_shell = True
 
     try:
-        result = subprocess.run(
-            argv,
-            shell=use_shell,
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except Exception:
+        if use_sudo:
+            result = _run_with_pty(argv, timeout=20)
+        else:
+            result = subprocess.run(
+                argv,
+                shell=True,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+    except Exception as exc:
+        if needs_privilege:
+            print(f"Privileged command failed to run: {command!r}: {exc}", file=sys.stderr)
         return None
 
     # Only return output if command succeeded (exit code 0)
     if result.returncode != 0:
+        if needs_privilege:
+            detail = (result.stderr or "").strip() or (result.stdout or "").strip() or "no output"
+            print(
+                f"Privileged command '{command}' failed (exit {result.returncode}): {detail}",
+                file=sys.stderr,
+            )
         return None
 
     output = (result.stdout or "").strip()
@@ -457,24 +525,37 @@ def _sudo_rule_status(item: dict[str, Any], existing_rules: dict[str, str]) -> s
     return "configured"
 
 
-def _add_sudo_rule(item: dict[str, Any]) -> bool:
-    rule_path = _sudoers_rule_path(str(item["attribute_id"]))
-    lines = _sudo_rule_body(item)
+def _install_sudoers_file(path: Path, body: str, description: str) -> bool:
     # A dotted temporary name is ignored by sudo's includedir while being validated.
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=SUDOERS_DIR,
                                      prefix=".tuxcmdb-agent-", delete=False) as handle:
         staged_path = Path(handle.name)
-        handle.write(lines)
+        handle.write(body)
     try:
         os.chmod(staged_path, 0o440)
         if not _validate_sudoers(staged_path):
-            print(f"Generated sudoers rule for '{item['attribute_name']}' failed validation; not installed",
+            print(f"Generated sudoers rule for '{description}' failed validation; not installed",
                   file=sys.stderr)
             return False
-        staged_path.replace(rule_path)
+        staged_path.replace(path)
     finally:
         if staged_path.exists():
             staged_path.unlink()
+    return True
+
+
+def _remove_legacy_common_sudoers_file() -> None:
+    # Superseded by pty-based sudo invocation (requiretty no longer depends on
+    # this host's sudoers.d precedence); clean up what earlier agent versions installed.
+    legacy_path = SUDOERS_DIR / "tuxcmdb-agent"
+    if legacy_path.is_file():
+        legacy_path.unlink()
+
+
+def _add_sudo_rule(item: dict[str, Any]) -> bool:
+    rule_path = _sudoers_rule_path(str(item["attribute_id"]))
+    if not _install_sudoers_file(rule_path, _sudo_rule_body(item), item["attribute_name"]):
+        return False
     for legacy_name in _sudo_rule_names(item)[1:]:
         legacy_path = _sudoers_rule_path(legacy_name)
         if legacy_path.exists():
@@ -496,6 +577,7 @@ def cmd_sudo(args: argparse.Namespace) -> int:
     if os.geteuid() != 0:
         print(f"The 'sudo' command must be run as root to manage {SUDOERS_DIR} rules.", file=sys.stderr)
         return 1
+    _remove_legacy_common_sudoers_file()
 
     if args.sudo_action == "remove" and args.all:
         for name in _existing_sudo_rules():

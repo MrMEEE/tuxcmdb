@@ -89,6 +89,15 @@ class SudoTests:
         self.assertEqual(self.run_cli("sudo", "remove", "--id", "12, 5,12"), 0)
         self.assertEqual(list(self.rules.iterdir()), [])
 
+    def test_legacy_common_defaults_file_is_cleaned_up_on_any_sudo_invocation(self):
+        # Pre-pty-fix agent versions shared a "Defaults:tuxcmdb-agent !requiretty"
+        # file; it's now superseded and should be removed automatically.
+        legacy = self.rules / "tuxcmdb-agent"
+        legacy.write_text("Defaults:tuxcmdb-agent !requiretty\n")
+        self.agent.ask.side_effect = ["q"]
+        self.assertEqual(self.run_cli("sudo"), 0)
+        self.assertFalse(legacy.exists())
+
     def test_remove_all_is_offline_and_leaves_other_sudo_rules(self):
         for name in ("5", "obsolete-name"):
             self.rule(name).write_text("old")
