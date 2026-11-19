@@ -315,12 +315,14 @@ def main() -> int:
     parser = build_arg_parser()
     args = parser.parse_args()
     if args.sudo_action and args.action != "sudo":
-        parser.error("add/remove are only valid with sudo")
+        parser.error("add/remove/list are only valid with sudo")
     if args.update and args.action != "sudo":
         parser.error("--update is only valid with sudo")
-    if args.sudo_action and not (args.all or args.ids):
+    if args.json and args.action != "sudo":
+        parser.error("--json is only valid with sudo")
+    if args.sudo_action in ("add", "remove") and not (args.all or args.ids):
         parser.error("sudo add/remove requires --all or --ids")
-    if (args.all or args.ids) and not args.sudo_action:
+    if (args.all or args.ids) and args.sudo_action not in ("add", "remove"):
         parser.error("--all/--ids requires sudo add/remove")
     if args.update and (args.sudo_action or args.all or args.ids):
         parser.error("--update cannot be combined with add/remove or --all/--ids")
@@ -573,6 +575,51 @@ def _remove_sudo_rule(attribute_name: str) -> None:
         print(f"No sudo rule found for '{attribute_name}'")
 
 
+def _sudo_rule_summary(privileged_commands: list[dict[str, Any]],
+                        existing_rules: dict[str, str]) -> dict[str, Any]:
+    known_names: set[str] = set()
+    rules: list[dict[str, Any]] = []
+    for item in privileged_commands:
+        names = _sudo_rule_names(item)
+        known_names.update(names)
+        rules.append({
+            "attribute_id": item["attribute_id"],
+            "attribute_name": item["attribute_name"],
+            "commands": item["commands"],
+            "status": _sudo_rule_status(item, existing_rules),
+            "rule_file": str(_sudoers_rule_path(str(item["attribute_id"]))),
+        })
+    unmanaged_rules = sorted(name for name in existing_rules if name not in known_names)
+    return {"rules": rules, "unmanaged_rules": unmanaged_rules}
+
+
+def _print_sudo_list(summary: dict[str, Any]) -> None:
+    if not summary["rules"] and not summary["unmanaged_rules"]:
+        print("No attribute commands require privilege escalation for this host.")
+        return
+    print("Privileged attribute commands:")
+    print("-" * 60)
+    for item in summary["rules"]:
+        print(f"  {item['attribute_id']:>2}. {item['attribute_name']:<24} [{item['status']}]")
+        for command in item["commands"]:
+            print(f"      $ {command}")
+    if summary["unmanaged_rules"]:
+        print()
+        print("Sudo rules with no matching privileged command:")
+        for name in summary["unmanaged_rules"]:
+            print(f"  - {name}")
+
+
+def _cmd_sudo_list(privileged_commands: list[dict[str, Any]], existing_rules: dict[str, str],
+                   as_json: bool) -> int:
+    summary = _sudo_rule_summary(privileged_commands, existing_rules)
+    if as_json:
+        print(json.dumps(summary))
+    else:
+        _print_sudo_list(summary)
+    return 0
+
+
 def cmd_sudo(args: argparse.Namespace) -> int:
     if os.geteuid() != 0:
         print(f"The 'sudo' command must be run as root to manage {SUDOERS_DIR} rules.", file=sys.stderr)
@@ -601,6 +648,9 @@ def cmd_sudo(args: argparse.Namespace) -> int:
         return 1
 
     existing_rules = _existing_sudo_rules()
+
+    if args.sudo_action == "list" or (args.sudo_action is None and args.json):
+        return _cmd_sudo_list(privileged_commands, existing_rules, as_json=args.json)
 
     if args.update:
         enabled_items = [
@@ -644,28 +694,9 @@ def cmd_sudo(args: argparse.Namespace) -> int:
             print("No attribute commands require privilege escalation for this host.")
         return 0 if success else 1
 
+    _print_sudo_list(_sudo_rule_summary(privileged_commands, existing_rules))
     if not privileged_commands and not existing_rules:
-        print("No attribute commands require privilege escalation for this host.")
         return 0
-
-    print("Privileged attribute commands:")
-    print("-" * 60)
-    known_names: set[str] = set()
-    for item in privileged_commands:
-        rule_id = str(item["attribute_id"])
-        names = _sudo_rule_names(item)
-        known_names.update(names)
-        status = _sudo_rule_status(item, existing_rules)
-        print(f"  {rule_id:>2}. {item['attribute_name']:<24} [{status}]")
-        for command in item["commands"]:
-            print(f"      $ {command}")
-
-    unmatched_rules = [name for name in existing_rules if name not in known_names]
-    if unmatched_rules:
-        print()
-        print("Sudo rules with no matching privileged command:")
-        for name in unmatched_rules:
-            print(f"  - {name}")
 
     print("-" * 60)
     print("Commands:")
@@ -718,7 +749,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "'sudo' manages NOPASSWD sudo rules for privileged attribute commands"
         ),
     )
-    parser.add_argument("sudo_action", nargs="?", choices=["add", "remove"],
+    parser.add_argument("sudo_action", nargs="?", choices=["add", "remove", "list"],
                         help="Non-interactive sudo rule management")
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument("--all", action="store_true", help="Select all agent sudo rules")
@@ -726,6 +757,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                            help="Comma-separated attribute IDs (--id is an alias)")
     parser.add_argument("--update", action="store_true",
                         help="Refresh sudo rule files for already-enabled privileged commands")
+    parser.add_argument("--json", action="store_true",
+                        help="Emit machine-readable JSON for 'sudo list' (also skips the "
+                             "interactive prompt for bare 'sudo')")
     parser.add_argument("--config", default=str(DEFAULT_CONFIG))
     parser.add_argument("--server-url")
     parser.add_argument("--assetid")

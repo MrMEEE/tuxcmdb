@@ -257,6 +257,27 @@ class StandardSudoTests(SudoTests, unittest.TestCase):
     source = "agent/linux/tuxcmdb_agent.py"
     agent = load_agent(source)
 
+    def test_sudo_list_json_is_non_interactive_and_reports_status(self):
+        self.assertEqual(self.run_cli("sudo", "add", "--ids", "5"), 0)
+        self.assertEqual(self.run_cli("sudo", "list", "--json"), 0)
+        summary = json.loads(self.output.getvalue().splitlines()[-1])
+        rules_by_id = {rule["attribute_id"]: rule for rule in summary["rules"]}
+        self.assertEqual(rules_by_id[5]["status"], "configured")
+        self.assertEqual(rules_by_id[12]["status"], "not configured")
+        self.assertEqual(summary["unmanaged_rules"], [])
+
+    def test_bare_sudo_with_json_skips_interactive_prompt(self):
+        self.assertEqual(self.run_cli("sudo", "--json"), 0)
+        self.agent.ask.assert_not_called()
+        summary = json.loads(self.output.getvalue())
+        self.assertEqual({rule["attribute_id"] for rule in summary["rules"]}, {5, 12})
+
+    def test_json_flag_validation(self):
+        for args in [("report", "--json"), ("--json",)]:
+            with self.subTest(args=args), self.assertRaises(SystemExit) as exc:
+                self.run_cli(*args)
+            self.assertEqual(exc.exception.code, 2)
+
 
 class EL8SudoTests(SudoTests, unittest.TestCase):
     source = "agent/linux/el8/tuxcmdb_agent.py"

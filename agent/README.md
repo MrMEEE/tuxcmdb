@@ -41,6 +41,18 @@ tuxcmdb-agent sudo remove --all
 tuxcmdb-agent sudo --update
 ```
 
+For scripting/automation (e.g. the `tuxcmdb.agent` Ansible collection, see
+[`ansible/`](../ansible/README.md)), `sudo list`
+prints the same listing non-interactively and never prompts; add `--json` to
+get a machine-readable `{"rules": [...], "unmanaged_rules": [...]}` document
+instead of the human-readable table. `--json` also works on bare `sudo` (no
+`list`/`add`/`remove`) to skip the interactive prompt:
+
+```sh
+tuxcmdb-agent sudo list
+tuxcmdb-agent sudo list --json
+```
+
 `--update` regenerates the rule file for every currently **enabled** (already
 configured or legacy) rule using the latest bootstrap commands, without
 enabling any rule that isn't already configured. It cannot be combined with
