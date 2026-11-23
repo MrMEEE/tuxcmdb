@@ -14,6 +14,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Bootstrap's .navbar sets align-items: center, which vertically centers
+   * the nav links within this now-tall flex item instead of anchoring them
+   * to the top. */
+  align-items: flex-start;
 }
 
 .tuxcmdb-sidebar-version {
