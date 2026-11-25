@@ -108,10 +108,15 @@ assets = Table(
     "assets",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("assetname", String(255), nullable=False, unique=True),
+    # Actual uniqueness is the composite uq_assets_assetname_is_agent index below,
+    # not a plain unique here: one manual and one agent asset may share a name.
+    Column("assetname", String(255), nullable=False),
     Column("operatingsystem_id", Integer, ForeignKey("operatingsystems.id", ondelete="SET NULL"), nullable=True),
     Column("approved", Integer, nullable=False, server_default=text("0")),
     Column("systempass_hash", String(255), nullable=True),
+    # Lets one manual and one agent-registered asset share an assetname; see
+    # the uq_assets_assetname_is_agent index and register_agent().
+    Column("is_agent", Boolean, nullable=False, server_default=text("false")),
     Column("active", Boolean, nullable=False, server_default=text("true")),
     Column("last_checkin_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -634,7 +639,6 @@ def parse_asset_assign_payload(payload: dict[str, Any]) -> tuple[int | None, str
 def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
     asset_ref = asset_ref.strip()
 
-    row = None
     if asset_ref.isdigit():
         row = conn.execute(
             select(assets.c.id, assets.c.active).where(assets.c.id == int(asset_ref))
@@ -643,12 +647,22 @@ def resolve_asset_ref(conn: Connection, asset_ref: str) -> Any:
             return row
 
     normalized_assetname = normalize_assetname(asset_ref)
-    row = conn.execute(
+    rows = conn.execute(
         select(assets.c.id, assets.c.active).where(assets.c.assetname == normalized_assetname)
-    ).one_or_none()
-    if row is None:
+    ).all()
+    if not rows:
         raise HTTPException(status_code=404, detail="Asset not found")
-    return row
+    if len(rows) > 1:
+        # A manual and an agent asset can share a name until merged/approved; fall
+        # back to the sole active one, otherwise the reference is truly ambiguous.
+        active_rows = [row for row in rows if row.active]
+        if len(active_rows) == 1:
+            return active_rows[0]
+        raise HTTPException(
+            status_code=409,
+            detail=f"Assetname '{normalized_assetname}' is ambiguous; use the numeric asset ID instead",
+        )
+    return rows[0]
 
 
 def resolve_attribute_ref(conn: Connection, attribute_ref: str) -> Any:
@@ -2398,6 +2412,7 @@ def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
                 )
 
     hostvars: dict[str, dict[str, Any]] = {}
+    best_rank: dict[str, tuple[int, int]] = {}
     groups: dict[str, set[str]] = {}
     for row in rows:
         values = current[row.id]
@@ -2411,7 +2426,12 @@ def build_inventory(rows: list[Any], conn: Connection) -> dict[str, Any]:
                 "tuxcmdb_changed_at": row.changed_at,
             }
         )
-        hostvars[row.assetname] = variables
+        # A manual and a pending agent asset can share a name until merged/approved;
+        # prefer the non-pending one so a brand-new registration doesn't shadow it.
+        rank = (0 if row.approved != APPROVAL_PENDING else 1, row.id)
+        if row.assetname not in best_rank or rank < best_rank[row.assetname]:
+            hostvars[row.assetname] = variables
+            best_rank[row.assetname] = rank
 
         for value, inventory_group in values.values():
             if not inventory_group:
@@ -4182,6 +4202,13 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
     def create_asset(payload: AssetCreate, _: AuthenticatedUser = Depends(require_write_access)) -> AssetOut:
         assetname = normalize_assetname(payload.assetname)
         with engine.begin() as conn:
+            # Unlike agent registration, manual creation may never share a name with
+            # an existing asset of either origin.
+            existing = conn.execute(
+                select(assets.c.id).where(assets.c.assetname == assetname).limit(1)
+            ).scalar_one_or_none()
+            if existing is not None:
+                raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 insert_result = conn.execute(
                     assets.insert().values(assetname=assetname, approved=APPROVAL_NOT_PENDING, systempass_hash=None, active=True)
@@ -4274,6 +4301,16 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
         updates["changed_at"] = func.now()
 
         with engine.begin() as conn:
+            if "assetname" in updates:
+                # Same rule as manual creation: renaming may never collide with any
+                # existing asset of either origin.
+                existing = conn.execute(
+                    select(assets.c.id).where(
+                        assets.c.assetname == updates["assetname"], assets.c.id != asset_id
+                    ).limit(1)
+                ).scalar_one_or_none()
+                if existing is not None:
+                    raise HTTPException(status_code=409, detail="Asset assetname already exists")
             try:
                 update_result = conn.execute(
                     assets.update()
@@ -4480,23 +4517,30 @@ def create_app(config_path: Path = DEFAULT_API_CONFIG) -> FastAPI:
                             assetname=assetname,
                             approved=APPROVAL_PENDING,
                             systempass_hash=None,
+                            is_agent=True,
                             active=True,
                         )
                     )
                 except IntegrityError as exc:
-                    raise HTTPException(status_code=409, detail="Asset assetname already exists") from exc
+                    # uq_assets_assetname_is_agent only blocks same-origin collisions, so
+                    # this can only mean another agent already owns this assetname.
+                    raise HTTPException(status_code=409, detail="An agent is already registered for this assetname") from exc
                 asset_id = insert_result.inserted_primary_key[0]
 
             systempass = _new_systempass()
-            conn.execute(
-                assets.update()
-                .where(assets.c.id == asset_id)
-                .values(
-                    approved=APPROVAL_PENDING,
-                    systempass_hash=generate_password_hash(systempass),
-                    changed_at=func.now(),
+            try:
+                conn.execute(
+                    assets.update()
+                    .where(assets.c.id == asset_id)
+                    .values(
+                        approved=APPROVAL_PENDING,
+                        systempass_hash=generate_password_hash(systempass),
+                        is_agent=True,
+                        changed_at=func.now(),
+                    )
                 )
-            )
+            except IntegrityError as exc:
+                raise HTTPException(status_code=409, detail="An agent is already registered for this assetname") from exc
             log_audit_entry(conn, "agent-registration", "asset", str(asset_id), "register")
             return AgentRegisterResponse(
                 id=asset_id,
